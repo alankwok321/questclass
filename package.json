@@ -1,0 +1,16 @@
+{
+  "name": "teaching-app",
+  "version": "1.0.0",
+  "description": "Gamified AI teaching app prototype",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

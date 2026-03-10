@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>QuestClass — AI Learning Studio</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/style.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand-card">
+        <div class="brand-mark">🎓</div>
+        <div>
+          <div class="brand-title">QuestClass</div>
+          <div class="brand-subtitle">把學習做成像產品，不只是工具</div>
+        </div>
+      </div>
+
+      <div class="side-panel profile-panel">
+        <div class="profile-row">
+          <div class="avatar">A</div>
+          <div>
+            <strong>Ada 同學</strong>
+            <p>Level <span id="studentLevel">7</span> • XP <span id="studentXp">1280</span></p>
+          </div>
+        </div>
+        <div class="progress-track"><div id="xpBar" class="progress-fill"></div></div>
+      </div>
+
+      <div class="side-panel settings-panel">
+        <div class="panel-title">AI 設定</div>
+        <label class="field-label" for="apiBaseUrl">API Base URL</label>
+        <input id="apiBaseUrl" type="url" placeholder="https://openrouter.ai/api/v1" />
+        <label class="field-label" for="apiModel">Model</label>
+        <input id="apiModel" type="text" placeholder="openai/gpt-4.1-mini" />
+        <label class="field-label" for="apiKey">API Key</label>
+        <input id="apiKey" type="password" placeholder="sk-..." />
+        <div class="btn-row">
+          <button class="btn btn-small btn-primary" onclick="saveSettings()">儲存</button>
+          <button class="btn btn-small btn-secondary" onclick="clearSettings()">清除</button>
+        </div>
+        <div class="settings-hint">沒填也能跑 demo；填了就會打真實 AI API。</div>
+      </div>
+
+      <div class="side-panel">
+        <div class="panel-title">今日任務</div>
+        <div id="dailyQuestList" class="quest-list"></div>
+      </div>
+
+      <div class="side-panel">
+        <div class="panel-title">成就</div>
+        <div class="badge-grid" id="badgeGrid"></div>
+      </div>
+
+      <div class="side-panel">
+        <div class="panel-title">班級排行</div>
+        <div id="leaderboard" class="leaderboard"></div>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <div>
+          <div class="eyebrow">AI Learning Studio</div>
+          <h1>一個把遊戲化、聊天、視覺化、教學自動化整合在一起的 teaching app</h1>
+          <p>學生像在解任務，老師像在操作一個有回饋、有分析、有節奏的學習系統。</p>
+        </div>
+        <div class="top-actions">
+          <button class="btn btn-secondary" onclick="simulateStudyWin()">+ 完成一個任務</button>
+          <button class="btn btn-primary" onclick="runLearningLoop()">▶ 啟動教學流程</button>
+        </div>
+      </header>
+
+      <section class="hero-grid">
+        <div class="hero-card large">
+          <div class="hero-kicker">Gamified Flow</div>
+          <h2>把教材變成一條有節奏的任務旅程</h2>
+          <p>解鎖單元、每日挑戰、任務卡、連擊 streak、徽章與班級排行，讓進度與成就感具象化。</p>
+          <div class="chip-row">
+            <span class="chip">解鎖式單元</span>
+            <span class="chip">每日挑戰</span>
+            <span class="chip">成就系統</span>
+            <span class="chip">排行榜</span>
+          </div>
+        </div>
+        <div class="hero-card">
+          <div class="metric-label">今日連擊</div>
+          <div class="metric-value" id="streakValue">12</div>
+          <div class="metric-sub">連續學習天數</div>
+        </div>
+        <div class="hero-card">
+          <div class="metric-label">本週弱點</div>
+          <div class="metric-value">分數 2/5</div>
+          <div class="metric-sub">代數文字題、分數換算</div>
+        </div>
+      </section>
+
+      <section class="workspace-grid">
+        <div class="column left-col">
+          <section class="panel chat-panel">
+            <div class="panel-head">
+              <div>
+                <div class="eyebrow">Chat-first Learning</div>
+                <h3>AI 老師對話區</h3>
+              </div>
+              <span class="panel-tag" id="chatModeBadge">Demo mode</span>
+            </div>
+            <div id="chatMessages" class="chat-messages"></div>
+            <div class="chat-composer">
+              <input id="chatInput" type="text" placeholder="例如：我不懂為什麼 3/4 會大於 2/3？" />
+              <button class="btn btn-primary" onclick="sendChatMessage()">送出</button>
+            </div>
+            <div class="quick-prompts">
+              <button class="quick-btn" onclick="seedPrompt('請一步步引導我，不要直接給答案')">一步步引導</button>
+              <button class="quick-btn" onclick="seedPrompt('先給我提示，再讓我自己算')">先提示</button>
+              <button class="quick-btn" onclick="seedPrompt('幫我把這題變簡單一點')">降低難度</button>
+              <button class="quick-btn" onclick="seedPrompt('用生活例子解釋')">生活例子</button>
+            </div>
+          </section>
+
+          <section class="panel automation-panel">
+            <div class="panel-head">
+              <div>
+                <div class="eyebrow">Automation Loop</div>
+                <h3>教學自動化流程</h3>
+              </div>
+              <button class="btn btn-secondary btn-small" onclick="runLearningLoop()">重新跑一次</button>
+            </div>
+            <div class="pipeline" id="pipeline"></div>
+            <div class="loop-output" id="loopOutput"></div>
+            <div class="assignment-box">
+              <div class="assignment-head">
+                <strong>系統建議題組</strong>
+                <span id="loopModeBadge">Demo mode</span>
+              </div>
+              <ul id="assignmentList"></ul>
+              <p id="loopInsight" class="assignment-insight"></p>
+            </div>
+          </section>
+        </div>
+
+        <div class="column right-col">
+          <section class="panel viz-panel">
+            <div class="panel-head">
+              <div>
+                <div class="eyebrow">Visual Learning Data</div>
+                <h3>知識地圖 / 技能樹</h3>
+              </div>
+            </div>
+            <div class="map-grid" id="knowledgeMap"></div>
+            <div class="skill-tree" id="skillTree"></div>
+          </section>
+
+          <section class="panel teacher-panel">
+            <div class="panel-head">
+              <div>
+                <div class="eyebrow">Teacher Dashboard</div>
+                <h3>老師端總覽</h3>
+              </div>
+            </div>
+            <div class="teacher-stats" id="teacherStats"></div>
+          </section>
+
+          <section class="panel heatmap-panel">
+            <div class="panel-head">
+              <div>
+                <div class="eyebrow">Weakness Insights</div>
+                <h3>弱點熱區與錯題關聯</h3>
+              </div>
+            </div>
+            <div class="heatmap" id="heatmap"></div>
+            <div class="mistake-links" id="mistakeLinks"></div>
+          </section>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div id="toast" class="toast"></div>
+  <script src="/js/app.js"></script>
+  <script>initApp();</script>
+</body>
+</html>
