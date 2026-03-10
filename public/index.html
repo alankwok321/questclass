@@ -3,20 +3,70 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>QuestClass — AI Learning Studio</title>
+  <title>QuestClass — AI Learning OS</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/css/style.css" />
 </head>
 <body>
-  <div class="app-shell">
+  <div class="landing-shell">
+    <header class="marketing-nav">
+      <div class="marketing-brand">
+        <span class="brand-icon">🎓</span>
+        <span>QuestClass</span>
+      </div>
+      <nav class="marketing-links">
+        <a href="#features">功能</a>
+        <a href="#dashboard">Dashboard</a>
+        <a href="#classroom">Classroom</a>
+      </nav>
+      <div class="marketing-actions">
+        <button class="btn btn-secondary btn-small" onclick="scrollToApp()">看產品</button>
+        <button class="btn btn-primary btn-small" onclick="runLearningLoop()">試跑 AI 流程</button>
+      </div>
+    </header>
+
+    <section class="marketing-hero">
+      <div class="marketing-copy">
+        <div class="eyebrow">AI Learning Operating System</div>
+        <h1>把教學做成一套真正可運作的學習系統</h1>
+        <p>QuestClass 把遊戲化、AI 對話、班級管理、知識地圖、弱點分析與教學自動化整合成同一個產品。不是零散工具，而是一個可持續運作的 learning OS。</p>
+        <div class="hero-cta-row">
+          <button class="btn btn-primary" onclick="scrollToApp()">打開產品</button>
+          <button class="btn btn-secondary" onclick="simulateStudyWin()">看任務成長</button>
+        </div>
+        <div class="hero-proof-row">
+          <div class="proof-card"><strong>AI Tutor</strong><span>蘇格拉底式教學</span></div>
+          <div class="proof-card"><strong>Teacher OS</strong><span>班級 / 題組 / 追蹤</span></div>
+          <div class="proof-card"><strong>Student Loop</strong><span>出題 → 作答 → 分析 → 再出題</span></div>
+        </div>
+      </div>
+      <div class="marketing-preview card-surface">
+        <div class="preview-grid">
+          <div class="preview-stat"><span>活躍學生</span><strong id="heroActiveStudents">28</strong></div>
+          <div class="preview-stat"><span>今日任務完成</span><strong id="heroCompletionRate">84%</strong></div>
+          <div class="preview-stat"><span>AI 互動次數</span><strong>126</strong></div>
+          <div class="preview-stat"><span>需關注學生</span><strong>4</strong></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="feature-strip" id="features">
+      <div class="feature-card"><strong>遊戲化學習</strong><span>任務、徽章、升級、排行與每日挑戰</span></div>
+      <div class="feature-card"><strong>AI 對話教學</strong><span>偏提示與追問，不直接破梗</span></div>
+      <div class="feature-card"><strong>老師端控制台</strong><span>看班級狀態、學生弱點與題組進度</span></div>
+      <div class="feature-card"><strong>學習資料視覺化</strong><span>知識圖、技能樹、熱區與錯題關聯</span></div>
+    </section>
+  </div>
+
+  <div class="app-shell" id="productApp">
     <aside class="sidebar">
       <div class="brand-card">
         <div class="brand-mark">🎓</div>
         <div>
           <div class="brand-title">QuestClass</div>
-          <div class="brand-subtitle">把學習做成像產品，不只是工具</div>
+          <div class="brand-subtitle">學習系統 / Teacher OS / AI Tutor</div>
         </div>
       </div>
 
@@ -24,7 +74,7 @@
         <div class="profile-row">
           <div class="avatar">A</div>
           <div>
-            <strong>Ada 同學</strong>
+            <strong id="studentName">Ada 同學</strong>
             <p>Level <span id="studentLevel">7</span> • XP <span id="studentXp">1280</span></p>
           </div>
         </div>
@@ -47,6 +97,11 @@
       </div>
 
       <div class="side-panel">
+        <div class="panel-title">學生切換</div>
+        <div id="studentList" class="stack-list"></div>
+      </div>
+
+      <div class="side-panel">
         <div class="panel-title">今日任務</div>
         <div id="dailyQuestList" class="quest-list"></div>
       </div>
@@ -66,8 +121,8 @@
       <header class="topbar">
         <div>
           <div class="eyebrow">AI Learning Studio</div>
-          <h1>一個把遊戲化、聊天、視覺化、教學自動化整合在一起的 teaching app</h1>
-          <p>學生像在解任務，老師像在操作一個有回饋、有分析、有節奏的學習系統。</p>
+          <h1>把遊戲化、聊天、視覺化、教學自動化整合在同一個 teaching app</h1>
+          <p>老師像在操作一套 live 教學系統；學生則像在一個能持續成長的任務世界中學習。</p>
         </div>
         <div class="top-actions">
           <button class="btn btn-secondary" onclick="simulateStudyWin()">+ 完成一個任務</button>
@@ -94,8 +149,8 @@
         </div>
         <div class="hero-card">
           <div class="metric-label">本週弱點</div>
-          <div class="metric-value">分數 2/5</div>
-          <div class="metric-sub">代數文字題、分數換算</div>
+          <div class="metric-value" id="heroWeaknessScore">分數 2/5</div>
+          <div class="metric-sub" id="heroWeaknessLabel">代數文字題、分數換算</div>
         </div>
       </section>
 
@@ -141,6 +196,17 @@
               <p id="loopInsight" class="assignment-insight"></p>
             </div>
           </section>
+
+          <section class="panel bank-panel" id="classroom">
+            <div class="panel-head">
+              <div>
+                <div class="eyebrow">Content Bank</div>
+                <h3>題庫 / 單元資料結構</h3>
+              </div>
+            </div>
+            <div id="unitCards" class="unit-grid"></div>
+            <div id="questionBank" class="question-bank"></div>
+          </section>
         </div>
 
         <div class="column right-col">
@@ -155,7 +221,7 @@
             <div class="skill-tree" id="skillTree"></div>
           </section>
 
-          <section class="panel teacher-panel">
+          <section class="panel teacher-panel" id="dashboard">
             <div class="panel-head">
               <div>
                 <div class="eyebrow">Teacher Dashboard</div>
@@ -163,6 +229,7 @@
               </div>
             </div>
             <div class="teacher-stats" id="teacherStats"></div>
+            <div class="teacher-students" id="teacherStudentCards"></div>
           </section>
 
           <section class="panel heatmap-panel">
