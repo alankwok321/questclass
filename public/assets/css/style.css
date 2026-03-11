@@ -57,6 +57,9 @@ main { width: min(calc(100% - 32px), var(--max-width)); margin: 0 auto; padding:
 .nav { display: flex; flex-wrap: wrap; gap: 10px; }
 .topbar-auth { display: flex; align-items: center; justify-content: flex-end; margin-left: auto; }
 .topbar-auth .button { white-space: nowrap; }
+.account-button { display: inline-flex; align-items: center; gap: 10px; }
+.account-avatar { width: 24px; height: 24px; border-radius: 999px; object-fit: cover; border: 1px solid rgba(255,255,255,.18); }
+.account-avatar-fallback { display: inline-flex; align-items: center; justify-content: center; background: rgba(255,255,255,.18); color: var(--text); font-size: .85rem; font-weight: 700; }
 .nav-link {
   color: var(--muted);
   padding: 10px 14px;
