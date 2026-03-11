@@ -7,32 +7,38 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/css/style.css" />
+  <link rel="stylesheet" href="/assets/css/style.css" />
 </head>
 <body data-page="student">
-  <div class="app-shell">
-    <aside class="sidebar">
-      <div class="brand-card"><div class="brand-mark">🎓</div><div><div class="brand-title">QuestClass v2</div><div class="brand-subtitle">Student Home</div></div></div>
-      <div class="side-panel"><div class="panel-title">頁面</div><div class="stack-list compact-stack">
-        <a class="stack-card" href="/teacher.html"><strong>Teacher</strong><span>Dashboard</span></a>
-        <a class="stack-card active" href="/student.html"><strong>Student</strong><span>Home</span></a>
-        <a class="stack-card" href="/chat.html"><strong>Chat</strong><span>AI 教學</span></a>
-        <a class="stack-card" href="/analytics.html"><strong>Analytics</strong><span>洞察</span></a>
-      </div></div>
-      <div class="side-panel" id="studentSidebarBlock"><div class="panel-title">學生切換</div><div id="studentList" class="stack-list"></div></div>
-      <div class="side-panel"><div class="panel-title">今日任務</div><div id="dailyQuestList" class="quest-list"></div></div>
-      <div class="side-panel"><div class="panel-title">班級排行</div><div id="leaderboard" class="leaderboard"></div></div>
-    </aside>
-    <main class="main">
-      <header class="topbar"><div><div class="eyebrow">Student App</div><h1 id="topbarTitle">Student app：追蹤進度、完成任務、和 AI 老師對話</h1><p id="topbarSubtitle">這一頁只保留學生需要的功能。</p></div><div class="top-actions"><span class="panel-tag" id="currentRoleBadge">Student mode</span><button class="btn btn-secondary" onclick="simulateStudyWin()">+ 完成一個任務</button></div></header>
-      <section class="hero-grid"><div class="hero-card large"><div class="hero-kicker">Student Session</div><h2 id="sessionHeading">目前以 Student 視角查看 QuestClass v2</h2><p id="sessionDescription">任務、進度、弱點與 AI 引導學習。</p></div><div class="hero-card"><div class="metric-label">當前角色</div><div class="metric-value" id="roleMetric">Student</div></div><div class="hero-card"><div class="metric-label">目前弱點</div><div class="metric-value" id="heroWeaknessScore">分數 2/5</div><div class="metric-sub" id="heroWeaknessLabel">分數比較 / 文字題</div></div></section>
-      <section class="panel student-only"><div class="panel-head"><div><div class="eyebrow">Student Home</div><h3>學生任務首頁</h3></div><span class="panel-tag" id="studentHomeBadge">Student progression</span></div><div class="student-home-grid" id="studentHomeGrid"></div></section>
-    </main>
-  </div>
-  <div id="toast" class="toast"></div>
+  <main>
+    <header class="topbar">
+      <div class="brand" data-brand></div>
+      <nav class="nav" data-nav></nav>
+    </header>
+
+    <section class="hero" data-student-hero></section>
+
+    <section class="panel">
+      <div class="panel-header"><div><span class="eyebrow">Student progress</span><h2>個人進度</h2></div></div>
+      <div class="grid-3" data-student-progress></div>
+    </section>
+
+    <section class="grid-2">
+      <section class="panel">
+        <div class="panel-header"><div><span class="eyebrow">Daily quests</span><h3>今日任務</h3></div></div>
+        <div class="list-grid" data-quests></div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header"><div><span class="eyebrow">Student selector</span><h3>學生切換</h3></div></div>
+        <div class="list-grid" data-student-roster></div>
+      </section>
+    </section>
+  </main>
+
+  <div class="toast" data-toast></div>
   <script src="/js/firebase-config.js"></script>
   <script src="/js/firebase-bridge.js"></script>
-  <script src="/js/app.js"></script>
-  <script>initApp();</script>
+  <script type="module" src="/assets/js/app.js"></script>
 </body>
 </html>

@@ -7,31 +7,63 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/css/style.css" />
+  <link rel="stylesheet" href="/assets/css/style.css" />
 </head>
 <body data-page="analytics">
-  <div class="app-shell">
-    <aside class="sidebar">
-      <div class="brand-card"><div class="brand-mark">🎓</div><div><div class="brand-title">QuestClass v2</div><div class="brand-subtitle">Analytics</div></div></div>
-      <div class="side-panel"><div class="panel-title">頁面</div><div class="stack-list compact-stack">
-        <a class="stack-card" href="/teacher.html"><strong>Teacher</strong><span>Dashboard</span></a>
-        <a class="stack-card" href="/student.html"><strong>Student</strong><span>Home</span></a>
-        <a class="stack-card" href="/chat.html"><strong>Chat</strong><span>AI 教學</span></a>
-        <a class="stack-card active" href="/analytics.html"><strong>Analytics</strong><span>洞察</span></a>
-      </div></div>
-      <div class="side-panel" id="teacherSidebarBlock"><div class="panel-title">班級切換</div><div id="classroomList" class="stack-list compact-stack"></div></div>
-    </aside>
-    <main class="main">
-      <header class="topbar"><div><div class="eyebrow">Analytics</div><h1>弱點分析 / 題庫 / 知識地圖</h1><p>這一頁只保留分析型功能。</p></div><div class="top-actions"><span class="panel-tag" id="loopModeBadge">Demo mode</span><button class="btn btn-secondary" onclick="runLearningLoop()">刷新分析</button></div></header>
-      <section class="panel bank-panel"><div class="panel-head"><div><div class="eyebrow">Data Model Surface</div><h3>班級 / 單元 / 題庫資料</h3></div></div><div id="unitCards" class="unit-grid"></div><div id="questionBank" class="question-bank"></div></section>
-      <section class="panel viz-panel"><div class="panel-head"><div><div class="eyebrow">Visual Learning Data</div><h3>知識地圖 / 技能樹</h3></div></div><div class="map-grid" id="knowledgeMap"></div><div class="skill-tree" id="skillTree"></div></section>
-      <section class="panel heatmap-panel"><div class="panel-head"><div><div class="eyebrow">Weakness Insights</div><h3>弱點熱區與錯題關聯</h3></div></div><div class="heatmap" id="heatmap"></div><div class="mistake-links" id="mistakeLinks"></div></section>
-    </main>
-  </div>
-  <div id="toast" class="toast"></div>
+  <main>
+    <header class="topbar">
+      <div class="brand" data-brand></div>
+      <nav class="nav" data-nav></nav>
+    </header>
+
+    <section class="hero">
+      <div class="hero-copy">
+        <span class="eyebrow">Analytics</span>
+        <h1>弱點分析 / 題庫 / 知識地圖</h1>
+        <p>這頁專注在資料視角，不混老師操作和學生任務。</p>
+      </div>
+      <div class="hero-stats">
+        <div><strong>Heatmap</strong><span>弱點熱區</span></div>
+        <div><strong>Bank</strong><span>題庫資料</span></div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-header"><div><span class="eyebrow">Unit coverage</span><h2>單元進度</h2></div></div>
+      <div class="list-grid" data-units></div>
+    </section>
+
+    <section class="grid-2">
+      <section class="panel">
+        <div class="panel-header"><div><span class="eyebrow">Question bank</span><h3>題庫</h3></div></div>
+        <div class="list-grid" data-question-bank></div>
+      </section>
+      <section class="panel">
+        <div class="panel-header"><div><span class="eyebrow">Knowledge map</span><h3>知識地圖</h3></div></div>
+        <div class="map-grid" data-knowledge-map></div>
+      </section>
+    </section>
+
+    <section class="grid-2">
+      <section class="panel">
+        <div class="panel-header"><div><span class="eyebrow">Skills</span><h3>技能樹</h3></div></div>
+        <div data-skills></div>
+      </section>
+      <section class="panel">
+        <div class="panel-header"><div><span class="eyebrow">Heatmap</span><h3>弱點熱區</h3></div></div>
+        <div class="heatmap" data-heatmap></div>
+      </section>
+    </section>
+
+    <section class="panel">
+      <div class="panel-header"><div><span class="eyebrow">Insights</span><h3>錯題關聯</h3></div></div>
+      <div class="list-grid" data-mistake-links></div>
+    </section>
+  </main>
+
+  <div class="toast" data-toast></div>
   <script src="/js/firebase-config.js"></script>
   <script src="/js/firebase-bridge.js"></script>
-  <script src="/js/app.js"></script>
-  <script>initApp();</script>
+  <script type="module" src="/assets/js/app.js"></script>
 </body>
 </html>

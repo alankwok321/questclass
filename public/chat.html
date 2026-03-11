@@ -7,36 +7,53 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/css/style.css" />
+  <link rel="stylesheet" href="/assets/css/style.css" />
 </head>
 <body data-page="chat">
-  <div class="app-shell">
-    <aside class="sidebar">
-      <div class="brand-card"><div class="brand-mark">🎓</div><div><div class="brand-title">QuestClass v2</div><div class="brand-subtitle">AI Chat</div></div></div>
-      <div class="side-panel"><div class="panel-title">頁面</div><div class="stack-list compact-stack">
-        <a class="stack-card" href="/teacher.html"><strong>Teacher</strong><span>Dashboard</span></a>
-        <a class="stack-card" href="/student.html"><strong>Student</strong><span>Home</span></a>
-        <a class="stack-card active" href="/chat.html"><strong>Chat</strong><span>AI 教學</span></a>
-        <a class="stack-card" href="/analytics.html"><strong>Analytics</strong><span>洞察</span></a>
-      </div></div>
-      <div class="side-panel" id="studentSidebarBlock"><div class="panel-title">學生切換</div><div id="studentList" class="stack-list"></div></div>
-      <div class="side-panel settings-panel">
-        <div class="panel-title">AI 設定</div>
-        <label class="field-label" for="apiBaseUrl">API Base URL</label><input id="apiBaseUrl" type="url" placeholder="https://openrouter.ai/api/v1" />
-        <label class="field-label" for="apiModel">Model</label><input id="apiModel" type="text" placeholder="openai/gpt-4.1-mini" />
-        <label class="field-label" for="apiKey">API Key</label><input id="apiKey" type="password" placeholder="sk-..." />
-        <div class="btn-row"><button class="btn btn-small btn-primary" onclick="saveSettings()">儲存</button><button class="btn btn-small btn-secondary" onclick="clearSettings()">清除</button></div>
+  <main>
+    <header class="topbar">
+      <div class="brand" data-brand></div>
+      <nav class="nav" data-nav></nav>
+    </header>
+
+    <section class="hero">
+      <div class="hero-copy">
+        <span class="eyebrow">Chat-first learning</span>
+        <h1>AI 老師對話區</h1>
+        <p>保留 `/api/chat`，先用 demo data，填入 API key 後可直接切 live。</p>
       </div>
-    </aside>
-    <main class="main">
-      <header class="topbar"><div><div class="eyebrow">Chat-first Learning</div><h1>AI 老師對話區</h1><p>這一頁只保留 AI 對話功能。</p></div><div class="top-actions"><span class="panel-tag" id="chatModeBadge">Demo mode</span></div></header>
-      <section class="panel chat-panel"><div class="panel-head"><div><div class="eyebrow">Chat-first Learning</div><h3>AI 老師對話區</h3></div><span class="panel-tag" id="currentRoleBadge">Chat page</span></div><div id="chatMessages" class="chat-messages"></div><div class="chat-composer"><input id="chatInput" type="text" placeholder="例如：我不懂為什麼 3/4 會大於 2/3？" /><button class="btn btn-primary" onclick="sendChatMessage()">送出</button></div><div class="quick-prompts"><button class="quick-btn" onclick="seedPrompt('請一步步引導我，不要直接給答案')">一步步引導</button><button class="quick-btn" onclick="seedPrompt('先給我提示，再讓我自己算')">先提示</button><button class="quick-btn" onclick="seedPrompt('幫我把這題變簡單一點')">降低難度</button><button class="quick-btn" onclick="seedPrompt('用生活例子解釋')">生活例子</button></div></section>
-    </main>
-  </div>
-  <div id="toast" class="toast"></div>
+      <div class="hero-stats">
+        <div><strong data-chat-mode>Demo mode</strong><span>目前模式</span></div>
+        <div><strong>TRAD</strong><span>預設繁中回覆</span></div>
+      </div>
+    </section>
+
+    <section class="chat-shell">
+      <section class="panel">
+        <div class="panel-header"><div><span class="eyebrow">Conversation</span><h2>對話紀錄</h2></div></div>
+        <div class="chat-thread" data-chat-messages></div>
+        <form class="chat-form" data-chat-form>
+          <input name="message" type="text" placeholder="例如：我不懂為什麼 3/4 會大於 2/3？" />
+          <button class="button button-primary" type="submit">送出</button>
+        </form>
+        <div class="quick-actions">
+          <button class="button button-ghost" type="button" data-seed-prompt="請一步步引導我，不要直接給答案">一步步引導</button>
+          <button class="button button-ghost" type="button" data-seed-prompt="先給我提示，再讓我自己算">先提示</button>
+          <button class="button button-ghost" type="button" data-seed-prompt="用生活例子解釋">生活例子</button>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header"><div><span class="eyebrow">Config</span><h3>AI / Firebase 設定</h3></div></div>
+        <form data-settings-form></form>
+        <div data-firebase-status style="margin-top:18px;"></div>
+      </section>
+    </section>
+  </main>
+
+  <div class="toast" data-toast></div>
   <script src="/js/firebase-config.js"></script>
   <script src="/js/firebase-bridge.js"></script>
-  <script src="/js/app.js"></script>
-  <script>initApp();</script>
+  <script type="module" src="/assets/js/app.js"></script>
 </body>
 </html>

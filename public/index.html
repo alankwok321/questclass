@@ -3,61 +3,62 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>QuestClass v2</title>
+  <title>QuestClass</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/css/style.css" />
+  <link rel="stylesheet" href="/assets/css/style.css" />
 </head>
 <body data-page="landing">
-  <div class="landing-shell">
-    <header class="marketing-nav">
-      <div class="marketing-brand"><span class="brand-icon">🎓</span><span>QuestClass v2</span></div>
-      <nav class="marketing-links">
-        <a href="/teacher.html">Teacher</a>
-        <a href="/student.html">Student</a>
-        <a href="/chat.html">Chat</a>
-        <a href="/analytics.html">Analytics</a>
-      </nav>
+  <main>
+    <header class="topbar">
+      <div class="brand" data-brand></div>
+      <nav class="nav" data-nav></nav>
     </header>
 
-    <section class="marketing-hero">
-      <div class="marketing-copy">
-        <div class="eyebrow">QuestClass v2</div>
-        <h1>多頁版學習產品骨架</h1>
-        <p>現在已拆成不同頁面：首頁、Teacher Dashboard、Student Home、AI Chat、Analytics。每個功能只出現在對應頁面，方便繼續接 Firebase、Auth、資料庫與權限控制。</p>
-        <div class="hero-cta-row">
-          <a class="btn btn-primary" href="/teacher.html">Teacher Dashboard</a>
-          <a class="btn btn-secondary" href="/student.html">Student Home</a>
-        </div>
-        <div class="hero-proof-row">
-          <div class="proof-card"><strong>Multi-page</strong><span>功能分頁更清楚</span></div>
-          <div class="proof-card"><strong>Auth-ready</strong><span>可接 Firebase / Google OAuth</span></div>
-          <div class="proof-card"><strong>Role-ready</strong><span>Teacher / Student 可分開保護</span></div>
+    <section class="hero">
+      <div class="hero-copy">
+        <span class="eyebrow">Multi-page learning app</span>
+        <h1>把 QuestClass 拆成真的可維護產品骨架</h1>
+        <p data-promise></p>
+        <div class="inline-actions">
+          <a class="button button-primary" href="/teacher">Teacher Dashboard</a>
+          <a class="button button-ghost" href="/student">Student Home</a>
         </div>
       </div>
-      <div class="marketing-preview card-surface">
-        <div class="preview-grid">
-          <div class="preview-stat"><span>Teacher</span><strong>管理班級</strong></div>
-          <div class="preview-stat"><span>Student</span><strong>任務進度</strong></div>
-          <div class="preview-stat"><span>Chat</span><strong>AI 教學</strong></div>
-          <div class="preview-stat"><span>Analytics</span><strong>弱點分析</strong></div>
-        </div>
+      <div class="hero-stats">
+        <div><strong>5</strong><span>核心頁面</span></div>
+        <div><strong>API</strong><span>Express endpoints 保留</span></div>
+        <div><strong>Auth-ready</strong><span>Firebase / Google OAuth</span></div>
+        <div><strong>Vercel</strong><span>server.js 單入口部署</span></div>
       </div>
     </section>
 
-    <section class="feature-strip">
-      <a class="feature-card" href="/teacher.html"><strong>Teacher Dashboard</strong><span>班級、學生、教學流程</span></a>
-      <a class="feature-card" href="/student.html"><strong>Student Home</strong><span>任務、排行、進度</span></a>
-      <a class="feature-card" href="/chat.html"><strong>AI Chat</strong><span>學生與 AI 對話</span></a>
-      <a class="feature-card" href="/analytics.html"><strong>Analytics</strong><span>熱區、技能樹、題庫</span></a>
+    <section class="panel">
+      <div class="panel-header">
+        <div>
+          <span class="eyebrow">Product map</span>
+          <h2>頁面分工</h2>
+        </div>
+      </div>
+      <div class="grid-2" data-spotlight></div>
     </section>
-  </div>
 
-  <div id="toast" class="toast"></div>
+    <section class="panel">
+      <div class="panel-header">
+        <div>
+          <span class="eyebrow">Build readiness</span>
+          <h2>接下來可直接延伸的方向</h2>
+        </div>
+      </div>
+      <ol data-roadmap></ol>
+      <div data-firebase-status style="margin-top:16px;"></div>
+    </section>
+  </main>
+
+  <div class="toast" data-toast></div>
   <script src="/js/firebase-config.js"></script>
   <script src="/js/firebase-bridge.js"></script>
-  <script src="/js/app.js"></script>
-  <script>initApp();</script>
+  <script type="module" src="/assets/js/app.js"></script>
 </body>
 </html>

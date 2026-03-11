@@ -115,8 +115,18 @@ app.post('/api/teacher/lesson-loop', async (req, res) => {
   }
 });
 
+const pageMap = {
+  '/': 'index.html',
+  '/teacher': 'teacher.html',
+  '/student': 'student.html',
+  '/chat': 'chat.html',
+  '/analytics': 'analytics.html'
+};
+
 app.get('*', (req, res) => {
   if (req.path.startsWith('/api/')) return res.status(404).json({ error: 'Not found' });
+  const target = pageMap[req.path] || pageMap[req.path.replace(/\.html$/, '')];
+  if (target) return res.sendFile(path.join(__dirname, 'public', target));
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
