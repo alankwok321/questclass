@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>QuestClass — AI Learning OS</title>
+  <title>QuestClass v2 — AI Learning OS</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -12,51 +12,48 @@
 <body>
   <div class="landing-shell">
     <header class="marketing-nav">
-      <div class="marketing-brand">
-        <span class="brand-icon">🎓</span>
-        <span>QuestClass</span>
-      </div>
+      <div class="marketing-brand"><span class="brand-icon">🎓</span><span>QuestClass v2</span></div>
       <nav class="marketing-links">
         <a href="#features">功能</a>
-        <a href="#dashboard">Dashboard</a>
-        <a href="#classroom">Classroom</a>
+        <a href="#authSection">登入</a>
+        <a href="#productApp">App</a>
       </nav>
       <div class="marketing-actions">
-        <button class="btn btn-secondary btn-small" onclick="scrollToApp()">看產品</button>
-        <button class="btn btn-primary btn-small" onclick="runLearningLoop()">試跑 AI 流程</button>
+        <button class="btn btn-secondary btn-small" onclick="scrollToSection('authSection')">登入骨架</button>
+        <button class="btn btn-primary btn-small" onclick="scrollToSection('productApp')">打開產品</button>
       </div>
     </header>
 
     <section class="marketing-hero">
       <div class="marketing-copy">
-        <div class="eyebrow">AI Learning Operating System</div>
-        <h1>把教學做成一套真正可運作的學習系統</h1>
-        <p>QuestClass 把遊戲化、AI 對話、班級管理、知識地圖、弱點分析與教學自動化整合成同一個產品。不是零散工具，而是一個可持續運作的 learning OS。</p>
+        <div class="eyebrow">QuestClass v2</div>
+        <h1>有資料庫、有登入、有 teacher / student role 的正式版骨架</h1>
+        <p>這一版不是單純 prototype，而是為正式產品準備的骨架：資料模型、角色視圖、登入入口、班級資料結構、作業與題庫關係、以及可接真實 AI / 真實 DB 的流程。</p>
         <div class="hero-cta-row">
-          <button class="btn btn-primary" onclick="scrollToApp()">打開產品</button>
-          <button class="btn btn-secondary" onclick="simulateStudyWin()">看任務成長</button>
+          <button class="btn btn-primary" onclick="scrollToSection('authSection')">看登入與角色</button>
+          <button class="btn btn-secondary" onclick="scrollToSection('dashboard')">看 dashboard</button>
         </div>
         <div class="hero-proof-row">
-          <div class="proof-card"><strong>AI Tutor</strong><span>蘇格拉底式教學</span></div>
-          <div class="proof-card"><strong>Teacher OS</strong><span>班級 / 題組 / 追蹤</span></div>
-          <div class="proof-card"><strong>Student Loop</strong><span>出題 → 作答 → 分析 → 再出題</span></div>
+          <div class="proof-card"><strong>Database-ready</strong><span>附 Postgres / Supabase schema</span></div>
+          <div class="proof-card"><strong>Auth-ready</strong><span>Teacher / Student role flow</span></div>
+          <div class="proof-card"><strong>Deploy-ready</strong><span>保留 demo fallback，可繼續上線</span></div>
         </div>
       </div>
       <div class="marketing-preview card-surface">
         <div class="preview-grid">
-          <div class="preview-stat"><span>活躍學生</span><strong id="heroActiveStudents">28</strong></div>
-          <div class="preview-stat"><span>今日任務完成</span><strong id="heroCompletionRate">84%</strong></div>
-          <div class="preview-stat"><span>AI 互動次數</span><strong>126</strong></div>
-          <div class="preview-stat"><span>需關注學生</span><strong>4</strong></div>
+          <div class="preview-stat"><span>角色模式</span><strong id="heroRoleMode">Teacher</strong></div>
+          <div class="preview-stat"><span>班級數</span><strong id="heroClassCount">3</strong></div>
+          <div class="preview-stat"><span>學生數</span><strong id="heroActiveStudents">28</strong></div>
+          <div class="preview-stat"><span>今日完成</span><strong id="heroCompletionRate">84%</strong></div>
         </div>
       </div>
     </section>
 
     <section class="feature-strip" id="features">
-      <div class="feature-card"><strong>遊戲化學習</strong><span>任務、徽章、升級、排行與每日挑戰</span></div>
-      <div class="feature-card"><strong>AI 對話教學</strong><span>偏提示與追問，不直接破梗</span></div>
-      <div class="feature-card"><strong>老師端控制台</strong><span>看班級狀態、學生弱點與題組進度</span></div>
-      <div class="feature-card"><strong>學習資料視覺化</strong><span>知識圖、技能樹、熱區與錯題關聯</span></div>
+      <div class="feature-card"><strong>Role-based UI</strong><span>Teacher / Student 切換與專屬視角</span></div>
+      <div class="feature-card"><strong>Auth skeleton</strong><span>登入 / demo session / future Supabase hook</span></div>
+      <div class="feature-card"><strong>DB schema</strong><span>classroom、members、assignments、submissions</span></div>
+      <div class="feature-card"><strong>AI workflow</strong><span>chat、lesson loop、grading、question generation</span></div>
     </section>
   </div>
 
@@ -65,20 +62,37 @@
       <div class="brand-card">
         <div class="brand-mark">🎓</div>
         <div>
-          <div class="brand-title">QuestClass</div>
-          <div class="brand-subtitle">學習系統 / Teacher OS / AI Tutor</div>
+          <div class="brand-title">QuestClass v2</div>
+          <div class="brand-subtitle">正式版骨架 / Teacher OS / Student App</div>
         </div>
       </div>
 
-      <div class="side-panel profile-panel">
-        <div class="profile-row">
-          <div class="avatar">A</div>
-          <div>
-            <strong id="studentName">Ada 同學</strong>
-            <p>Level <span id="studentLevel">7</span> • XP <span id="studentXp">1280</span></p>
-          </div>
+      <div class="side-panel auth-panel" id="authSection">
+        <div class="panel-title">登入 / Session</div>
+        <div class="auth-tabs">
+          <button class="tab-btn active" id="tabDemo" onclick="switchAuthTab('demo')">Demo</button>
+          <button class="tab-btn" id="tabLogin" onclick="switchAuthTab('login')">Login</button>
         </div>
-        <div class="progress-track"><div id="xpBar" class="progress-fill"></div></div>
+        <div id="authDemoPanel" class="auth-card">
+          <label class="field-label">Demo role</label>
+          <div class="role-switch">
+            <button class="role-chip active" id="roleTeacherBtn" onclick="switchRole('teacher')">Teacher</button>
+            <button class="role-chip" id="roleStudentBtn" onclick="switchRole('student')">Student</button>
+          </div>
+          <label class="field-label">Demo user</label>
+          <div id="demoUserList" class="stack-list compact-stack"></div>
+        </div>
+        <div id="authLoginPanel" class="auth-card" style="display:none;">
+          <label class="field-label" for="loginEmail">Email</label>
+          <input id="loginEmail" type="email" placeholder="teacher@questclass.app" />
+          <label class="field-label" for="loginPassword">Password</label>
+          <input id="loginPassword" type="password" placeholder="••••••••" />
+          <div class="btn-row">
+            <button class="btn btn-small btn-primary" onclick="fakeLogin('teacher')">Teacher Login</button>
+            <button class="btn btn-small btn-secondary" onclick="fakeLogin('student')">Student Login</button>
+          </div>
+          <div class="settings-hint">這是正式版登入骨架；目前預設仍支援 demo session。之後可直接接 Supabase/Auth provider。</div>
+        </div>
       </div>
 
       <div class="side-panel settings-panel">
@@ -93,10 +107,15 @@
           <button class="btn btn-small btn-primary" onclick="saveSettings()">儲存</button>
           <button class="btn btn-small btn-secondary" onclick="clearSettings()">清除</button>
         </div>
-        <div class="settings-hint">沒填也能跑 demo；填了就會打真實 AI API。</div>
+        <div class="settings-hint">保留 live AI / demo fallback 雙模式。</div>
       </div>
 
-      <div class="side-panel">
+      <div class="side-panel" id="teacherSidebarBlock">
+        <div class="panel-title">班級切換</div>
+        <div id="classroomList" class="stack-list compact-stack"></div>
+      </div>
+
+      <div class="side-panel" id="studentSidebarBlock">
         <div class="panel-title">學生切換</div>
         <div id="studentList" class="stack-list"></div>
       </div>
@@ -104,11 +123,6 @@
       <div class="side-panel">
         <div class="panel-title">今日任務</div>
         <div id="dailyQuestList" class="quest-list"></div>
-      </div>
-
-      <div class="side-panel">
-        <div class="panel-title">成就</div>
-        <div class="badge-grid" id="badgeGrid"></div>
       </div>
 
       <div class="side-panel">
@@ -120,11 +134,12 @@
     <main class="main">
       <header class="topbar">
         <div>
-          <div class="eyebrow">AI Learning Studio</div>
-          <h1>把遊戲化、聊天、視覺化、教學自動化整合在同一個 teaching app</h1>
-          <p>老師像在操作一套 live 教學系統；學生則像在一個能持續成長的任務世界中學習。</p>
+          <div class="eyebrow">Role-aware Product Shell</div>
+          <h1 id="topbarTitle">Teacher dashboard：管理班級、學生、題組與 AI 教學流程</h1>
+          <p id="topbarSubtitle">這個骨架已經把 teacher / student 的主要視角拆開，適合繼續接真實 auth、真實資料庫、真實 AI workflow。</p>
         </div>
         <div class="top-actions">
+          <span class="panel-tag" id="currentRoleBadge">Teacher mode</span>
           <button class="btn btn-secondary" onclick="simulateStudyWin()">+ 完成一個任務</button>
           <button class="btn btn-primary" onclick="runLearningLoop()">▶ 啟動教學流程</button>
         </div>
@@ -132,38 +147,35 @@
 
       <section class="hero-grid">
         <div class="hero-card large">
-          <div class="hero-kicker">Gamified Flow</div>
-          <h2>把教材變成一條有節奏的任務旅程</h2>
-          <p>解鎖單元、每日挑戰、任務卡、連擊 streak、徽章與班級排行，讓進度與成就感具象化。</p>
+          <div class="hero-kicker">Current Session</div>
+          <h2 id="sessionHeading">目前以 Teacher 視角查看 QuestClass v2</h2>
+          <p id="sessionDescription">你正在看的是正式版骨架：班級、學生、題庫、作業、submission、role 視角都已經有結構。</p>
           <div class="chip-row">
-            <span class="chip">解鎖式單元</span>
-            <span class="chip">每日挑戰</span>
-            <span class="chip">成就系統</span>
-            <span class="chip">排行榜</span>
+            <span class="chip">Database-ready</span>
+            <span class="chip">Auth-ready</span>
+            <span class="chip">Teacher / Student views</span>
+            <span class="chip">AI workflow</span>
           </div>
         </div>
-        <div class="hero-card">
-          <div class="metric-label">今日連擊</div>
-          <div class="metric-value" id="streakValue">12</div>
-          <div class="metric-sub">連續學習天數</div>
-        </div>
-        <div class="hero-card">
-          <div class="metric-label">本週弱點</div>
-          <div class="metric-value" id="heroWeaknessScore">分數 2/5</div>
-          <div class="metric-sub" id="heroWeaknessLabel">代數文字題、分數換算</div>
-        </div>
+        <div class="hero-card"><div class="metric-label">當前角色</div><div class="metric-value" id="roleMetric">Teacher</div><div class="metric-sub">role-based experience</div></div>
+        <div class="hero-card"><div class="metric-label">目前班級 / 弱點</div><div class="metric-value" id="heroWeaknessScore">分數 2/5</div><div class="metric-sub" id="heroWeaknessLabel">代數文字題、分數換算</div></div>
       </section>
 
       <section class="workspace-grid app-content-spacious">
         <div class="column left-col">
+          <section class="panel teacher-only" id="dashboard">
+            <div class="panel-head"><div><div class="eyebrow">Teacher Dashboard</div><h3>老師端總覽</h3></div></div>
+            <div class="teacher-stats" id="teacherStats"></div>
+            <div class="teacher-students" id="teacherStudentCards"></div>
+          </section>
+
+          <section class="panel student-only">
+            <div class="panel-head"><div><div class="eyebrow">Student Home</div><h3>學生任務首頁</h3></div><span class="panel-tag" id="studentHomeBadge">Student progression</span></div>
+            <div class="student-home-grid" id="studentHomeGrid"></div>
+          </section>
+
           <section class="panel chat-panel">
-            <div class="panel-head">
-              <div>
-                <div class="eyebrow">Chat-first Learning</div>
-                <h3>AI 老師對話區</h3>
-              </div>
-              <span class="panel-tag" id="chatModeBadge">Demo mode</span>
-            </div>
+            <div class="panel-head"><div><div class="eyebrow">Chat-first Learning</div><h3>AI 老師對話區</h3></div><span class="panel-tag" id="chatModeBadge">Demo mode</span></div>
             <div id="chatMessages" class="chat-messages"></div>
             <div class="chat-composer">
               <input id="chatInput" type="text" placeholder="例如：我不懂為什麼 3/4 會大於 2/3？" />
@@ -178,67 +190,33 @@
           </section>
 
           <section class="panel automation-panel">
-            <div class="panel-head">
-              <div>
-                <div class="eyebrow">Automation Loop</div>
-                <h3>教學自動化流程</h3>
-              </div>
-              <button class="btn btn-secondary btn-small" onclick="runLearningLoop()">重新跑一次</button>
-            </div>
+            <div class="panel-head"><div><div class="eyebrow">Automation Loop</div><h3>教學自動化流程</h3></div><button class="btn btn-secondary btn-small" onclick="runLearningLoop()">重新跑一次</button></div>
             <div class="pipeline" id="pipeline"></div>
             <div class="loop-output" id="loopOutput"></div>
             <div class="assignment-box">
-              <div class="assignment-head">
-                <strong>系統建議題組</strong>
-                <span id="loopModeBadge">Demo mode</span>
-              </div>
+              <div class="assignment-head"><strong>系統建議題組</strong><span id="loopModeBadge">Demo mode</span></div>
               <ul id="assignmentList"></ul>
               <p id="loopInsight" class="assignment-insight"></p>
+              <div id="teacherSummary" class="teacher-summary-list"></div>
             </div>
-          </section>
-
-          <section class="panel bank-panel" id="classroom">
-            <div class="panel-head">
-              <div>
-                <div class="eyebrow">Content Bank</div>
-                <h3>題庫 / 單元資料結構</h3>
-              </div>
-            </div>
-            <div id="unitCards" class="unit-grid"></div>
-            <div id="questionBank" class="question-bank"></div>
           </section>
         </div>
 
         <div class="column right-col">
+          <section class="panel bank-panel" id="classroom">
+            <div class="panel-head"><div><div class="eyebrow">Data Model Surface</div><h3>班級 / 單元 / 題庫資料</h3></div></div>
+            <div id="unitCards" class="unit-grid"></div>
+            <div id="questionBank" class="question-bank"></div>
+          </section>
+
           <section class="panel viz-panel">
-            <div class="panel-head">
-              <div>
-                <div class="eyebrow">Visual Learning Data</div>
-                <h3>知識地圖 / 技能樹</h3>
-              </div>
-            </div>
+            <div class="panel-head"><div><div class="eyebrow">Visual Learning Data</div><h3>知識地圖 / 技能樹</h3></div></div>
             <div class="map-grid" id="knowledgeMap"></div>
             <div class="skill-tree" id="skillTree"></div>
           </section>
 
-          <section class="panel teacher-panel" id="dashboard">
-            <div class="panel-head">
-              <div>
-                <div class="eyebrow">Teacher Dashboard</div>
-                <h3>老師端總覽</h3>
-              </div>
-            </div>
-            <div class="teacher-stats" id="teacherStats"></div>
-            <div class="teacher-students" id="teacherStudentCards"></div>
-          </section>
-
           <section class="panel heatmap-panel">
-            <div class="panel-head">
-              <div>
-                <div class="eyebrow">Weakness Insights</div>
-                <h3>弱點熱區與錯題關聯</h3>
-              </div>
-            </div>
+            <div class="panel-head"><div><div class="eyebrow">Weakness Insights</div><h3>弱點熱區與錯題關聯</h3></div></div>
             <div class="heatmap" id="heatmap"></div>
             <div class="mistake-links" id="mistakeLinks"></div>
           </section>
