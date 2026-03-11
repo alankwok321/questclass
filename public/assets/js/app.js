@@ -1,14 +1,18 @@
 import { demoData } from './core/data.js';
 import { loadState, saveState, getSettings, saveSettings as persistSettings, clearSettings as dropSettings, currentStudent, currentClassroom } from './core/state.js';
 import { sendChat, runLessonLoop } from './core/api.js';
-import { qs, qsa, escapeHtml, renderNav, renderSettingsForm, renderFirebaseStatus, showToast } from './core/ui.js';
+import { qs, qsa, escapeHtml, renderNav, renderSettingsForm, renderFirebaseStatus, renderAuthPanel, renderProfilePanel, renderAdminPanel, showToast } from './core/ui.js';
 
 const state = loadState();
 const page = document.body.dataset.page || 'landing';
 const rolePages = {
   teacher: ['teacher', 'analytics'],
-  student: ['student', 'chat']
+  student: ['student', 'chat'],
+  admin: ['teacher', 'analytics', 'student', 'chat']
 };
+
+let firebaseProfile = null;
+let adminUsers = [];
 
 function setShell() {
   qsa('[data-nav]').forEach((node) => {
@@ -25,19 +29,21 @@ function setShell() {
 function wireSettings() {
   qsa('[data-settings-form]').forEach((form) => {
     form.innerHTML = renderSettingsForm(getSettings());
-    form.addEventListener('submit', (event) => {
+    form.onsubmit = (event) => {
       event.preventDefault();
       const formData = new FormData(form);
       persistSettings(Object.fromEntries(formData.entries()));
       showToast('AI 設定已儲存');
-    });
+    };
 
-    qs('[data-clear-settings]', form)?.addEventListener('click', () => {
-      dropSettings();
-      form.innerHTML = renderSettingsForm({});
-      wireSettings();
-      showToast('AI 設定已清除');
-    });
+    const clearButton = qs('[data-clear-settings]', form);
+    if (clearButton) {
+      clearButton.onclick = () => {
+        dropSettings();
+        wireSettings();
+        showToast('AI 設定已清除');
+      };
+    }
   });
 }
 
@@ -106,11 +112,11 @@ function renderTeacher() {
     `).join('');
 
     qsa('[data-student-id]', students).forEach((button) => {
-      button.addEventListener('click', () => {
+      button.onclick = () => {
         state.currentStudentId = button.dataset.studentId;
         saveState(state);
         renderTeacher();
-      });
+      };
     });
   }
 
@@ -123,11 +129,11 @@ function renderTeacher() {
     `).join('');
 
     qsa('[data-classroom-id]', classroomList).forEach((button) => {
-      button.addEventListener('click', () => {
+      button.onclick = () => {
         state.currentClassroomId = button.dataset.classroomId;
         saveState(state);
         renderTeacher();
-      });
+      };
     });
   }
 
@@ -141,27 +147,27 @@ function renderTeacher() {
     insight.textContent = state.insight;
   }
 
-  qs('[data-run-loop]')?.addEventListener('click', async () => {
-    const output = qs('[data-loop-output]');
-    if (output) output.innerHTML = '<p class="muted">產生中…</p>';
-    try {
-      const data = await runLessonLoop(currentStudent(state), currentClassroom(state));
-      state.assignment = data.assignment || state.assignment;
-      state.insight = data.insight || state.insight;
-      state.teacherSummary = data.teacherSummary || state.teacherSummary;
-      state.loopSteps = data.steps || [];
-      state.modes.loop = data.mode === 'live' ? 'Live AI' : 'Demo mode';
-      saveState(state);
-      if (output) {
-        output.innerHTML = state.loopSteps.map((item) => `<div class="timeline-item">${escapeHtml(item)}</div>`).join('');
+  const runButton = qs('[data-run-loop]');
+  if (runButton) {
+    runButton.onclick = async () => {
+      const output = qs('[data-loop-output]');
+      if (output) output.innerHTML = '<p class="muted">產生中…</p>';
+      try {
+        const data = await runLessonLoop(currentStudent(state), currentClassroom(state));
+        state.assignment = data.assignment || state.assignment;
+        state.insight = data.insight || state.insight;
+        state.teacherSummary = data.teacherSummary || state.teacherSummary;
+        state.loopSteps = data.steps || [];
+        state.modes.loop = data.mode === 'live' ? 'Live AI' : 'Demo mode';
+        saveState(state);
+        renderTeacher();
+        showToast('教學流程已更新');
+      } catch (error) {
+        if (output) output.innerHTML = `<p class="muted">${escapeHtml(error.message)}</p>`;
+        showToast('教學流程更新失敗');
       }
-      renderTeacher();
-      showToast('教學流程已更新');
-    } catch (error) {
-      if (output) output.innerHTML = `<p class="muted">${escapeHtml(error.message)}</p>`;
-      showToast('教學流程更新失敗');
-    }
-  }, { once: true });
+    };
+  }
 
   const output = qs('[data-loop-output]');
   if (output) {
@@ -221,11 +227,11 @@ function renderStudent() {
     `).join('');
 
     qsa('[data-roster-student]', roster).forEach((button) => {
-      button.addEventListener('click', () => {
+      button.onclick = () => {
         state.currentStudentId = button.dataset.rosterStudent;
         saveState(state);
         renderStudent();
-      });
+      };
     });
   }
 }
@@ -242,37 +248,40 @@ function renderChatPage() {
   }
   if (status) status.textContent = state.modes.chat;
 
-  qs('[data-chat-form]')?.addEventListener('submit', async (event) => {
-    event.preventDefault();
-    const input = qs('[name="message"]');
-    const message = input?.value.trim();
-    if (!message) return;
+  const form = qs('[data-chat-form]');
+  if (form) {
+    form.onsubmit = async (event) => {
+      event.preventDefault();
+      const input = qs('[name="message"]', form);
+      const message = input?.value.trim();
+      if (!message) return;
 
-    state.chat.push({ role: 'user', text: message });
-    saveState(state);
-    renderChatPage();
-    input.value = '';
-
-    try {
-      const data = await sendChat(message, student.name);
-      state.chat.push({ role: 'ai', text: data.reply || '目前沒有回應。' });
-      state.modes.chat = data.mode === 'live' ? 'Live AI' : 'Demo mode';
+      state.chat.push({ role: 'user', text: message });
       saveState(state);
       renderChatPage();
-    } catch (error) {
-      state.chat.push({ role: 'ai', text: '目前連線失敗，我先用 demo 模式陪你拆題。先說說你最卡的那一步。' });
-      state.modes.chat = 'Demo fallback';
-      saveState(state);
-      renderChatPage();
-      showToast(error.message);
-    }
-  }, { once: true });
+      input.value = '';
+
+      try {
+        const data = await sendChat(message, student.name);
+        state.chat.push({ role: 'ai', text: data.reply || '目前沒有回應。' });
+        state.modes.chat = data.mode === 'live' ? 'Live AI' : 'Demo mode';
+        saveState(state);
+        renderChatPage();
+      } catch (error) {
+        state.chat.push({ role: 'ai', text: '目前連線失敗，我先用 demo 模式陪你拆題。先說說你最卡的那一步。' });
+        state.modes.chat = 'Demo fallback';
+        saveState(state);
+        renderChatPage();
+        showToast(error.message);
+      }
+    };
+  }
 
   qsa('[data-seed-prompt]').forEach((button) => {
-    button.addEventListener('click', () => {
+    button.onclick = () => {
       const input = qs('[name="message"]');
       if (input) input.value = button.dataset.seedPrompt || '';
-    });
+    };
   });
 }
 
@@ -293,6 +302,8 @@ function renderAnalytics() {
 }
 
 function applyFirebaseUser(user) {
+  if (!user) return;
+  firebaseProfile = user.profile || firebaseProfile;
   state.session.authMode = 'firebase';
   state.session.role = user.role || state.session.role;
   state.session.userName = user.name || state.session.userName;
@@ -301,13 +312,134 @@ function applyFirebaseUser(user) {
   saveState(state);
 }
 
+function clearFirebaseSession() {
+  firebaseProfile = null;
+  adminUsers = [];
+  state.session.authMode = 'demo';
+  state.session.role = 'teacher';
+  state.session.userName = 'Alan Teacher';
+  state.session.email = 'teacher@questclass.app';
+  state.session.uid = null;
+  saveState(state);
+}
+
 function enforcePageGuard() {
-  if (state.session.authMode !== 'firebase') return;
+  if (state.session.authMode !== 'firebase' || !state.session.uid) return;
   const allowed = rolePages[state.session.role] || [];
   if (page !== 'landing' && !allowed.includes(page)) {
-    const fallback = state.session.role === 'teacher' ? '/teacher' : '/student';
+    const fallback = state.session.role === 'teacher' ? '/teacher' : (state.session.role === 'admin' ? '/teacher' : '/student');
     window.location.replace(fallback);
   }
+}
+
+async function refreshAdminUsers() {
+  if (state.session.role !== 'admin' || !window.QuestClassFirebase?.listUsers) {
+    adminUsers = [];
+    return;
+  }
+  const result = await window.QuestClassFirebase.listUsers();
+  adminUsers = result?.ok ? (result.users || []) : [];
+}
+
+async function wireAuthUi() {
+  const firebaseEnabled = !!window.QuestClassFirebase?.enabled?.();
+  qsa('[data-auth-panel]').forEach((node) => {
+    node.innerHTML = renderAuthPanel(state.session, firebaseEnabled);
+
+    const googleButton = qs('[data-auth-action="google"]', node);
+    if (googleButton) {
+      googleButton.onclick = async () => {
+        const result = await window.QuestClassFirebase.signInWithGoogle();
+        if (!result.ok) return showToast(result.error || 'Google 登入失敗');
+        applyFirebaseUser(result.user);
+        await refreshAdminUsers();
+        renderAll();
+        enforcePageGuard();
+        showToast('已登入 Google');
+      };
+    }
+
+    const logoutButton = qs('[data-auth-action="logout"]', node);
+    if (logoutButton) {
+      logoutButton.onclick = async () => {
+        await window.QuestClassFirebase.signOut();
+        clearFirebaseSession();
+        renderAll();
+        showToast('已登出');
+      };
+    }
+
+    const authForm = qs('[data-auth-form]', node);
+    if (authForm) {
+      authForm.onsubmit = async (event) => {
+        event.preventDefault();
+        const formData = new FormData(authForm);
+        const result = await window.QuestClassFirebase.signIn(formData.get('email'), formData.get('password'));
+        if (!result.ok) return showToast(result.error || 'Email 登入失敗');
+        applyFirebaseUser(result.user);
+        await refreshAdminUsers();
+        renderAll();
+        enforcePageGuard();
+        showToast('已登入');
+      };
+    }
+  });
+}
+
+async function wireProfileUi() {
+  qsa('[data-profile-panel]').forEach((node) => {
+    if (state.session.authMode !== 'firebase' || !state.session.uid) {
+      node.innerHTML = '<div class="panel-header"><div><span class="eyebrow">Profile</span><h3>角色 / 個人檔案</h3></div></div><p class="muted">先登入，才能把 profile / requestedRole 寫入 Firestore。</p>';
+      return;
+    }
+
+    node.innerHTML = renderProfilePanel(state.session, firebaseProfile || {});
+    const form = qs('[data-profile-form]', node);
+    if (!form) return;
+    form.onsubmit = async (event) => {
+      event.preventDefault();
+      const formData = Object.fromEntries(new FormData(form).entries());
+      const result = await window.QuestClassFirebase.saveMyProfile(formData);
+      if (!result.ok) return showToast(result.error || 'Profile 儲存失敗');
+      applyFirebaseUser(result.user);
+      await refreshAdminUsers();
+      renderAll();
+      showToast('Profile 已儲存');
+    };
+  });
+
+  qsa('[data-admin-panel]').forEach((node) => {
+    if (state.session.role !== 'admin') {
+      node.innerHTML = '<div class="panel-header"><div><span class="eyebrow">Admin</span><h3>角色管理</h3></div></div><p class="muted">此區僅在 Firestore profile.role = admin 時顯示。</p>';
+      return;
+    }
+
+    node.innerHTML = renderAdminPanel(adminUsers, state.session);
+    const form = qs('[data-admin-role-form]', node);
+    if (!form) return;
+    form.onsubmit = async (event) => {
+      event.preventDefault();
+      const formData = new FormData(form);
+      const result = await window.QuestClassFirebase.adminUpdateUserRole(formData.get('uid'), formData.get('role'));
+      if (!result.ok) return showToast(result.error || '角色更新失敗');
+      await refreshAdminUsers();
+      renderAll();
+      showToast('角色已更新');
+    };
+  });
+}
+
+function renderAll() {
+  setShell();
+  wireSettings();
+  wireFirebaseStatus();
+  renderLanding();
+  renderTeacher();
+  renderStudent();
+  renderChatPage();
+  renderAnalytics();
+  wireAuthUi();
+  wireProfileUi();
 }
 
 async function initFirebaseSession() {
@@ -316,6 +448,8 @@ async function initFirebaseSession() {
     const result = await window.QuestClassFirebase.init();
     if (result?.user) {
       applyFirebaseUser(result.user);
+      firebaseProfile = result.user.profile || firebaseProfile;
+      await refreshAdminUsers();
     }
     wireFirebaseStatus();
     enforcePageGuard();
@@ -325,15 +459,9 @@ async function initFirebaseSession() {
 }
 
 async function boot() {
-  setShell();
-  wireSettings();
-  wireFirebaseStatus();
+  renderAll();
   await initFirebaseSession();
-  renderLanding();
-  renderTeacher();
-  renderStudent();
-  renderChatPage();
-  renderAnalytics();
+  renderAll();
 }
 
 boot();

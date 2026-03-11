@@ -1,11 +1,30 @@
 const express = require('express');
 const path = require('path');
+const fs = require('fs');
 
 const app = express();
 const PORT = process.env.PORT || 18890;
+const publicDir = path.join(__dirname, 'public');
 
 app.use(express.json({ limit: '2mb' }));
-app.use(express.static(path.join(__dirname, 'public')));
+
+function getFirebaseRuntimeConfig() {
+  const config = {
+    apiKey: process.env.FIREBASE_API_KEY || '',
+    authDomain: process.env.FIREBASE_AUTH_DOMAIN || '',
+    projectId: process.env.FIREBASE_PROJECT_ID || '',
+    storageBucket: process.env.FIREBASE_STORAGE_BUCKET || '',
+    messagingSenderId: process.env.FIREBASE_MESSAGING_SENDER_ID || '',
+    appId: process.env.FIREBASE_APP_ID || '',
+    measurementId: process.env.FIREBASE_MEASUREMENT_ID || ''
+  };
+
+  const enabled = Boolean(config.apiKey && config.projectId && config.appId);
+  return {
+    enabled,
+    firebase: enabled ? config : null
+  };
+}
 
 function getProviderConfig(body = {}) {
   return {
@@ -45,6 +64,17 @@ async function callChatCompletion({ system, user, apiKey, apiBaseUrl, model, tem
     return { ok: false, status: 500, error: error.message };
   }
 }
+
+app.get('/js/firebase-config.js', (req, res) => {
+  const runtime = getFirebaseRuntimeConfig();
+  res.type('application/javascript').send(`window.QUESTCLASS_FIREBASE_CONFIG = ${JSON.stringify(runtime.firebase)};`);
+});
+
+app.get('/api/runtime-config', (req, res) => {
+  res.json(getFirebaseRuntimeConfig());
+});
+
+app.use(express.static(publicDir));
 
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', app: 'teaching-app', ts: new Date().toISOString() });
@@ -126,8 +156,11 @@ const pageMap = {
 app.get('*', (req, res) => {
   if (req.path.startsWith('/api/')) return res.status(404).json({ error: 'Not found' });
   const target = pageMap[req.path] || pageMap[req.path.replace(/\.html$/, '')];
-  if (target) return res.sendFile(path.join(__dirname, 'public', target));
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+  if (target) {
+    const filePath = path.join(publicDir, target);
+    return res.type('html').send(fs.readFileSync(filePath, 'utf8'));
+  }
+  res.type('html').send(fs.readFileSync(path.join(publicDir, 'index.html'), 'utf8'));
 });
 
 if (!process.env.VERCEL) {

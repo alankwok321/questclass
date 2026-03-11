@@ -5,43 +5,93 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    function isSelf(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function userDoc() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
     function userRole() {
-      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
+      return isSignedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        ? userDoc().role
+        : null;
+    }
+
+    function isTeacherLike() {
+      return userRole() in ['teacher', 'admin'];
+    }
+
+    function isAdmin() {
+      return userRole() == 'admin';
+    }
+
+    function allowedUserKeys() {
+      return ['name', 'email', 'role', 'requestedRole', 'learnerStage', 'roleNote', 'photoURL', 'createdAt', 'updatedAt', 'lastLoginAt'];
+    }
+
+    function selfProfileKeysAreSafe() {
+      return request.resource.data.diff(resource.data).changedKeys().hasOnly(['name', 'requestedRole', 'learnerStage', 'roleNote', 'photoURL', 'updatedAt', 'lastLoginAt']);
     }
 
     match /users/{userId} {
-      allow read: if isSignedIn();
-      allow write: if isSignedIn() && request.auth.uid == userId;
+      allow read: if isSelf(userId) || isAdmin();
+
+      allow create: if isSelf(userId)
+        && request.resource.data.keys().hasOnly(allowedUserKeys())
+        && request.resource.data.email == request.auth.token.email
+        && request.resource.data.role in ['student', 'teacher']
+        && request.resource.data.requestedRole in ['', 'student', 'teacher', 'admin'];
+
+      allow update: if (
+          isSelf(userId)
+          && request.resource.data.keys().hasOnly(allowedUserKeys())
+          && request.resource.data.role == resource.data.role
+          && request.resource.data.email == resource.data.email
+          && request.resource.data.requestedRole in ['', 'student', 'teacher', 'admin']
+          && selfProfileKeysAreSafe()
+        ) || (
+          isAdmin()
+          && request.resource.data.keys().hasOnly(allowedUserKeys())
+          && request.resource.data.requestedRole in ['', 'student', 'teacher', 'admin']
+          && request.resource.data.role in ['student', 'teacher', 'admin']
+        );
+
+      allow delete: if isAdmin();
     }
 
     match /classrooms/{classroomId} {
       allow read: if isSignedIn();
-      allow write: if isSignedIn() && userRole() in ['teacher', 'admin'];
+      allow write: if isTeacherLike();
 
       match /members/{memberId} {
         allow read: if isSignedIn();
-        allow write: if isSignedIn() && userRole() in ['teacher', 'admin'];
+        allow write: if isTeacherLike();
       }
     }
 
     match /units/{unitId} {
       allow read: if isSignedIn();
-      allow write: if isSignedIn() && userRole() in ['teacher', 'admin'];
+      allow write: if isTeacherLike();
     }
 
     match /assignments/{assignmentId} {
       allow read: if isSignedIn();
-      allow write: if isSignedIn() && userRole() in ['teacher', 'admin'];
+      allow write: if isTeacherLike();
     }
 
     match /submissions/{submissionId} {
-      allow read: if isSignedIn();
-      allow create: if isSignedIn();
-      allow update: if isSignedIn() && userRole() in ['teacher', 'admin'];
+      allow read: if isTeacherLike() || (isSignedIn() && resource.data.studentUid == request.auth.uid);
+      allow create: if isSignedIn()
+        && request.resource.data.studentUid == request.auth.uid;
+      allow update: if isTeacherLike();
+      allow delete: if isAdmin();
     }
 
     match /aiRuns/{runId} {
-      allow read, write: if isSignedIn();
+      allow read, create: if isSignedIn();
+      allow update, delete: if isTeacherLike();
     }
   }
 }
