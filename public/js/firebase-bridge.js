@@ -273,10 +273,7 @@ window.QuestClassFirebase = {
     const payload = {
       updatedAt: sdk.serverTimestamp(),
       accountStatus: nextStatus,
-      adminNote: String(input.adminNote || '').trim(),
-      disabledReason: String(input.disabledReason || '').trim(),
-      resolvedAt: input.resolved ? new Date().toISOString() : '',
-      issueFlag: !!input.issueFlag
+      adminNote: String(input.adminNote || '').trim()
     };
     if (nextRole) payload.role = nextRole;
     try {
