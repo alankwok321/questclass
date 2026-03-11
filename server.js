@@ -150,7 +150,8 @@ const pageMap = {
   '/teacher': 'teacher.html',
   '/student': 'student.html',
   '/chat': 'chat.html',
-  '/analytics': 'analytics.html'
+  '/analytics': 'analytics.html',
+  '/admin': 'admin.html'
 };
 
 app.get('*', (req, res) => {

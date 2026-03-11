@@ -239,10 +239,20 @@ window.QuestClassFirebase = {
     }
   },
 
-  async listUsers(limit = 20) {
+  async _requireAdmin() {
     const ready = await this._ensure();
     if (!ready) return { ok: false, error: 'Firebase config missing' };
-    const { db, sdk } = ready;
+    const authUser = await this.waitForAuthState();
+    if (!authUser) return { ok: false, error: '請先登入' };
+    const me = await this._loadProfile(authUser.uid);
+    if (me?.role !== 'admin') return { ok: false, error: '只有 admin 可使用這個功能' };
+    return { ok: true, authUser, me, ready };
+  },
+
+  async listUsers(limit = 50) {
+    const adminCheck = await this._requireAdmin();
+    if (!adminCheck.ok) return { ok: false, error: adminCheck.error, users: [] };
+    const { db, sdk } = adminCheck.ready;
     try {
       const snap = await sdk.getDocs(sdk.query(sdk.collection(db, 'users'), sdk.limit(limit)));
       return {
@@ -254,22 +264,26 @@ window.QuestClassFirebase = {
     }
   },
 
-  async adminUpdateUserRole(uid, role) {
-    const ready = await this._ensure();
-    if (!ready) return { ok: false, error: 'Firebase config missing' };
-    const authUser = await this.waitForAuthState();
-    if (!authUser) return { ok: false, error: '請先登入' };
-    const me = await this._loadProfile(authUser.uid);
-    if (me?.role !== 'admin') return { ok: false, error: '只有 admin 可直接修改角色' };
-    const { db, sdk } = ready;
+  async adminUpdateUserAccount(uid, input = {}) {
+    const adminCheck = await this._requireAdmin();
+    if (!adminCheck.ok) return { ok: false, error: adminCheck.error };
+    const { db, sdk } = adminCheck.ready;
+    const nextRole = ['student', 'teacher', 'admin'].includes(String(input.role || '').trim()) ? String(input.role).trim() : null;
+    const nextStatus = ['active', 'review', 'suspended'].includes(String(input.accountStatus || '').trim()) ? String(input.accountStatus).trim() : 'active';
+    const payload = {
+      updatedAt: sdk.serverTimestamp(),
+      accountStatus: nextStatus,
+      adminNote: String(input.adminNote || '').trim(),
+      disabledReason: String(input.disabledReason || '').trim(),
+      resolvedAt: input.resolved ? new Date().toISOString() : '',
+      issueFlag: !!input.issueFlag
+    };
+    if (nextRole) payload.role = nextRole;
     try {
-      await sdk.setDoc(sdk.doc(db, 'users', uid), {
-        role,
-        updatedAt: sdk.serverTimestamp()
-      }, { merge: true });
+      await sdk.setDoc(sdk.doc(db, 'users', uid), payload, { merge: true });
       return { ok: true };
     } catch (error) {
-      return { ok: false, error: error?.message || 'Role update failed' };
+      return { ok: false, error: error?.message || 'Account update failed' };
     }
   }
 };
