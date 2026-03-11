@@ -85,7 +85,7 @@ window.QuestClassFirebase = {
     return {
       name: normalized.name,
       email: normalized.email,
-      role: normalized.role,
+      role: profile?.role || normalized.role,
       requestedRole: profile?.requestedRole || '',
       learnerStage: profile?.learnerStage || '',
       roleNote: profile?.roleNote || '',
@@ -116,6 +116,7 @@ window.QuestClassFirebase = {
     try {
       await sdk.setDoc(sdk.doc(db, 'users', user.uid), {
         ...nextProfile,
+        role: profile?.role || nextProfile.role,
         createdAt: profile?.createdAt || sdk.serverTimestamp(),
         updatedAt: sdk.serverTimestamp()
       }, { merge: true });
