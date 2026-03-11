@@ -76,6 +76,8 @@ window.QuestClassFirebase = {
       requestedRole: profile?.requestedRole || '',
       learnerStage: profile?.learnerStage || '',
       roleNote: profile?.roleNote || '',
+      profileRole: normalizedProfileRole || '',
+      derivedRole,
       profile: profile || null
     };
   },
