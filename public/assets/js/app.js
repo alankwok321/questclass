@@ -341,33 +341,35 @@ async function refreshAdminUsers() {
   adminUsers = result?.ok ? (result.users || []) : [];
 }
 
+async function handleGoogleLogin() {
+  if (!window.QuestClassFirebase?.signInWithGoogle) {
+    return showToast('Firebase 尚未啟用');
+  }
+  const result = await window.QuestClassFirebase.signInWithGoogle();
+  if (!result.ok) return showToast(result.error || 'Google 登入失敗');
+  applyFirebaseUser(result.user);
+  firebaseProfile = result.user.profile || firebaseProfile;
+  await refreshAdminUsers();
+  renderAll();
+  enforcePageGuard();
+  showToast('已登入 Google');
+}
+
+async function handleLogout() {
+  if (window.QuestClassFirebase?.signOut) {
+    await window.QuestClassFirebase.signOut();
+  }
+  clearFirebaseSession();
+  firebaseProfile = null;
+  adminUsers = [];
+  renderAll();
+  showToast('已登出');
+}
+
 async function wireAuthUi() {
   const firebaseEnabled = !!window.QuestClassFirebase?.enabled?.();
   qsa('[data-auth-panel]').forEach((node) => {
     node.innerHTML = renderAuthPanel(state.session, firebaseEnabled);
-
-    const googleButton = qs('[data-auth-action="google"]', node);
-    if (googleButton) {
-      googleButton.onclick = async () => {
-        const result = await window.QuestClassFirebase.signInWithGoogle();
-        if (!result.ok) return showToast(result.error || 'Google 登入失敗');
-        applyFirebaseUser(result.user);
-        await refreshAdminUsers();
-        renderAll();
-        enforcePageGuard();
-        showToast('已登入 Google');
-      };
-    }
-
-    const logoutButton = qs('[data-auth-action="logout"]', node);
-    if (logoutButton) {
-      logoutButton.onclick = async () => {
-        await window.QuestClassFirebase.signOut();
-        clearFirebaseSession();
-        renderAll();
-        showToast('已登出');
-      };
-    }
 
     const authForm = qs('[data-auth-form]', node);
     if (authForm) {
@@ -377,12 +379,21 @@ async function wireAuthUi() {
         const result = await window.QuestClassFirebase.signIn(formData.get('email'), formData.get('password'));
         if (!result.ok) return showToast(result.error || 'Email 登入失敗');
         applyFirebaseUser(result.user);
+        firebaseProfile = result.user.profile || firebaseProfile;
         await refreshAdminUsers();
         renderAll();
         enforcePageGuard();
         showToast('已登入');
       };
     }
+  });
+
+  qsa('[data-auth-action="google"]').forEach((button) => {
+    button.onclick = handleGoogleLogin;
+  });
+
+  qsa('[data-auth-action="logout"]').forEach((button) => {
+    button.onclick = handleLogout;
   });
 }
 
