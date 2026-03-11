@@ -8,7 +8,8 @@ const defaultState = {
     role: 'teacher',
     authMode: 'demo',
     userName: 'Alan Teacher',
-    email: 'teacher@questclass.app'
+    email: 'teacher@questclass.app',
+    uid: null
   },
   currentClassroomId: demoData.classrooms[0].id,
   currentStudentId: demoData.students[0].id,

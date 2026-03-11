@@ -5,6 +5,10 @@ import { qs, qsa, escapeHtml, renderNav, renderSettingsForm, renderFirebaseStatu
 
 const state = loadState();
 const page = document.body.dataset.page || 'landing';
+const rolePages = {
+  teacher: ['teacher', 'analytics'],
+  student: ['student', 'chat']
+};
 
 function setShell() {
   qsa('[data-nav]').forEach((node) => {
@@ -288,18 +292,33 @@ function renderAnalytics() {
   if (links) links.innerHTML = demoData.mistakeLinks.map((item) => `<article class="list-card"><strong>${item.title}</strong><p>${item.text}</p></article>`).join('');
 }
 
+function applyFirebaseUser(user) {
+  state.session.authMode = 'firebase';
+  state.session.role = user.role || state.session.role;
+  state.session.userName = user.name || state.session.userName;
+  state.session.email = user.email || state.session.email;
+  state.session.uid = user.uid || state.session.uid;
+  saveState(state);
+}
+
+function enforcePageGuard() {
+  if (state.session.authMode !== 'firebase') return;
+  const allowed = rolePages[state.session.role] || [];
+  if (page !== 'landing' && !allowed.includes(page)) {
+    const fallback = state.session.role === 'teacher' ? '/teacher' : '/student';
+    window.location.replace(fallback);
+  }
+}
+
 async function initFirebaseSession() {
   if (!window.QuestClassFirebase?.init) return;
   try {
     const result = await window.QuestClassFirebase.init();
     if (result?.user) {
-      state.session.authMode = 'firebase';
-      state.session.role = result.user.role || state.session.role;
-      state.session.userName = result.user.name || state.session.userName;
-      state.session.email = result.user.email || state.session.email;
-      saveState(state);
+      applyFirebaseUser(result.user);
     }
     wireFirebaseStatus();
+    enforcePageGuard();
   } catch {
     wireFirebaseStatus();
   }
@@ -309,12 +328,12 @@ async function boot() {
   setShell();
   wireSettings();
   wireFirebaseStatus();
+  await initFirebaseSession();
   renderLanding();
   renderTeacher();
   renderStudent();
   renderChatPage();
   renderAnalytics();
-  await initFirebaseSession();
 }
 
 boot();

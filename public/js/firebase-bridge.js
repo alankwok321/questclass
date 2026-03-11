@@ -52,6 +52,30 @@ window.QuestClassFirebase = {
     }
   },
 
+  async _ensureProfile(user, profile = null) {
+    const ready = await this._ensure();
+    if (!ready || !user) return profile;
+    const { db, sdk } = ready;
+    const normalized = this._normalizeUser(user, profile);
+    const nextProfile = {
+      name: normalized.name,
+      email: normalized.email,
+      role: normalized.role,
+      photoURL: user.photoURL || '',
+      updatedAt: sdk.serverTimestamp()
+    };
+
+    try {
+      await sdk.setDoc(sdk.doc(db, 'users', user.uid), {
+        ...nextProfile,
+        createdAt: sdk.serverTimestamp()
+      }, { merge: true });
+      return { ...(profile || {}), ...nextProfile };
+    } catch {
+      return profile;
+    }
+  },
+
   _normalizeUser(user, profile) {
     if (!user) return null;
     const email = user.email || '';
@@ -77,7 +101,8 @@ window.QuestClassFirebase = {
       const unsub = sdk.onAuthStateChanged(auth, async (user) => {
         unsub();
         if (!user) return resolve({ ok: true, mode: this.mode(), user: null });
-        const profile = await this._loadProfile(user.uid);
+        let profile = await this._loadProfile(user.uid);
+        profile = await this._ensureProfile(user, profile);
         resolve({ ok: true, mode: this.mode(), user: this._normalizeUser(user, profile) });
       }, () => resolve({ ok: true, mode: this.mode(), user: null }));
     });
@@ -91,7 +116,8 @@ window.QuestClassFirebase = {
     const { auth, sdk } = ready;
     try {
       const cred = await sdk.signInWithEmailAndPassword(auth, email, password);
-      const profile = await this._loadProfile(cred.user.uid);
+      let profile = await this._loadProfile(cred.user.uid);
+      profile = await this._ensureProfile(cred.user, profile);
       this._initResult = { ok: true, mode: this.mode(), user: this._normalizeUser(cred.user, profile) };
       return this._initResult;
     } catch (error) {
@@ -107,7 +133,8 @@ window.QuestClassFirebase = {
       const provider = new sdk.GoogleAuthProvider();
       provider.setCustomParameters({ prompt: 'select_account' });
       const cred = await sdk.signInWithPopup(auth, provider);
-      const profile = await this._loadProfile(cred.user.uid);
+      let profile = await this._loadProfile(cred.user.uid);
+      profile = await this._ensureProfile(cred.user, profile);
       this._initResult = { ok: true, mode: this.mode(), user: this._normalizeUser(cred.user, profile) };
       return this._initResult;
     } catch (error) {

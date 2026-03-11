@@ -1,9 +1,9 @@
-// Fill in your Firebase web app config from Firebase Console → Project settings → Your apps.
 window.QUESTCLASS_FIREBASE_CONFIG = {
-  apiKey: "YOUR_FIREBASE_API_KEY",
-  authDomain: "YOUR_PROJECT.firebaseapp.com",
-  projectId: "YOUR_PROJECT_ID",
-  storageBucket: "YOUR_PROJECT.appspot.com",
-  messagingSenderId: "YOUR_SENDER_ID",
-  appId: "YOUR_APP_ID"
+  apiKey: "AIzaSyDcCvmtmLnrxghceNRlyIRsIQabgGqbFdg",
+  authDomain: "questclass-8462a.firebaseapp.com",
+  projectId: "questclass-8462a",
+  storageBucket: "questclass-8462a.firebasestorage.app",
+  messagingSenderId: "537828966231",
+  appId: "1:537828966231:web:aaa188664affac148b4812",
+  measurementId: "G-TX8P1FLVBW"
 };
