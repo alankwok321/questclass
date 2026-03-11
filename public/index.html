@@ -14,6 +14,7 @@
     <header class="topbar">
       <div class="brand" data-brand></div>
       <nav class="nav" data-nav></nav>
+      <div class="topbar-auth" data-topbar-auth></div>
     </header>
 
     <section class="hero">
@@ -32,14 +33,6 @@
         <div><strong>Auth-ready</strong><span>Firebase / Google OAuth</span></div>
         <div><strong>Vercel</strong><span>server.js 單入口部署</span></div>
       </div>
-    </section>
-
-    <section class="panel auth-urgent-panel">
-      <div class="panel-header"><div><span class="eyebrow">Login</span><h2>登入 QuestClass</h2></div></div>
-      <p><strong>如果你現在要登入，請先按下面這顆：</strong></p>
-      <p><button class="button button-primary" type="button" data-auth-action="google">使用 Google 登入</button></p>
-      <p class="muted">如果這顆按鈕能看到，代表畫面已更新；下方動態 Auth 區塊會再接手顯示登入狀態。</p>
-      <div data-auth-panel></div>
     </section>
 
     <section class="panel">
