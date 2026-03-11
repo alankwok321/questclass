@@ -63,8 +63,9 @@ window.QuestClassFirebase = {
   _normalizeUser(user, profile) {
     if (!user) return null;
     const email = user.email || '';
+    const normalizedProfileRole = typeof profile?.role === 'string' ? profile.role.trim().toLowerCase() : '';
     const derivedRole = email.includes('teacher') ? 'teacher' : 'student';
-    const role = profile?.role || derivedRole;
+    const role = normalizedProfileRole || derivedRole;
     const name = profile?.name || user.displayName || email.split('@')[0] || 'QuestClass User';
     return {
       uid: user.uid,

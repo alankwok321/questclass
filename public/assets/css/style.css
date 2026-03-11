@@ -61,6 +61,7 @@ main { width: min(calc(100% - 32px), var(--max-width)); margin: 0 auto; padding:
 .account-avatar { width: 24px; height: 24px; border-radius: 999px; object-fit: cover; border: 1px solid rgba(255,255,255,.18); }
 .account-avatar-fallback { display: inline-flex; align-items: center; justify-content: center; background: rgba(255,255,255,.18); color: var(--text); font-size: .85rem; font-weight: 700; }
 .role-badge { display: inline-flex; align-items: center; gap: 4px; padding: 4px 8px; border-radius: 999px; background: rgba(255,255,255,.14); border: 1px solid rgba(255,255,255,.16); font-size: .8rem; }
+.auth-debug { font-size: .72rem; color: var(--muted); max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .nav-link {
   color: var(--muted);
   padding: 10px 14px;
