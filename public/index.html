@@ -3,229 +3,59 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>QuestClass v2 — AI Learning OS</title>
+  <title>QuestClass v2</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/css/style.css" />
 </head>
-<body>
+<body data-page="landing">
   <div class="landing-shell">
     <header class="marketing-nav">
       <div class="marketing-brand"><span class="brand-icon">🎓</span><span>QuestClass v2</span></div>
       <nav class="marketing-links">
-        <a href="#features">功能</a>
-        <a href="#authSection">登入</a>
-        <a href="#productApp">App</a>
+        <a href="/teacher.html">Teacher</a>
+        <a href="/student.html">Student</a>
+        <a href="/chat.html">Chat</a>
+        <a href="/analytics.html">Analytics</a>
       </nav>
-      <div class="marketing-actions">
-        <button class="btn btn-secondary btn-small" onclick="scrollToSection('authSection')">登入骨架</button>
-        <button class="btn btn-primary btn-small" onclick="scrollToSection('productApp')">打開產品</button>
-      </div>
     </header>
 
     <section class="marketing-hero">
       <div class="marketing-copy">
         <div class="eyebrow">QuestClass v2</div>
-        <h1>有資料庫、有登入、有 teacher / student role 的正式版骨架</h1>
-        <p>這一版不是單純 prototype，而是為正式產品準備的骨架：資料模型、角色視圖、登入入口、班級資料結構、作業與題庫關係、以及可接真實 AI / 真實 DB 的流程。</p>
+        <h1>多頁版學習產品骨架</h1>
+        <p>現在已拆成不同頁面：首頁、Teacher Dashboard、Student Home、AI Chat、Analytics。每個功能只出現在對應頁面，方便繼續接 Firebase、Auth、資料庫與權限控制。</p>
         <div class="hero-cta-row">
-          <button class="btn btn-primary" onclick="scrollToSection('authSection')">看登入與角色</button>
-          <button class="btn btn-secondary" onclick="scrollToSection('dashboard')">看 dashboard</button>
+          <a class="btn btn-primary" href="/teacher.html">Teacher Dashboard</a>
+          <a class="btn btn-secondary" href="/student.html">Student Home</a>
         </div>
         <div class="hero-proof-row">
-          <div class="proof-card"><strong>Database-ready</strong><span>附 Postgres / Supabase schema</span></div>
-          <div class="proof-card"><strong>Auth-ready</strong><span>Teacher / Student role flow</span></div>
-          <div class="proof-card"><strong>Deploy-ready</strong><span>保留 demo fallback，可繼續上線</span></div>
+          <div class="proof-card"><strong>Multi-page</strong><span>功能分頁更清楚</span></div>
+          <div class="proof-card"><strong>Auth-ready</strong><span>可接 Firebase / Google OAuth</span></div>
+          <div class="proof-card"><strong>Role-ready</strong><span>Teacher / Student 可分開保護</span></div>
         </div>
       </div>
       <div class="marketing-preview card-surface">
         <div class="preview-grid">
-          <div class="preview-stat"><span>角色模式</span><strong id="heroRoleMode">Teacher</strong></div>
-          <div class="preview-stat"><span>班級數</span><strong id="heroClassCount">3</strong></div>
-          <div class="preview-stat"><span>學生數</span><strong id="heroActiveStudents">28</strong></div>
-          <div class="preview-stat"><span>今日完成</span><strong id="heroCompletionRate">84%</strong></div>
+          <div class="preview-stat"><span>Teacher</span><strong>管理班級</strong></div>
+          <div class="preview-stat"><span>Student</span><strong>任務進度</strong></div>
+          <div class="preview-stat"><span>Chat</span><strong>AI 教學</strong></div>
+          <div class="preview-stat"><span>Analytics</span><strong>弱點分析</strong></div>
         </div>
       </div>
     </section>
 
-    <section class="feature-strip" id="features">
-      <div class="feature-card"><strong>Role-based UI</strong><span>Teacher / Student 切換與專屬視角</span></div>
-      <div class="feature-card"><strong>Auth skeleton</strong><span>登入 / demo session / future Supabase hook</span></div>
-      <div class="feature-card"><strong>DB schema</strong><span>classroom、members、assignments、submissions</span></div>
-      <div class="feature-card"><strong>AI workflow</strong><span>chat、lesson loop、grading、question generation</span></div>
+    <section class="feature-strip">
+      <a class="feature-card" href="/teacher.html"><strong>Teacher Dashboard</strong><span>班級、學生、教學流程</span></a>
+      <a class="feature-card" href="/student.html"><strong>Student Home</strong><span>任務、排行、進度</span></a>
+      <a class="feature-card" href="/chat.html"><strong>AI Chat</strong><span>學生與 AI 對話</span></a>
+      <a class="feature-card" href="/analytics.html"><strong>Analytics</strong><span>熱區、技能樹、題庫</span></a>
     </section>
-  </div>
-
-  <div class="app-shell" id="productApp">
-    <aside class="sidebar">
-      <div class="brand-card">
-        <div class="brand-mark">🎓</div>
-        <div>
-          <div class="brand-title">QuestClass v2</div>
-          <div class="brand-subtitle">正式版骨架 / Teacher OS / Student App</div>
-        </div>
-      </div>
-
-      <div class="side-panel auth-panel" id="authSection">
-        <div class="panel-title">登入 / Session</div>
-        <div class="auth-tabs">
-          <button class="tab-btn active" id="tabDemo" onclick="switchAuthTab('demo')">Demo</button>
-          <button class="tab-btn" id="tabLogin" onclick="switchAuthTab('login')">Login</button>
-        </div>
-        <div id="authDemoPanel" class="auth-card">
-          <label class="field-label">Demo role</label>
-          <div class="role-switch">
-            <button class="role-chip active" id="roleTeacherBtn" onclick="switchRole('teacher')">Teacher</button>
-            <button class="role-chip" id="roleStudentBtn" onclick="switchRole('student')">Student</button>
-          </div>
-          <label class="field-label">Demo user</label>
-          <div id="demoUserList" class="stack-list compact-stack"></div>
-        </div>
-        <div id="authLoginPanel" class="auth-card" style="display:none;">
-          <label class="field-label" for="loginEmail">Email</label>
-          <input id="loginEmail" type="email" placeholder="teacher@questclass.app" />
-          <label class="field-label" for="loginPassword">Password</label>
-          <input id="loginPassword" type="password" placeholder="••••••••" />
-          <div class="btn-row">
-            <button class="btn btn-small btn-primary" onclick="fakeLogin('teacher')">Teacher Login</button>
-            <button class="btn btn-small btn-secondary" onclick="fakeLogin('student')">Student Login</button>
-          </div>
-          <div class="settings-hint">這是正式版登入骨架；目前預設仍支援 demo session。之後可直接接 Supabase/Auth provider。</div>
-        </div>
-      </div>
-
-      <div class="side-panel settings-panel">
-        <div class="panel-title">AI 設定</div>
-        <label class="field-label" for="apiBaseUrl">API Base URL</label>
-        <input id="apiBaseUrl" type="url" placeholder="https://openrouter.ai/api/v1" />
-        <label class="field-label" for="apiModel">Model</label>
-        <input id="apiModel" type="text" placeholder="openai/gpt-4.1-mini" />
-        <label class="field-label" for="apiKey">API Key</label>
-        <input id="apiKey" type="password" placeholder="sk-..." />
-        <div class="btn-row">
-          <button class="btn btn-small btn-primary" onclick="saveSettings()">儲存</button>
-          <button class="btn btn-small btn-secondary" onclick="clearSettings()">清除</button>
-        </div>
-        <div class="settings-hint">保留 live AI / demo fallback 雙模式。</div>
-      </div>
-
-      <div class="side-panel" id="teacherSidebarBlock">
-        <div class="panel-title">班級切換</div>
-        <div id="classroomList" class="stack-list compact-stack"></div>
-      </div>
-
-      <div class="side-panel" id="studentSidebarBlock">
-        <div class="panel-title">學生切換</div>
-        <div id="studentList" class="stack-list"></div>
-      </div>
-
-      <div class="side-panel">
-        <div class="panel-title">今日任務</div>
-        <div id="dailyQuestList" class="quest-list"></div>
-      </div>
-
-      <div class="side-panel">
-        <div class="panel-title">班級排行</div>
-        <div id="leaderboard" class="leaderboard"></div>
-      </div>
-    </aside>
-
-    <main class="main">
-      <header class="topbar">
-        <div>
-          <div class="eyebrow">Role-aware Product Shell</div>
-          <h1 id="topbarTitle">Teacher dashboard：管理班級、學生、題組與 AI 教學流程</h1>
-          <p id="topbarSubtitle">這個骨架已經把 teacher / student 的主要視角拆開，適合繼續接真實 auth、真實資料庫、真實 AI workflow。</p>
-        </div>
-        <div class="top-actions">
-          <span class="panel-tag" id="currentRoleBadge">Teacher mode</span>
-          <button class="btn btn-secondary" onclick="simulateStudyWin()">+ 完成一個任務</button>
-          <button class="btn btn-primary" onclick="runLearningLoop()">▶ 啟動教學流程</button>
-        </div>
-      </header>
-
-      <section class="hero-grid">
-        <div class="hero-card large">
-          <div class="hero-kicker">Current Session</div>
-          <h2 id="sessionHeading">目前以 Teacher 視角查看 QuestClass v2</h2>
-          <p id="sessionDescription">你正在看的是正式版骨架：班級、學生、題庫、作業、submission、role 視角都已經有結構。</p>
-          <div class="chip-row">
-            <span class="chip">Database-ready</span>
-            <span class="chip">Auth-ready</span>
-            <span class="chip">Teacher / Student views</span>
-            <span class="chip">AI workflow</span>
-          </div>
-        </div>
-        <div class="hero-card"><div class="metric-label">當前角色</div><div class="metric-value" id="roleMetric">Teacher</div><div class="metric-sub">role-based experience</div></div>
-        <div class="hero-card"><div class="metric-label">目前班級 / 弱點</div><div class="metric-value" id="heroWeaknessScore">分數 2/5</div><div class="metric-sub" id="heroWeaknessLabel">代數文字題、分數換算</div></div>
-      </section>
-
-      <section class="workspace-grid app-content-spacious">
-        <div class="column left-col">
-          <section class="panel teacher-only" id="dashboard">
-            <div class="panel-head"><div><div class="eyebrow">Teacher Dashboard</div><h3>老師端總覽</h3></div></div>
-            <div class="teacher-stats" id="teacherStats"></div>
-            <div class="teacher-students" id="teacherStudentCards"></div>
-          </section>
-
-          <section class="panel student-only">
-            <div class="panel-head"><div><div class="eyebrow">Student Home</div><h3>學生任務首頁</h3></div><span class="panel-tag" id="studentHomeBadge">Student progression</span></div>
-            <div class="student-home-grid" id="studentHomeGrid"></div>
-          </section>
-
-          <section class="panel chat-panel">
-            <div class="panel-head"><div><div class="eyebrow">Chat-first Learning</div><h3>AI 老師對話區</h3></div><span class="panel-tag" id="chatModeBadge">Demo mode</span></div>
-            <div id="chatMessages" class="chat-messages"></div>
-            <div class="chat-composer">
-              <input id="chatInput" type="text" placeholder="例如：我不懂為什麼 3/4 會大於 2/3？" />
-              <button class="btn btn-primary" onclick="sendChatMessage()">送出</button>
-            </div>
-            <div class="quick-prompts">
-              <button class="quick-btn" onclick="seedPrompt('請一步步引導我，不要直接給答案')">一步步引導</button>
-              <button class="quick-btn" onclick="seedPrompt('先給我提示，再讓我自己算')">先提示</button>
-              <button class="quick-btn" onclick="seedPrompt('幫我把這題變簡單一點')">降低難度</button>
-              <button class="quick-btn" onclick="seedPrompt('用生活例子解釋')">生活例子</button>
-            </div>
-          </section>
-
-          <section class="panel automation-panel">
-            <div class="panel-head"><div><div class="eyebrow">Automation Loop</div><h3>教學自動化流程</h3></div><button class="btn btn-secondary btn-small" onclick="runLearningLoop()">重新跑一次</button></div>
-            <div class="pipeline" id="pipeline"></div>
-            <div class="loop-output" id="loopOutput"></div>
-            <div class="assignment-box">
-              <div class="assignment-head"><strong>系統建議題組</strong><span id="loopModeBadge">Demo mode</span></div>
-              <ul id="assignmentList"></ul>
-              <p id="loopInsight" class="assignment-insight"></p>
-              <div id="teacherSummary" class="teacher-summary-list"></div>
-            </div>
-          </section>
-        </div>
-
-        <div class="column right-col">
-          <section class="panel bank-panel" id="classroom">
-            <div class="panel-head"><div><div class="eyebrow">Data Model Surface</div><h3>班級 / 單元 / 題庫資料</h3></div></div>
-            <div id="unitCards" class="unit-grid"></div>
-            <div id="questionBank" class="question-bank"></div>
-          </section>
-
-          <section class="panel viz-panel">
-            <div class="panel-head"><div><div class="eyebrow">Visual Learning Data</div><h3>知識地圖 / 技能樹</h3></div></div>
-            <div class="map-grid" id="knowledgeMap"></div>
-            <div class="skill-tree" id="skillTree"></div>
-          </section>
-
-          <section class="panel heatmap-panel">
-            <div class="panel-head"><div><div class="eyebrow">Weakness Insights</div><h3>弱點熱區與錯題關聯</h3></div></div>
-            <div class="heatmap" id="heatmap"></div>
-            <div class="mistake-links" id="mistakeLinks"></div>
-          </section>
-        </div>
-      </section>
-    </main>
   </div>
 
   <div id="toast" class="toast"></div>
+  <script src="/js/firebase-config.js"></script>
   <script src="/js/firebase-bridge.js"></script>
   <script src="/js/app.js"></script>
   <script>initApp();</script>

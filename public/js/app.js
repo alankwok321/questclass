@@ -99,33 +99,60 @@ const defaultState = {
 
 let state = loadState();
 let toastTimer = null;
+const pageName = document.body?.dataset?.page || 'landing';
 const structured = (obj) => JSON.parse(JSON.stringify(obj));
+const $ = (id) => document.getElementById(id);
 function loadState() { try { const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null'); return saved ? mergeDeep(structured(defaultState), saved) : structured(defaultState); } catch { return structured(defaultState); } }
 function mergeDeep(target, source) { for (const key of Object.keys(source || {})) { if (source[key] && typeof source[key] === 'object' && !Array.isArray(source[key])) target[key] = mergeDeep(target[key] || {}, source[key]); else target[key] = source[key]; } return target; }
 function saveState() { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
 function getSettings() { try { return JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}'); } catch { return {}; } }
-function saveSettings() { const settings = { apiBaseUrl: apiBaseUrl.value.trim(), apiModel: apiModel.value.trim(), apiKey: apiKey.value.trim() }; localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); showToast('AI 設定已儲存'); }
-function clearSettings() { localStorage.removeItem(SETTINGS_KEY); apiBaseUrl.value=''; apiModel.value=''; apiKey.value=''; showToast('AI 設定已清除'); }
-function hydrateSettingsUI() { const s=getSettings(); apiBaseUrl.value=s.apiBaseUrl||''; apiModel.value=s.apiModel||''; apiKey.value=s.apiKey||''; }
+function saveSettings() { const apiBaseUrlEl = $('apiBaseUrl'); const apiModelEl = $('apiModel'); const apiKeyEl = $('apiKey'); const settings = { apiBaseUrl: apiBaseUrlEl?.value.trim() || '', apiModel: apiModelEl?.value.trim() || '', apiKey: apiKeyEl?.value.trim() || '' }; localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); showToast('AI 設定已儲存'); }
+function clearSettings() { const apiBaseUrlEl = $('apiBaseUrl'); const apiModelEl = $('apiModel'); const apiKeyEl = $('apiKey'); localStorage.removeItem(SETTINGS_KEY); if (apiBaseUrlEl) apiBaseUrlEl.value=''; if (apiModelEl) apiModelEl.value=''; if (apiKeyEl) apiKeyEl.value=''; showToast('AI 設定已清除'); }
+function hydrateSettingsUI() { const s=getSettings(); const apiBaseUrlEl = $('apiBaseUrl'); const apiModelEl = $('apiModel'); const apiKeyEl = $('apiKey'); if (apiBaseUrlEl) apiBaseUrlEl.value=s.apiBaseUrl||''; if (apiModelEl) apiModelEl.value=s.apiModel||''; if (apiKeyEl) apiKeyEl.value=s.apiKey||''; }
 function currentStudent() { return state.students.find(s => s.id === state.currentStudentId) || state.students[0]; }
 function currentClassroom() { return state.classroom.classes.find(c => c.id === state.classroom.currentId) || state.classroom.classes[0]; }
 function getApiPayload() { const s = getSettings(); return { apiBaseUrl: s.apiBaseUrl, model: s.apiModel, apiKey: s.apiKey }; }
 function isTeacherMode() { return state.session.role === 'teacher'; }
 
-async function initApp() { hydrateSettingsUI(); await initFirebaseMode(); renderAll(); runLearningLoop(true); }
+async function initApp() { hydrateSettingsUI(); await initFirebaseMode(); renderAll(); if (pageName === 'teacher' || pageName === 'analytics') runLearningLoop(true); }
 
 async function initFirebaseMode() {
-  if (window.QuestClassFirebase) {
-    const result = await window.QuestClassFirebase.init();
-    if (result?.ok) {
-      state.modes.chat = 'Firebase ready';
-      state.modes.loop = 'Firebase ready';
-    }
+  if (!window.QuestClassFirebase) return;
+  const result = await window.QuestClassFirebase.init();
+  if (!result?.ok) return;
+
+  state.modes.chat = 'Firebase ready';
+  state.modes.loop = 'Firebase ready';
+
+  if (result.user) {
+    applyFirebaseUser(result.user);
+    showToast(`已連接 Firebase：${result.user.name}`);
   }
 }
+
+function applyFirebaseUser(firebaseUser) {
+  const role = firebaseUser.role === 'teacher' ? 'teacher' : 'student';
+  state.session.authTab = 'login';
+  state.session.role = role;
+  state.session.userId = firebaseUser.uid;
+  state.session.userName = firebaseUser.name;
+  state.session.email = firebaseUser.email || '';
+
+  if (role === 'student') {
+    const matchedStudent = state.students.find(s => s.id === firebaseUser.uid || s.email === firebaseUser.email);
+    if (matchedStudent) state.currentStudentId = matchedStudent.id;
+  }
+
+  renderAll();
+  saveState();
+}
 function renderAll() { renderAuth(); renderClassroomList(); renderSidebar(); renderStudentList(); renderChat(); renderPipeline(); renderKnowledgeMap(); renderSkillTree(); renderHeatmap(); renderMistakeLinks(); renderTeacherStats(); renderAssignments(); renderUnits(); renderQuestionBank(); renderStudentHome(); updateModeBadges(); updateHero(); updateRoleView(); }
+function setHtml(id, html) { const el = $(id); if (el) el.innerHTML = html; }
+function setText(id, text) { const el = $(id); if (el) el.textContent = text; }
+function setStyle(id, prop, value) { const el = $(id); if (el) el.style[prop] = value; }
 
 function renderAuth() {
+  if (!$('tabDemo')) return;
   tabDemo.classList.toggle('active', state.session.authTab === 'demo');
   tabLogin.classList.toggle('active', state.session.authTab === 'login');
   authDemoPanel.style.display = state.session.authTab === 'demo' ? '' : 'none';
@@ -137,60 +164,96 @@ function renderAuth() {
 function switchAuthTab(tab) { state.session.authTab = tab; renderAuth(); saveState(); }
 function switchRole(role) { state.session.role = role; if (role === 'student') { const firstStudent = state.demoUsers.student[0]; state.session.userId = firstStudent.id; state.session.userName = firstStudent.name; state.session.email = firstStudent.email; state.currentStudentId = firstStudent.id; } else { const firstTeacher = state.demoUsers.teacher[0]; state.session.userId = firstTeacher.id; state.session.userName = firstTeacher.name; state.session.email = firstTeacher.email; } renderAll(); saveState(); showToast(`已切換到 ${role === 'teacher' ? 'Teacher' : 'Student'} mode`); }
 function selectDemoUser(id) { const user = state.demoUsers[state.session.role].find(u => u.id === id); if (!user) return; state.session.userId = user.id; state.session.userName = user.name; state.session.email = user.email; if (state.session.role === 'student') state.currentStudentId = user.id; renderAll(); saveState(); showToast(`已切換 demo user：${user.name}`); }
-function fakeLogin(role) { state.session.authTab = 'login'; switchRole(role); showToast(`已建立 ${role} login skeleton session`); }
+async function fakeLogin(role) {
+  const email = $('loginEmail')?.value.trim() || '';
+  const password = $('loginPassword')?.value || '';
+
+  if (window.QuestClassFirebase?.enabled() && email && password) {
+    const result = await window.QuestClassFirebase.signIn(email, password);
+    if (result?.ok && result.user) {
+      applyFirebaseUser(result.user);
+      showToast(`Firebase 登入成功：${result.user.name}`);
+      return;
+    }
+    showToast(result?.error || 'Firebase 登入失敗');
+    return;
+  }
+
+  state.session.authTab = 'login';
+  switchRole(role);
+  showToast(`已建立 ${role} login skeleton session`);
+}
+
+async function googleLogin() {
+  if (!window.QuestClassFirebase?.enabled()) {
+    showToast('請先填入 Firebase config');
+    return;
+  }
+
+  const result = await window.QuestClassFirebase.signInWithGoogle();
+  if (result?.ok && result.user) {
+    applyFirebaseUser(result.user);
+    showToast(`Google 登入成功：${result.user.name}`);
+    return;
+  }
+
+  showToast(result?.error || 'Google 登入失敗');
+}
 
 function updateHero() {
   const student = currentStudent(); const classroom = currentClassroom();
-  studentName.textContent = `${student.name} 同學`;
-  heroWeaknessScore.textContent = student.weaknessScore;
-  heroWeaknessLabel.textContent = isTeacherMode() ? `${classroom.name} · ${student.weaknessLabel}` : student.weaknessLabel;
-  heroActiveStudents.textContent = classroom.activeStudents;
-  heroCompletionRate.textContent = `${classroom.completionRate}%`;
-  heroClassCount.textContent = state.classroom.classes.length;
-  heroRoleMode.textContent = isTeacherMode() ? 'Teacher' : 'Student';
-  roleMetric.textContent = isTeacherMode() ? 'Teacher' : 'Student';
-  currentRoleBadge.textContent = isTeacherMode() ? 'Teacher mode' : 'Student mode';
-  sessionHeading.textContent = isTeacherMode() ? '目前以 Teacher 視角查看 QuestClass v2' : '目前以 Student 視角查看 QuestClass v2';
-  sessionDescription.textContent = isTeacherMode() ? '你正在看的是老師端：班級、學生、題組、作業與 AI 教學流程。' : '你正在看的是學生端：任務、進度、弱點與 AI 引導學習。';
-  topbarTitle.textContent = isTeacherMode() ? 'Teacher dashboard：管理班級、學生、題組與 AI 教學流程' : 'Student app：追蹤進度、完成任務、和 AI 老師對話';
-  topbarSubtitle.textContent = isTeacherMode() ? '這個骨架已經把 teacher 視角整理好，適合直接接真實 auth、真實 DB、真實班級資料。' : '這個骨架已經把 student 視角拆出來，適合接真實登入、學習紀錄與作答流程。';
+  setText('studentName', `${student.name} 同學`);
+  setText('heroWeaknessScore', student.weaknessScore);
+  setText('heroWeaknessLabel', isTeacherMode() ? `${classroom.name} · ${student.weaknessLabel}` : student.weaknessLabel);
+  setText('heroActiveStudents', classroom.activeStudents);
+  setText('heroCompletionRate', `${classroom.completionRate}%`);
+  setText('heroClassCount', state.classroom.classes.length);
+  setText('heroRoleMode', isTeacherMode() ? 'Teacher' : 'Student');
+  setText('roleMetric', isTeacherMode() ? 'Teacher' : 'Student');
+  setText('currentRoleBadge', isTeacherMode() ? 'Teacher mode' : 'Student mode');
+  setText('sessionHeading', isTeacherMode() ? '目前以 Teacher 視角查看 QuestClass v2' : '目前以 Student 視角查看 QuestClass v2');
+  setText('sessionDescription', isTeacherMode() ? '你正在看的是老師端：班級、學生、題組、作業與 AI 教學流程。' : '你正在看的是學生端：任務、進度、弱點與 AI 引導學習。');
+  setText('topbarTitle', isTeacherMode() ? 'Teacher dashboard：管理班級、學生、題組與 AI 教學流程' : 'Student app：追蹤進度、完成任務、和 AI 老師對話');
+  setText('topbarSubtitle', isTeacherMode() ? '這個骨架已經把 teacher 視角整理好，適合直接接真實 auth、真實 DB、真實班級資料。' : '這個骨架已經把 student 視角拆出來，適合接真實登入、學習紀錄與作答流程。');
 }
 
 function updateRoleView() {
   document.querySelectorAll('.teacher-only').forEach(el => el.style.display = isTeacherMode() ? '' : 'none');
   document.querySelectorAll('.student-only').forEach(el => el.style.display = isTeacherMode() ? 'none' : '');
-  teacherSidebarBlock.style.display = isTeacherMode() ? '' : 'none';
-  studentSidebarBlock.style.display = '';
+  setStyle('teacherSidebarBlock', 'display', isTeacherMode() ? '' : 'none');
+  setStyle('studentSidebarBlock', 'display', '');
 }
 
-function renderClassroomList() { classroomList.innerHTML = state.classroom.classes.map(c => `<button class="stack-card ${c.id===state.classroom.currentId?'active':''}" onclick="switchClassroom('${c.id}')"><strong>${c.name}</strong><span>${c.grade} · ${c.subject}</span></button>`).join(''); }
+function renderClassroomList() { setHtml('classroomList', state.classroom.classes.map(c => `<button class="stack-card ${c.id===state.classroom.currentId?'active':''}" onclick="switchClassroom('${c.id}')"><strong>${c.name}</strong><span>${c.grade} · ${c.subject}</span></button>`).join('')); }
 function switchClassroom(id) { state.classroom.currentId = id; renderAll(); saveState(); showToast('已切換班級'); }
 
 function renderSidebar() {
   const student = currentStudent();
-  studentLevel.textContent = student.level; studentXp.textContent = student.xp; streakValue.textContent = student.streak; xpBar.style.width = `${Math.round((student.xp / student.nextLevelXp) * 100)}%`;
-  dailyQuestList.innerHTML = state.dailyQuests.map((q, i) => `<div class="quest-item"><strong>${q.done ? '✅' : '🗒️'} ${q.title}</strong><div class="quest-meta">${q.meta}</div><button class="btn btn-small btn-secondary" style="margin-top:10px;" onclick="completeQuest(${i})">${q.done ? '已完成' : '標記完成'}</button></div>`).join('');
-  leaderboard.innerHTML = [...state.students].sort((a,b)=>b.xp-a.xp).map((p,i)=>`<div class="leader-item"><strong>#${i+1} ${p.name}</strong><span>${p.xp} XP</span></div>`).join('');
+  setText('studentLevel', student.level); setText('studentXp', student.xp); setText('streakValue', student.streak); const xpBarEl = $('xpBar'); if (xpBarEl) xpBarEl.style.width = `${Math.round((student.xp / student.nextLevelXp) * 100)}%`;
+  setHtml('dailyQuestList', state.dailyQuests.map((q, i) => `<div class="quest-item"><strong>${q.done ? '✅' : '🗒️'} ${q.title}</strong><div class="quest-meta">${q.meta}</div><button class="btn btn-small btn-secondary" style="margin-top:10px;" onclick="completeQuest(${i})">${q.done ? '已完成' : '標記完成'}</button></div>`).join(''));
+  setHtml('leaderboard', [...state.students].sort((a,b)=>b.xp-a.xp).map((p,i)=>`<div class="leader-item"><strong>#${i+1} ${p.name}</strong><span>${p.xp} XP</span></div>`).join(''));
 }
-function renderStudentList() { studentList.innerHTML = state.students.map(s => `<button class="stack-card ${s.id===state.currentStudentId?'active':''}" onclick="switchStudent('${s.id}')"><strong>${s.name}</strong><span>Level ${s.level} · ${s.status}</span></button>`).join(''); }
+function renderStudentList() { setHtml('studentList', state.students.map(s => `<button class="stack-card ${s.id===state.currentStudentId?'active':''}" onclick="switchStudent('${s.id}')"><strong>${s.name}</strong><span>Level ${s.level} · ${s.status}</span></button>`).join('')); }
 function switchStudent(id) { state.currentStudentId = id; const student = currentStudent(); state.chat = [{ role: 'ai', text: `嗨，${student.name}。今天先從你最需要補的「${student.weaknessLabel}」開始。你想先做題還是先聊概念？` }]; state.loopInsight = `${student.name} 目前最需要補的是 ${student.weaknessLabel}。`; renderAll(); saveState(); showToast(`已切換到 ${student.name}`); }
-function renderChat() { chatMessages.innerHTML = state.chat.map(m=>`<div class="message ${m.role}">${escapeHtml(m.text)}</div>`).join(''); chatMessages.scrollTop = chatMessages.scrollHeight; }
-function renderPipeline(activeIndex=-1) { pipeline.innerHTML = state.pipeline.map((step,i)=>`<div class="pipeline-step ${i===activeIndex?'active':''}"><strong>${step.label}</strong><span>${step.desc}</span></div>`).join(''); }
-function renderKnowledgeMap() { knowledgeMap.innerHTML = state.knowledgeMap.map(node=>`<div class="map-node ${node.status}"><strong>${node.title}</strong><span>${node.meta}</span></div>`).join(''); }
-function renderSkillTree() { skillTree.innerHTML = state.skills.map(skill=>`<div class="skill-row"><div class="skill-label">${skill.label}</div><div class="skill-bar"><div class="skill-bar-fill" style="width:${skill.score}%"></div></div><div class="skill-score">${skill.score}%</div></div>`).join(''); }
-function renderHeatmap() { heatmap.innerHTML = state.heatmap.map(item=>`<div class="heat-cell heat-${item.level}">${item.label}</div>`).join(''); }
-function renderMistakeLinks() { mistakeLinks.innerHTML = state.mistakeLinks.map(item=>`<div class="mistake-card"><strong>${item.title}</strong><p>${item.text}</p></div>`).join(''); }
-function renderTeacherStats() { teacherStats.innerHTML = state.teacherStats.map(s=>`<div class="teacher-stat"><span>${s.label}</span><strong>${s.value}</strong></div>`).join(''); teacherStudentCards.innerHTML = state.students.map(s=>`<div class="student-card"><strong>${s.name}</strong><span>${s.status}</span><p>弱點：${s.weaknessLabel}</p><div class="mini-progress"><div style="width:${s.mastery}%"></div></div></div>`).join(''); }
-function renderStudentHome() { const s = currentStudent(); studentHomeGrid.innerHTML = [`<div class="student-home-card"><strong>目前等級</strong><p>Level ${s.level}</p></div>`,`<div class="student-home-card"><strong>目前弱點</strong><p>${s.weaknessLabel}</p></div>`,`<div class="student-home-card"><strong>技能掌握</strong><p>${s.mastery}% mastery</p></div>`,`<div class="student-home-card"><strong>連續學習</strong><p>${s.streak} days streak</p></div>`].join(''); }
-function renderAssignments() { assignmentList.innerHTML = state.assignment.map(a=>`<li>${escapeHtml(a)}</li>`).join(''); loopInsight.textContent = state.loopInsight||''; teacherSummary.innerHTML = state.teacherSummary.map(line=>`<div class="summary-pill">${escapeHtml(line)}</div>`).join(''); }
-function renderUnits() { unitCards.innerHTML = state.units.map(u=>`<div class="unit-card"><strong>${u.name}</strong><span>${u.tag}</span><p>${u.progress}</p></div>`).join(''); }
-function renderQuestionBank() { questionBank.innerHTML = state.questionBank.map(q=>`<div class="question-card"><strong>${q.type}</strong><p>${q.title}</p></div>`).join(''); }
-function updateModeBadges() { chatModeBadge.textContent = state.modes.chat; loopModeBadge.textContent = state.modes.loop; }
-function seedPrompt(text) { chatInput.value = text; }
+function renderChat() { const el = $('chatMessages'); if (!el) return; el.innerHTML = state.chat.map(m=>`<div class="message ${m.role}">${escapeHtml(m.text)}</div>`).join(''); el.scrollTop = el.scrollHeight; }
+function renderPipeline(activeIndex=-1) { setHtml('pipeline', state.pipeline.map((step,i)=>`<div class="pipeline-step ${i===activeIndex?'active':''}"><strong>${step.label}</strong><span>${step.desc}</span></div>`).join('')); }
+function renderKnowledgeMap() { setHtml('knowledgeMap', state.knowledgeMap.map(node=>`<div class="map-node ${node.status}"><strong>${node.title}</strong><span>${node.meta}</span></div>`).join('')); }
+function renderSkillTree() { setHtml('skillTree', state.skills.map(skill=>`<div class="skill-row"><div class="skill-label">${skill.label}</div><div class="skill-bar"><div class="skill-bar-fill" style="width:${skill.score}%"></div></div><div class="skill-score">${skill.score}%</div></div>`).join('')); }
+function renderHeatmap() { setHtml('heatmap', state.heatmap.map(item=>`<div class="heat-cell heat-${item.level}">${item.label}</div>`).join('')); }
+function renderMistakeLinks() { setHtml('mistakeLinks', state.mistakeLinks.map(item=>`<div class="mistake-card"><strong>${item.title}</strong><p>${item.text}</p></div>`).join('')); }
+function renderTeacherStats() { setHtml('teacherStats', state.teacherStats.map(s=>`<div class="teacher-stat"><span>${s.label}</span><strong>${s.value}</strong></div>`).join('')); setHtml('teacherStudentCards', state.students.map(s=>`<div class="student-card"><strong>${s.name}</strong><span>${s.status}</span><p>弱點：${s.weaknessLabel}</p><div class="mini-progress"><div style="width:${s.mastery}%"></div></div></div>`).join('')); }
+function renderStudentHome() { const s = currentStudent(); setHtml('studentHomeGrid', [`<div class="student-home-card"><strong>目前等級</strong><p>Level ${s.level}</p></div>`,`<div class="student-home-card"><strong>目前弱點</strong><p>${s.weaknessLabel}</p></div>`,`<div class="student-home-card"><strong>技能掌握</strong><p>${s.mastery}% mastery</p></div>`,`<div class="student-home-card"><strong>連續學習</strong><p>${s.streak} days streak</p></div>`].join('')); }
+function renderAssignments() { setHtml('assignmentList', state.assignment.map(a=>`<li>${escapeHtml(a)}</li>`).join('')); setText('loopInsight', state.loopInsight||''); setHtml('teacherSummary', state.teacherSummary.map(line=>`<div class="summary-pill">${escapeHtml(line)}</div>`).join('')); }
+function renderUnits() { setHtml('unitCards', state.units.map(u=>`<div class="unit-card"><strong>${u.name}</strong><span>${u.tag}</span><p>${u.progress}</p></div>`).join('')); }
+function renderQuestionBank() { setHtml('questionBank', state.questionBank.map(q=>`<div class="question-card"><strong>${q.type}</strong><p>${q.title}</p></div>`).join('')); }
+function updateModeBadges() { setText('chatModeBadge', state.modes.chat); setText('loopModeBadge', state.modes.loop); }
+function seedPrompt(text) { const el = $('chatInput'); if (el) el.value = text; }
 
 async function sendChatMessage() {
-  const text = chatInput.value.trim(); if (!text) return; const student = currentStudent();
-  state.chat.push({ role:'user', text }); renderChat(); chatInput.value='';
+  const chatInputEl = $('chatInput');
+  if (!chatInputEl) return;
+  const text = chatInputEl.value.trim(); if (!text) return; const student = currentStudent();
+  state.chat.push({ role:'user', text }); renderChat(); chatInputEl.value='';
   try { const res = await fetch('/api/chat',{ method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ message:text, topic:'fractions', mode:'socratic', studentName:student.name, ...getApiPayload() })}); const data = await res.json(); if (!res.ok) throw new Error(data.error||'Chat request failed'); state.chat.push({ role:'ai', text:data.reply||'目前沒有回應。' }); state.modes.chat = data.mode === 'live' ? 'Live AI' : 'Demo mode'; updateModeBadges(); renderChat(); saveState(); }
   catch { state.chat.push({ role:'ai', text:'目前連線失敗，我先用 demo 模式繼續：先說說你最卡的那一步是什麼？' }); state.modes.chat='Demo fallback'; updateModeBadges(); renderChat(); showToast('AI 聊天連線失敗，已切回 demo'); }
 }
@@ -199,11 +262,11 @@ function completeQuest(index) { if (!state.dailyQuests[index] || state.dailyQues
 function simulateStudyWin() { const openQuest = state.dailyQuests.findIndex(q=>!q.done); if (openQuest>=0) completeQuest(openQuest); else { currentStudent().xp += 40; renderSidebar(); updateHero(); saveState(); showToast('小進步也算進度，XP +40'); } }
 
 async function runLearningLoop(silent=false) {
-  const output = loopOutput; output.innerHTML=''; renderPipeline(); const student = currentStudent();
+  const output = $('loopOutput'); if (!output) return; output.innerHTML=''; renderPipeline(); const student = currentStudent();
   try { const res = await fetch('/api/teacher/lesson-loop',{ method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ topic:'fractions', weakness:student.weaknessLabel, studentName:student.name, grade:currentClassroom().grade, ...getApiPayload() })}); const data = await res.json(); if (!res.ok) throw new Error(data.error||'Loop request failed'); const lines = data.steps || []; state.assignment = data.assignment || state.assignment; state.loopInsight = data.insight || state.loopInsight; state.teacherSummary = data.teacherSummary || state.teacherSummary; state.modes.loop = data.mode === 'live' ? 'Live AI' : 'Demo mode'; state.questionBank = (data.assignment||state.assignment).map((title, i)=>({ type: i===0?'診斷題':i===1?'練習題':'變體題', title })); updateModeBadges(); renderAssignments(); renderQuestionBank(); lines.forEach((line,index)=>setTimeout(()=>{ renderPipeline(index); const div=document.createElement('div'); div.className='loop-line'; div.textContent=line; output.appendChild(div); }, index*320)); saveState(); setTimeout(()=>{ if(!silent) showToast('教學流程已跑完一輪'); }, lines.length*320+50); }
   catch { state.modes.loop='Demo fallback'; updateModeBadges(); const fallback = ['1. 系統根據弱點熱區挑出本輪主題。','2. 自動生成由淺入深題目與情境題。','3. 學生作答後即時批改並標出錯誤模式。','4. 分析真正卡點並整理回教師視圖。','5. 再出變體題並安排 AI 提示式引導。']; fallback.forEach((line,index)=>setTimeout(()=>{ renderPipeline(index); const div=document.createElement('div'); div.className='loop-line'; div.textContent=line; output.appendChild(div); }, index*320)); if(!silent) showToast('AI 流程連線失敗，已切回 demo'); }
 }
 
 function scrollToSection(id) { document.getElementById(id).scrollIntoView({ behavior:'smooth' }); }
-function showToast(text) { toast.textContent=text; toast.classList.add('show'); clearTimeout(toastTimer); toastTimer=setTimeout(()=>toast.classList.remove('show'),2200); }
+function showToast(text) { const toastEl = $('toast'); if (!toastEl) return; toastEl.textContent=text; toastEl.classList.add('show'); clearTimeout(toastTimer); toastTimer=setTimeout(()=>toastEl.classList.remove('show'),2200); }
 function escapeHtml(text) { const div=document.createElement('div'); div.textContent=text; return div.innerHTML; }
