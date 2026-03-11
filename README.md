@@ -1,13 +1,15 @@
-# QuestClass v2
+# QuestClass v2.1 Firebase Edition
 
-QuestClass v2 is a product-grade skeleton for an AI learning OS.
+QuestClass v2.1 is a Firebase-ready product skeleton for an AI learning OS.
 
-## Included in v2
+## Included
 
 - **Landing page** with product positioning
 - **Auth skeleton** with demo/login tabs
 - **Role-based app shell** for teacher and student views
-- **Database-ready schema** in `db/schema.sql`
+- **Firebase-ready structure**
+- **Firestore security rules**
+- **Firebase hosting config**
 - **Teacher dashboard** with classroom and student management structure
 - **Student home** with progression and task framing
 - **AI tutor chat** with demo mode and live API mode
@@ -15,30 +17,45 @@ QuestClass v2 is a product-grade skeleton for an AI learning OS.
 - **Local persistence** for demo state
 - **Vercel-ready deployment**
 
-## Database
+## Firebase files included
 
-A Postgres / Supabase-ready schema is included:
+- `firebase.json`
+- `.firebaserc`
+- `firestore.rules`
+- `firestore.indexes.json`
+- `public/js/firebase-config.example.js`
+- `public/js/firebase-bridge.js`
+- `public/js/firebase-auth.example.js`
 
-- `profiles`
+## Firebase setup
+
+1. Create a Firebase project
+2. Copy `public/js/firebase-config.example.js` to your actual runtime config flow
+3. Replace the placeholder values with your Firebase web app config
+4. Run Firebase login locally:
+
+```bash
+npx firebase-tools login
+```
+
+5. Set your project id in `.firebaserc`
+6. Deploy rules / hosting if desired:
+
+```bash
+npx firebase-tools deploy
+```
+
+## Firestore model direction
+
+Suggested collections:
+
+- `users`
 - `classrooms`
-- `classroom_members`
+- `classrooms/{classroomId}/members`
 - `units`
-- `questions`
 - `assignments`
-- `assignment_questions`
 - `submissions`
-- `skill_snapshots`
-- `ai_runs`
-
-## Auth direction
-
-Current build includes a UI/auth skeleton with demo mode and fake login routing.
-This is designed to be connected later to:
-
-- Supabase Auth
-- Clerk
-- Auth.js / NextAuth-style provider
-- custom session APIs
+- `aiRuns`
 
 ## Run locally
 
@@ -57,6 +74,14 @@ Default port: `18890`
 
 ## Deploy
 
+For Vercel:
+
 ```bash
 vercel --prod
+```
+
+For Firebase:
+
+```bash
+npx firebase-tools deploy
 ```

@@ -112,7 +112,17 @@ function currentClassroom() { return state.classroom.classes.find(c => c.id === 
 function getApiPayload() { const s = getSettings(); return { apiBaseUrl: s.apiBaseUrl, model: s.apiModel, apiKey: s.apiKey }; }
 function isTeacherMode() { return state.session.role === 'teacher'; }
 
-function initApp() { hydrateSettingsUI(); renderAll(); runLearningLoop(true); }
+async function initApp() { hydrateSettingsUI(); await initFirebaseMode(); renderAll(); runLearningLoop(true); }
+
+async function initFirebaseMode() {
+  if (window.QuestClassFirebase) {
+    const result = await window.QuestClassFirebase.init();
+    if (result?.ok) {
+      state.modes.chat = 'Firebase ready';
+      state.modes.loop = 'Firebase ready';
+    }
+  }
+}
 function renderAll() { renderAuth(); renderClassroomList(); renderSidebar(); renderStudentList(); renderChat(); renderPipeline(); renderKnowledgeMap(); renderSkillTree(); renderHeatmap(); renderMistakeLinks(); renderTeacherStats(); renderAssignments(); renderUnits(); renderQuestionBank(); renderStudentHome(); updateModeBadges(); updateHero(); updateRoleView(); }
 
 function renderAuth() {
