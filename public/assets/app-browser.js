@@ -149,6 +149,85 @@
   const studentStreak = (student) => student?.summary?.streak || student?.streak || 0;
   const studentStatus = (student) => studentMastery(student) >= 85 ? '穩定' : studentMastery(student) >= 75 ? '追蹤中' : '需加強';
 
+  const studentDataSourceMeta = () => {
+    if (firestoreData.mode === 'firestore') {
+      const liveStudent = firestoreData.student || {};
+      const liveClassroom = firestoreData.classroom || firestoreData.classrooms?.[0] || {};
+      return {
+        tone: 'live',
+        badge: '🟢 Firestore live',
+        title: '目前顯示的是 Firestore 即時資料',
+        description: state.session.authMode === 'firebase'
+          ? '此頁面正在讀取你帳號對應的學生 / 課堂 / submissions 資料，不是前端 demo 假資料。'
+          : '此頁面正在讀取 Firestore 資料。',
+        detailRows: [
+          liveStudent.id ? `studentId：${liveStudent.id}` : 'studentId：已連接',
+          liveClassroom.id ? `classroomId：${liveClassroom.id}` : 'classroom：已連接',
+          `submissions：${firestoreData.submissions.length} 筆`,
+          '來源：Firestore dashboard + summary'
+        ],
+        highlight: firestoreData.submissions.length
+          ? `最近已同步 ${firestoreData.submissions.length} 筆作業 / 提交資料。`
+          : '目前已連到 Firestore，但尚未讀到 submission 紀錄。'
+      };
+    }
+    if (firestoreData.mode === 'error') {
+      return {
+        tone: 'fallback',
+        badge: '🟠 Demo fallback',
+        title: 'Firestore 載入失敗，已退回 demo 資料',
+        description: '畫面仍可操作，但目前顯示的是內建示範資料，方便繼續驗 UI / flow。',
+        detailRows: [
+          '原因：Firestore request failed',
+          '來源：local demo dataset',
+          '用途：避免整頁空白',
+          '建議：檢查登入狀態 / rules / data seed'
+        ],
+        highlight: '這不是 live student record；重新整理或重新登入後可再試一次。'
+      };
+    }
+    return {
+      tone: 'fallback',
+      badge: '⚪ Demo mode',
+      title: '目前顯示的是 demo fallback 資料',
+      description: '尚未連到可用的 Firestore 學生資料，所以畫面使用預設示範內容。',
+      detailRows: [
+        `authMode：${state.session.authMode || 'demo'}`,
+        '來源：local demo dataset',
+        '用途：先展示學生體驗與版面',
+        '切換方式：登入有資料的 Firebase 帳號'
+      ],
+      highlight: '這一頁目前不是即時資料；連到 Firestore 後，數值與任務會改成真實紀錄。'
+    };
+  };
+  const formatSubmissionMeta = (item = {}) => {
+    const parts = [];
+    if (item.status) parts.push(item.status);
+    if (item.score != null && item.score !== '') parts.push(`${item.score} 分`);
+    if (item.updatedAt || item.submittedAt || item.createdAt) parts.push('Firestore');
+    return parts.join(' · ') || 'Firestore record';
+  };
+  function renderStudentDataPanel(student, summaryData = {}) {
+    const meta = studentDataSourceMeta();
+    const panel = qs('[data-student-data-panel]');
+    if (!panel) return;
+    const classroom = firestoreData.classroom || firestoreData.classrooms?.[0] || null;
+    const snapshot = firestoreData.mode === 'firestore'
+      ? [
+          { label: 'Student record', value: student?.id || '已連接' },
+          { label: 'Classroom', value: classroom?.name || classroom?.id || '已連接' },
+          { label: 'Mastery', value: `${summaryData.mastery || studentMastery(student)}%` },
+          { label: 'Weakness', value: summaryData.weaknessLabel || studentWeakness(student) }
+        ]
+      : [
+          { label: 'Demo student', value: student?.name || 'Ada' },
+          { label: 'Mode', value: meta.badge.replace(/^.+?\s/, '') },
+          { label: 'Mastery', value: `${summaryData.mastery || studentMastery(student)}%` },
+          { label: 'Weakness', value: summaryData.weaknessLabel || studentWeakness(student) }
+        ];
+    panel.innerHTML = `<div class="panel-header"><div><span class="eyebrow">Data source</span><h2>資料來源狀態</h2></div><span class="data-source-badge ${meta.tone}">${escapeHtml(meta.badge)}</span></div><div class="student-data-layout"><article class="status-card ${meta.tone === 'live' ? 'ok' : ''}"><strong>${escapeHtml(meta.title)}</strong><span>${escapeHtml(meta.description)}</span><p class="data-source-highlight">${escapeHtml(meta.highlight)}</p><div class="student-data-points">${meta.detailRows.map((row) => `<span class="pill">${escapeHtml(row)}</span>`).join('')}</div></article><div class="student-snapshot-grid">${snapshot.map((item) => `<article class="metric-card student-snapshot-card"><span>${escapeHtml(item.label)}</span><strong>${escapeHtml(String(item.value || '—'))}</strong></article>`).join('')}</div></div>`;
+  }
+
   function setShell() { qsa('[data-nav]').forEach((n) => n.innerHTML = renderNav(page)); qsa('[data-brand]').forEach((n) => n.textContent = `${demoData.brand.name} ${demoData.brand.version}`); qsa('[data-promise]').forEach((n) => n.textContent = demoData.brand.promise); qsa('[data-topbar-auth]').forEach((n) => n.innerHTML = renderAuthPanel(state.session, !!window.QuestClassFirebase?.enabled?.())); }
   function wireSettings() { qsa('[data-settings-form]').forEach((form) => { form.innerHTML = renderSettingsForm(getSettings()); form.onsubmit = (e) => { e.preventDefault(); saveSettings(Object.fromEntries(new FormData(form).entries())); showToast('AI 設定已儲存'); }; const clearBtn = qs('[data-clear-settings]', form); if (clearBtn) clearBtn.onclick = () => { clearSettings(); wireSettings(); showToast('AI 設定已清除'); }; }); }
   function wireFirebaseStatus() { qsa('[data-firebase-status]').forEach((node) => node.innerHTML = renderFirebaseStatus()); }
@@ -219,23 +298,25 @@
   function renderStudent() {
     const student = currentStudentView();
     const summaryData = firestoreData.summary || student?.summary || {};
+    const liveMode = firestoreData.mode === 'firestore';
     const hero = qs('[data-student-hero]');
-    if (hero) hero.innerHTML = `<div class="hero-copy"><span class="eyebrow">Student Home</span><h1>${escapeHtml(student?.name || '尚未建立學生檔案')}</h1><p>目前弱點：${escapeHtml(summaryData.weaknessLabel || studentWeakness(student))} · 連續學習 ${escapeHtml(String(summaryData.streak || studentStreak(student)))} 天</p></div><div class="hero-stats"><div><strong>Lv.${escapeHtml(String(summaryData.level || studentLevel(student)))}</strong><span>目前等級</span></div><div><strong>${escapeHtml(String(summaryData.mastery || studentMastery(student)))}%</strong><span>技能掌握</span></div></div>`;
+    if (hero) hero.innerHTML = `<div class="hero-copy"><span class="eyebrow">Student Home</span><h1>${escapeHtml(student?.name || '尚未建立學生檔案')}</h1><p>目前弱點：${escapeHtml(summaryData.weaknessLabel || studentWeakness(student))} · 連續學習 ${escapeHtml(String(summaryData.streak || studentStreak(student)))} 天</p><div class="hero-badge-row"><span class="data-source-badge ${liveMode ? 'live' : 'fallback'}">${liveMode ? '🟢 Firestore live data' : (firestoreData.mode === 'error' ? '🟠 Demo fallback' : '⚪ Demo data')}</span><span class="hero-data-note">${escapeHtml(liveMode ? '這些數值會跟著 Firestore dashboard / summary 更新。' : '目前是示範資料，方便先驗學生頁體驗。')}</span></div></div><div class="hero-stats"><div><strong>Lv.${escapeHtml(String(summaryData.level || studentLevel(student)))}</strong><span>目前等級</span></div><div><strong>${escapeHtml(String(summaryData.mastery || studentMastery(student)))}%</strong><span>技能掌握</span></div></div>`;
+    renderStudentDataPanel(student, summaryData);
     const progress = qs('[data-student-progress]');
-    if (progress) progress.innerHTML = `<article class="metric-card"><span>XP</span><strong>${escapeHtml(String(summaryData.xp || studentXp(student)))}</strong></article><article class="metric-card"><span>下一級目標</span><strong>${escapeHtml(String(summaryData.nextLevelXp || studentNextXp(student)))}</strong></article><article class="metric-card"><span>弱點分數</span><strong>${escapeHtml(summaryData.weaknessScore || studentWeaknessScore(student))}</strong></article>`;
+    if (progress) progress.innerHTML = `<article class="metric-card ${liveMode ? 'live-metric-card' : ''}"><span>XP ${liveMode ? '· Firestore' : ''}</span><strong>${escapeHtml(String(summaryData.xp || studentXp(student)))}</strong></article><article class="metric-card ${liveMode ? 'live-metric-card' : ''}"><span>下一級目標</span><strong>${escapeHtml(String(summaryData.nextLevelXp || studentNextXp(student)))}${liveMode ? '<small>來自 summary</small>' : ''}</strong></article><article class="metric-card ${liveMode ? 'live-metric-card' : ''}"><span>弱點分數</span><strong>${escapeHtml(summaryData.weaknessScore || studentWeaknessScore(student))}</strong></article>`;
     const quests = qs('[data-quests]');
     if (quests) {
-      const source = firestoreData.mode === 'firestore' && firestoreData.submissions.length
-        ? firestoreData.submissions.slice(0, 3).map((item) => ({ title: item.assignmentTitle || item.topic || '未命名任務', meta: `${item.status || 'submitted'} · ${item.score ?? '—'} 分` }))
-        : demoData.dailyQuests;
-      quests.innerHTML = source.map((q) => `<article class="list-card"><strong>${escapeHtml(q.title)}</strong><span>${escapeHtml(q.meta)}</span></article>`).join('');
+      const source = liveMode && firestoreData.submissions.length
+        ? firestoreData.submissions.slice(0, 3).map((item) => ({ title: item.assignmentTitle || item.topic || '未命名任務', meta: formatSubmissionMeta(item), detail: item.studentId ? `studentId: ${item.studentId}` : 'Firestore submission' }))
+        : demoData.dailyQuests.map((item) => ({ ...item, detail: 'demo quest' }));
+      quests.innerHTML = source.map((q) => `<article class="list-card ${liveMode ? 'data-driven-card' : ''}"><strong>${escapeHtml(q.title)}</strong><span>${escapeHtml(q.meta)}</span>${q.detail ? `<p>${escapeHtml(q.detail)}</p>` : ''}</article>`).join('');
     }
     const roster = qs('[data-student-roster]');
     if (roster) {
-      const source = firestoreData.mode === 'firestore' && firestoreData.classrooms.length
-        ? firestoreData.classrooms.map((room) => ({ id: room.id, name: room.name, label: `${room.grade || ''} · ${room.subject || ''}` }))
-        : demoData.students.map((i) => ({ id: i.id, name: i.name, label: `Level ${i.level}` }));
-      roster.innerHTML = source.map((i) => `<article class="list-card ${i.id === state.currentClassroomId || i.id === state.currentStudentId ? 'active' : ''}"><strong>${escapeHtml(i.name)}</strong><span>${escapeHtml(i.label)}</span></article>`).join('');
+      const source = liveMode && firestoreData.classrooms.length
+        ? firestoreData.classrooms.map((room) => ({ id: room.id, name: room.name, label: `${room.grade || ''} · ${room.subject || ''}`, detail: room.id ? `classroomId: ${room.id}` : 'Firestore classroom' }))
+        : demoData.students.map((i) => ({ id: i.id, name: i.name, label: `Level ${i.level}`, detail: 'demo student switcher' }));
+      roster.innerHTML = source.map((i) => `<article class="list-card ${i.id === state.currentClassroomId || i.id === state.currentStudentId ? 'active' : ''} ${liveMode ? 'data-driven-card' : ''}"><strong>${escapeHtml(i.name)}</strong><span>${escapeHtml(i.label)}</span><p>${escapeHtml(i.detail || '')}</p></article>`).join('');
     }
   }
   function renderChatPage() { const messages = qs('[data-chat-messages]'); if (messages) messages.innerHTML = state.chat.map((m) => `<div class="chat-bubble ${m.role}">${escapeHtml(m.text)}</div>`).join(''); const status = qs('[data-chat-mode]'); if (status) status.textContent = state.modes.chat; const form = qs('[data-chat-form]'); if (form) form.onsubmit = async (e) => { e.preventDefault(); const input = qs('[name="message"]', form); const msg = input?.value.trim(); if (!msg) return; state.chat.push({ role: 'user', text: msg }); saveState(state); renderChatPage(); input.value = ''; try { const data = await sendChat(msg, currentStudentView()?.name || currentTeacherStudent()?.name || 'Ada'); state.chat.push({ role: 'ai', text: data.reply || '目前沒有回應。' }); state.modes.chat = data.mode === 'live' ? 'Live AI' : 'Demo mode'; saveState(state); renderChatPage(); } catch (e2) { state.chat.push({ role: 'ai', text: '目前連線失敗，我先用 demo 模式陪你拆題。先說說你最卡的那一步。' }); state.modes.chat = 'Demo fallback'; saveState(state); renderChatPage(); showToast(e2?.message || 'Chat 失敗'); } }; qsa('[data-seed-prompt]').forEach((b) => b.onclick = () => { const i = qs('[name="message"]'); if (i) i.value = b.dataset.seedPrompt || ''; }); }
