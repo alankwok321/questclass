@@ -90,6 +90,7 @@
   let adminSelectedUid = null;
   let adminFilters = { query: '', status: 'all' };
   let toastTimer = null;
+  let firestoreDebug = { error: '', step: '', detail: '' };
   let firestoreData = { mode: 'demo', classrooms: [], classroom: null, students: [], student: null, summary: null, submissions: [], metrics: [] };
 
   const qs = (s, p = document) => p.querySelector(s);
@@ -217,13 +218,19 @@
           { label: 'Student record', value: student?.id || '已連接' },
           { label: 'Classroom', value: classroom?.name || classroom?.id || '已連接' },
           { label: 'Mastery', value: `${summaryData.mastery || studentMastery(student)}%` },
-          { label: 'Weakness', value: summaryData.weaknessLabel || studentWeakness(student) }
+          { label: 'Weakness', value: summaryData.weaknessLabel || studentWeakness(student) },
+          { label: 'Role', value: state.session.role || 'unknown' },
+          { label: 'Email', value: state.session.email || '—' }
         ]
       : [
           { label: 'Demo student', value: student?.name || 'Ada' },
           { label: 'Mode', value: meta.badge.replace(/^.+?\s/, '') },
           { label: 'Mastery', value: `${summaryData.mastery || studentMastery(student)}%` },
-          { label: 'Weakness', value: summaryData.weaknessLabel || studentWeakness(student) }
+          { label: 'Weakness', value: summaryData.weaknessLabel || studentWeakness(student) },
+          { label: 'Role', value: state.session.role || 'unknown' },
+          { label: 'Email', value: state.session.email || '—' },
+          { label: 'Debug step', value: firestoreDebug.step || '—' },
+          { label: 'Debug error', value: firestoreDebug.error || 'none' }
         ];
     panel.innerHTML = `<div class="panel-header"><div><span class="eyebrow">Data source</span><h2>資料來源狀態</h2></div><span class="data-source-badge ${meta.tone}">${escapeHtml(meta.badge)}</span></div><div class="student-data-layout"><article class="status-card ${meta.tone === 'live' ? 'ok' : ''}"><strong>${escapeHtml(meta.title)}</strong><span>${escapeHtml(meta.description)}</span><p class="data-source-highlight">${escapeHtml(meta.highlight)}</p><div class="student-data-points">${meta.detailRows.map((row) => `<span class="pill">${escapeHtml(row)}</span>`).join('')}</div></article><div class="student-snapshot-grid">${snapshot.map((item) => `<article class="metric-card student-snapshot-card"><span>${escapeHtml(item.label)}</span><strong>${escapeHtml(String(item.value || '—'))}</strong></article>`).join('')}</div></div>`;
   }
@@ -237,10 +244,12 @@
   async function refreshAdminUsers() { if (state.session.role !== 'admin' || !window.QuestClassFirebase?.listUsers) { adminUsers = []; adminSelectedUid = null; return; } const result = await window.QuestClassFirebase.listUsers(); adminUsers = result?.ok ? (result.users || []) : []; if (!adminUsers.length) adminSelectedUid = null; else if (!adminSelectedUid || !adminUsers.some((u) => u.uid === adminSelectedUid)) adminSelectedUid = adminUsers[0].uid; }
   async function syncFirestoreData() {
     if (state.session.authMode !== 'firebase' || !state.session.uid || !window.QuestClassFirebase?.enabled?.()) {
+      firestoreDebug = { error: '', step: 'not-signed-in-or-firebase-disabled', detail: '' };
       firestoreData = { mode: 'demo', classrooms: [], classroom: null, students: [], student: null, summary: null, submissions: [], metrics: [] };
       return;
     }
     try {
+      firestoreDebug = { error: '', step: state.session.role === 'teacher' || state.session.role === 'admin' ? 'load-teacher-dashboard' : 'load-student-dashboard', detail: `role=${state.session.role || ''} uid=${state.session.uid || ''}` };
       if (state.session.role === 'teacher' || state.session.role === 'admin') {
         const dashboard = await window.QuestClassFirebase.getTeacherDashboard(state.currentClassroomId || null);
         if (!dashboard?.ok) throw new Error(dashboard?.error || 'Teacher dashboard load failed');
@@ -253,9 +262,11 @@
         firestoreData = { mode: 'firestore', classrooms: dashboard.classrooms || [], classroom: dashboard.classrooms?.[0] || null, students: [], student: dashboard.student || null, summary: dashboard.summary || null, submissions: dashboard.submissions || [], metrics: [] };
         if (firestoreData.student?.id) state.currentStudentId = firestoreData.student.id;
       }
+      firestoreDebug = { error: '', step: 'loaded', detail: `mode=${firestoreData.mode} role=${state.session.role || ''} uid=${state.session.uid || ''}` };
       saveState(state);
     } catch (error) {
       console.error(error);
+      firestoreDebug = { error: error?.message || 'Firestore 資料載入失敗', step: 'sync-failed', detail: `role=${state.session.role || ''} uid=${state.session.uid || ''}` };
       firestoreData = { mode: 'error', classrooms: [], classroom: null, students: [], student: null, summary: null, submissions: [], metrics: [] };
       showToast(error?.message || 'Firestore 資料載入失敗');
     }
