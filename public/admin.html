@@ -22,6 +22,7 @@
         <span class="eyebrow">Admin Console</span>
         <h1>帳號管理</h1>
         <p>集中查看帳號清單、基本資料與狀態，快速處理角色與帳號問題。</p>
+        <p style="margin-top:10px;padding:10px 12px;border:2px solid #ff4d4f;border-radius:12px;font-weight:800;color:#ff4d4f;display:inline-block;">ADMIN BUILD v3 DEBUG</p>
       </div>
       <div class="hero-stats">
         <div><strong data-admin-total-users>—</strong><span>Accounts</span></div>
@@ -33,7 +34,7 @@
 
     <section class="panel" data-admin-access></section>
 
-    <section class="grid-2 admin-layout">
+    <section class="admin-layout">
       <section class="panel">
         <div class="panel-header">
           <div><span class="eyebrow">Account list</span><h2>所有帳號</h2></div>
@@ -42,13 +43,12 @@
         <div class="admin-toolbar">
           <input type="search" placeholder="搜尋姓名 / email / uid" data-admin-search />
           <select data-admin-filter>
-            <option value="all">全部狀態</option>
-            <option value="issue">只有問題帳號</option>
-            <option value="pending">只有角色申請</option>
-            <option value="admin">admin</option>
-            <option value="teacher">teacher</option>
-            <option value="student">student</option>
-            <option value="suspended">suspended</option>
+            <option value="name">依姓名</option>
+            <option value="admin">只看 admin</option>
+            <option value="teacher">只看 teacher</option>
+            <option value="student">只看 student</option>
+            <option value="suspended">只看 suspended</option>
+            <option value="review">只看 review</option>
           </select>
         </div>
         <div class="list-grid admin-user-list" data-admin-user-list></div>
@@ -59,6 +59,10 @@
           <div><span class="eyebrow">Selected account</span><h2>帳號詳情</h2></div>
         </div>
         <div data-admin-detail></div>
+        <div class="panel-header" style="margin-top:20px;">
+          <div><span class="eyebrow">Student manager</span><h2>學生資料管理</h2></div>
+        </div>
+        <div data-admin-student-manager></div>
       </section>
     </section>
   </main>
@@ -66,6 +70,6 @@
   <div class="toast" data-toast></div>
   <script src="/js/firebase-config.js"></script>
   <script src="/js/firebase-bridge.js"></script>
-  <script src="/assets/app-browser.js"></script>
+  <script src="/assets/app-browser.js?v=3"></script>
 </body>
 </html>

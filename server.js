@@ -35,7 +35,7 @@ function getProviderConfig(body = {}) {
 }
 
 async function callChatCompletion({ system, user, apiKey, apiBaseUrl, model, temperature = 0.7, responseFormat }) {
-  if (!apiKey) return { ok: false, status: 400, error: 'Missing API key' };
+  if (!apiKey) return { ok: false, status: 400, error: 'AI provider is not configured. Set an API key first.' };
   try {
     const response = await fetch(apiBaseUrl + '/chat/completions', {
       method: 'POST',
@@ -71,7 +71,13 @@ app.get('/js/firebase-config.js', (req, res) => {
 });
 
 app.get('/api/runtime-config', (req, res) => {
-  res.json(getFirebaseRuntimeConfig());
+  const firebase = getFirebaseRuntimeConfig();
+  const aiConfigured = Boolean(process.env.OPENAI_API_KEY || process.env.OPENROUTER_API_KEY);
+  res.json({
+    firebase: firebase.firebase,
+    firebaseEnabled: firebase.enabled,
+    aiConfigured
+  });
 });
 
 app.use(express.static(publicDir));
@@ -81,16 +87,13 @@ app.get('/api/health', (req, res) => {
 });
 
 app.post('/api/chat', async (req, res) => {
-  const { message, topic = 'fractions', mode = 'socratic', studentName = 'Ada' } = req.body || {};
+  const { message, topic = 'general', mode = 'socratic', studentName = 'student' } = req.body || {};
   if (!message?.trim()) return res.status(400).json({ error: 'Message required' });
 
   const cfg = getProviderConfig(req.body);
   if (!cfg.apiKey) {
-    return res.json({
-      mode: 'demo',
-      reply: mode === 'socratic'
-        ? `${studentName}，先不要急著找答案。關於「${message.trim()}」，你現在最有把握的是哪一部分？先用自己的話說一次。`
-        : `這題可以先拆成兩步：先判斷已知條件，再找出缺少的資訊。你要不要先試著列條件？`,
+    return res.status(400).json({
+      error: 'AI chat is not configured. Add an API key in settings or environment variables.'
     });
   }
 
@@ -109,26 +112,16 @@ app.post('/api/chat', async (req, res) => {
 });
 
 app.post('/api/teacher/lesson-loop', async (req, res) => {
-  const { topic = 'fractions', weakness = '文字題理解與分數比較', studentName = 'Ada', grade = 'Grade 5' } = req.body || {};
+  const { topic = 'general', weakness = '', studentName = 'student', grade = '' } = req.body || {};
   const cfg = getProviderConfig(req.body);
 
   if (!cfg.apiKey) {
-    return res.json({
-      mode: 'demo',
-      steps: [
-        `系統依照 ${studentName} 的弱點「${weakness}」選出今日主題：${topic}`,
-        '自動產生 5 題由淺入深題目，混合圖像化與情境題。',
-        '學生作答後，即時批改並標出：概念對、文字轉式子慢。',
-        '分析判定：真正卡點在語意轉換，而非計算。',
-        '系統再出 3 題變體題，並交給 AI 老師用提示式方式追問。'
-      ],
-      assignment: ['比較 3/4 與 2/3', '把生活題翻成數學式', '用圖像解釋通分'],
-      insight: `${studentName} 適合先補語意轉換，再回到應用題。`,
-      teacherSummary: ['本輪建議以 12 分鐘微任務進行', '先用圖像，再進文字題', '下一輪可追蹤提示後正確率']
+    return res.status(400).json({
+      error: 'Lesson loop is not configured. Add an API key in settings or environment variables.'
     });
   }
 
-  const prompt = `Create a teacher lesson loop in Traditional Chinese for student ${studentName}, grade ${grade}, topic ${topic}, weakness ${weakness}. Return strict JSON with keys: steps (array of 5 strings), assignment (array of 3 strings), insight (string), teacherSummary (array of 3 strings).`;
+  const prompt = `Create a teacher lesson loop in Traditional Chinese for student ${studentName}, grade ${grade}, topic ${topic}, weakness ${weakness}. Return strict JSON with keys: steps (array of 5 strings), assignment (array of 3 strings), insight (string), teacherSummary (array of 3 strings). Use empty arrays if source data is insufficient.`;
   const result = await callChatCompletion({
     ...cfg,
     system: 'Return only JSON. No markdown.',

@@ -28,7 +28,23 @@ service cloud.firestore {
     }
 
     function allowedUserKeys() {
-      return ['name', 'email', 'role', 'requestedRole', 'learnerStage', 'roleNote', 'photoURL', 'createdAt', 'updatedAt', 'lastLoginAt'];
+      return ['name', 'email', 'role', 'requestedRole', 'learnerStage', 'roleNote', 'photoURL', 'createdAt', 'updatedAt', 'lastLoginAt', 'accountStatus', 'adminNote', 'disabledReason', 'resolvedAt', 'issueFlag', 'studentId', 'classroomIds'];
+    }
+
+    function allowedStudentKeys() {
+      return ['userUid', 'name', 'gradeLevel', 'classroomIds', 'primaryTeacherUid', 'status', 'currentLevel', 'xp', 'nextLevelXp', 'streak', 'mastery', 'weaknessLabel', 'weaknessScore', 'focusSkills', 'createdAt', 'updatedAt'];
+    }
+
+    function allowedClassroomKeys() {
+      return ['name', 'grade', 'subject', 'teacherUid', 'teacherUids', 'studentIds', 'studentUids', 'activeStudents', 'completionRate', 'createdAt', 'updatedAt'];
+    }
+
+    function allowedSubmissionKeys() {
+      return ['classroomId', 'studentId', 'studentUid', 'assignmentTitle', 'topic', 'score', 'status', 'feedback', 'submittedAt', 'updatedAt'];
+    }
+
+    function allowedProgressKeys() {
+      return ['studentId', 'userUid', 'classroomId', 'mastery', 'level', 'xp', 'nextLevelXp', 'streak', 'weaknessLabel', 'weaknessScore', 'focusAreas', 'recentQuestTitles', 'updatedAt'];
     }
 
     function selfProfileKeysAreSafe() {
@@ -41,8 +57,10 @@ service cloud.firestore {
       allow create: if isSelf(userId)
         && request.resource.data.keys().hasOnly(allowedUserKeys())
         && request.resource.data.email == request.auth.token.email
-        && request.resource.data.role in ['student', 'teacher']
-        && request.resource.data.requestedRole in ['', 'student', 'teacher', 'admin'];
+        && request.resource.data.role in ['student', 'teacher', 'admin']
+        && request.resource.data.requestedRole in ['', 'student', 'teacher', 'admin']
+        && (!('accountStatus' in request.resource.data) || request.resource.data.accountStatus in ['active', 'review', 'suspended'])
+        && (!('issueFlag' in request.resource.data) || request.resource.data.issueFlag is bool);
 
       allow update: if (
           isSelf(userId)
@@ -56,19 +74,41 @@ service cloud.firestore {
           && request.resource.data.keys().hasOnly(allowedUserKeys())
           && request.resource.data.requestedRole in ['', 'student', 'teacher', 'admin']
           && request.resource.data.role in ['student', 'teacher', 'admin']
+          && (!('accountStatus' in request.resource.data) || request.resource.data.accountStatus in ['active', 'review', 'suspended'])
+          && (!('issueFlag' in request.resource.data) || request.resource.data.issueFlag is bool)
         );
 
       allow delete: if isAdmin();
     }
 
+    match /students/{studentId} {
+      allow read: if isTeacherLike() || (isSignedIn() && resource.data.userUid == request.auth.uid);
+      allow create, update: if isTeacherLike() && request.resource.data.keys().hasOnly(allowedStudentKeys());
+      allow delete: if isAdmin();
+    }
+
     match /classrooms/{classroomId} {
-      allow read: if isSignedIn();
-      allow write: if isTeacherLike();
+      allow read: if isTeacherLike() || (isSignedIn() && request.auth.uid in resource.data.studentUids);
+      allow create, update: if isTeacherLike() && request.resource.data.keys().hasOnly(allowedClassroomKeys());
+      allow delete: if isAdmin();
 
       match /members/{memberId} {
-        allow read: if isSignedIn();
+        allow read: if isTeacherLike() || isSelf(memberId);
         allow write: if isTeacherLike();
       }
+    }
+
+    match /submissions/{submissionId} {
+      allow read: if isTeacherLike() || (isSignedIn() && resource.data.studentUid == request.auth.uid);
+      allow create: if (isSignedIn() && request.resource.data.studentUid == request.auth.uid) || isTeacherLike();
+      allow update: if isTeacherLike() && request.resource.data.keys().hasOnly(allowedSubmissionKeys());
+      allow delete: if isAdmin();
+    }
+
+    match /progressSummaries/{summaryId} {
+      allow read: if isTeacherLike() || (isSignedIn() && resource.data.userUid == request.auth.uid);
+      allow create, update: if isTeacherLike() && request.resource.data.keys().hasOnly(allowedProgressKeys());
+      allow delete: if isAdmin();
     }
 
     match /units/{unitId} {
@@ -79,14 +119,6 @@ service cloud.firestore {
     match /assignments/{assignmentId} {
       allow read: if isSignedIn();
       allow write: if isTeacherLike();
-    }
-
-    match /submissions/{submissionId} {
-      allow read: if isTeacherLike() || (isSignedIn() && resource.data.studentUid == request.auth.uid);
-      allow create: if isSignedIn()
-        && request.resource.data.studentUid == request.auth.uid;
-      allow update: if isTeacherLike();
-      allow delete: if isAdmin();
     }
 
     match /aiRuns/{runId} {

@@ -1,37 +1,54 @@
-# QuestClass v2.2 Firebase / Vercel Productization
+# QuestClass v2.3 Student Database v1
 
-QuestClass is now a more production-shaped Firebase-ready skeleton for an AI learning OS, while still staying compatible with the existing Express + Vercel deployment model.
+QuestClass now has a real Firestore-backed student data layer for the main teacher/student flows, while keeping the existing Express + Vercel shape and the current auth/admin path.
 
-## What changed
+## What changed in v1
 
-- **Firebase config is no longer hardcoded in a public file**
-  - `/js/firebase-config.js` is now served dynamically by `server.js`
-  - `/api/runtime-config` exposes the same runtime config as JSON
-  - The browser reads Firebase config from **server env vars** instead of a committed public config blob
-- **Visible auth UI added across pages**
-  - Google login button
-  - logout button
-  - optional email/password login form (if enabled in Firebase Auth)
-- **Firestore-backed profile flow improved**
-  - signed-in users get a profile form
-  - current Firestore role is shown clearly
-  - users can update display name, learner stage, role note, and `requestedRole`
-- **Basic admin role management path added**
-  - if a signed-in user's Firestore profile has `role = admin`, they can list users and update another user's role in-app
-- **Firestore rules tightened**
-  - users can read their own profile docs
-  - admins can read / manage all user profiles
-  - normal users cannot self-promote their `role`
-  - submission reads are narrowed to teacher/admin or the owning student
-- **Express/Vercel compatibility kept**
-  - same `server.js` app entry
-  - same `/api/chat` and `/api/teacher/lesson-loop`
-  - static public assets still work as before
+### Real Firestore data model added
+Collections now used/documented for v1:
+- `users`
+- `students`
+- `classrooms`
+- `submissions`
+- `progressSummaries`
+
+Schema reference:
+- `docs/firestore-schema-v1.md`
+
+### Teacher page now reads Firestore data
+When a signed-in `teacher` or `admin` has matching classroom/student documents:
+- classroom switcher reads from `classrooms`
+- student cards read from `students`
+- summary/mastery data reads from `progressSummaries`
+- recent submission context reads from `submissions`
+- top metrics are calculated from Firestore data
+
+If Firebase is missing or no matching Firestore data exists, the page still falls back to demo mode.
+
+### Student page now reads Firestore data
+When a signed-in `student` has a `students` doc linked by `userUid`:
+- hero/progress stats read from `students` + `progressSummaries`
+- recent tasks read from `submissions`
+- classroom list reads from visible `classrooms`
+
+### Auth/admin flow kept working
+Still supported:
+- runtime Firebase config via `/js/firebase-config.js`
+- Google sign-in
+- Firestore-backed user profiles in `users`
+- admin account listing + role/status updates
+
+### Firestore rules updated
+Rules now explicitly cover:
+- `users`
+- `students`
+- `classrooms`
+- `submissions`
+- `progressSummaries`
 
 ## Required Firebase env vars
 
 Set these in Vercel or your server environment:
-
 - `FIREBASE_API_KEY`
 - `FIREBASE_AUTH_DOMAIN`
 - `FIREBASE_PROJECT_ID`
@@ -40,62 +57,7 @@ Set these in Vercel or your server environment:
 - `FIREBASE_APP_ID`
 - `FIREBASE_MEASUREMENT_ID` (optional)
 
-## Included app surfaces
-
-- Landing page
-- Teacher dashboard
-- Student home
-- AI tutor chat
-- Analytics page
-- Shared auth/profile/admin panels
-
-## Firestore model direction
-
-Suggested collections:
-
-- `users`
-- `classrooms`
-- `classrooms/{classroomId}/members`
-- `units`
-- `assignments`
-- `submissions`
-- `aiRuns`
-
-## User profile shape
-
-`users/{uid}` can now contain fields like:
-
-- `name`
-- `email`
-- `role`
-- `requestedRole`
-- `learnerStage`
-- `roleNote`
-- `photoURL`
-- `createdAt`
-- `updatedAt`
-- `lastLoginAt`
-
-### Role flow
-
-- New sign-ins default to `student` unless the email suggests `teacher`
-- Users can set `requestedRole` in the app
-- **Only admins** should directly change `role` to `teacher` / `admin`
-- To bootstrap the first admin, set one user doc's `role` to `admin` manually in Firestore console
-
-## Firebase setup
-
-1. Create a Firebase project
-2. Enable Authentication providers you want (Google, optionally Email/Password)
-3. Set the `FIREBASE_*` env vars locally / in Vercel
-4. Deploy Firestore rules:
-
-```bash
-npx firebase-tools login
-npx firebase-tools deploy --only firestore:rules
-```
-
-## Run locally
+## Local run
 
 ```bash
 npm install
@@ -104,11 +66,68 @@ npm start
 
 Default port: `18890`
 
-## Optional live AI config
+## Firestore rules deploy
 
-- `OPENROUTER_API_KEY` or `OPENAI_API_KEY`
-- `OPENROUTER_BASE_URL` or `OPENAI_BASE_URL`
-- `AI_MODEL`
+```bash
+npx firebase-tools login
+npx firebase-tools deploy --only firestore:rules
+```
+
+## Seed sample data
+
+A sample Firestore dataset is included:
+- `seeds/sample-firestore-data.json`
+
+Seed script:
+- `scripts/seed-firestore.js`
+
+Run it with Google Application Default Credentials available:
+
+```bash
+export FIREBASE_PROJECT_ID=your-project-id
+export GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json
+npm run seed:firestore
+```
+
+You can also pass a custom JSON path:
+
+```bash
+node scripts/seed-firestore.js ./seeds/sample-firestore-data.json
+```
+
+## How to map real users to the sample model
+
+The sample seed uses placeholder UIDs like:
+- `teacher_demo_uid`
+- `student_ada_uid`
+
+For real testing, replace those with actual Firebase Auth user UIDs in:
+- `users`
+- `students.userUid`
+- `classrooms.teacherUid`
+- `classrooms.teacherUids[]`
+- `classrooms.studentUids[]`
+- `submissions.studentUid`
+- `progressSummaries.userUid`
+
+## What remains demo in v1
+
+Still demo/static:
+- analytics page visualizations
+- AI chat content unless you provide an LLM API key
+- lesson-loop content unless you provide an LLM API key
+- landing-page roadmap/marketing copy
+- no teacher-side create/edit UI yet for classrooms/students/submissions
+- no server-side admin API; data access is still client-side Firebase SDK + Firestore rules
+
+## Notes / limitations
+
+- First admin bootstrap still requires manually setting one `users/{uid}.role = admin`.
+- Teacher/student Firestore loading assumes a simple v1 model:
+  - teacher dashboards find classrooms by `teacherUid` / `teacherUids`
+  - student dashboards find the learner via `students.userUid == auth.uid`
+  - progress summary doc id matches `studentId`
+- Queries are intentionally simple to preserve browser-only Firebase compatibility and avoid extra backend work for this v1.
 
 ## Deploy
 
@@ -118,14 +137,8 @@ For Vercel:
 vercel --prod
 ```
 
-For Firebase rules:
+For Firestore rules:
 
 ```bash
 npx firebase-tools deploy --only firestore:rules
 ```
-
-## Known limitations
-
-- The app still uses client-side Firebase SDK only; there is **no server-side admin API** yet
-- Bootstrapping the very first admin still requires a manual Firestore console edit
-- Email/password login UI is present, but the provider must be enabled in Firebase Auth to work
