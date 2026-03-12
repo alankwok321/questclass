@@ -90,6 +90,7 @@
   let adminSelectedUid = null;
   let adminFilters = { query: '', status: 'all' };
   let toastTimer = null;
+  let firestoreData = { mode: 'demo', classrooms: [], classroom: null, students: [], student: null, summary: null, submissions: [], metrics: [] };
 
   const qs = (s, p = document) => p.querySelector(s);
   const qsa = (s, p = document) => Array.from(p.querySelectorAll(s));
@@ -112,13 +113,23 @@
   const getSettings = () => { try { return JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}'); } catch { return {}; } };
   const saveSettings = (settings) => localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
   const clearSettings = () => localStorage.removeItem(SETTINGS_KEY);
-  const currentStudent = (state) => demoData.students.find((s) => s.id === state.currentStudentId) || demoData.students[0];
-  const currentClassroom = (state) => demoData.classrooms.find((c) => c.id === state.currentClassroomId) || demoData.classrooms[0];
   const showToast = (text) => { const n = qs('[data-toast]'); if (!n) return; n.textContent = text; n.classList.add('show'); clearTimeout(toastTimer); toastTimer = setTimeout(() => n.classList.remove('show'), 2500); };
   const state = loadState();
 
+  const currentTeacherClassroom = () => firestoreData.classroom || demoData.classrooms.find((c) => c.id === state.currentClassroomId) || demoData.classrooms[0];
+  const currentTeacherStudent = () => firestoreData.students.find((s) => s.id === state.currentStudentId) || demoData.students.find((s) => s.id === state.currentStudentId) || firestoreData.students[0] || demoData.students[0];
+  const currentStudentView = () => firestoreData.student || demoData.students.find((s) => s.id === state.currentStudentId) || demoData.students[0];
+
   function renderNav(active) {
-    const visiblePages = demoData.pages.filter((p) => p.key !== 'admin' || state.session.role === 'admin');
+    const role = state.session.role;
+    const signedIn = state.session.authMode === 'firebase' && state.session.uid;
+    const visiblePages = demoData.pages.filter((p) => {
+      if (p.key === 'landing') return true;
+      if (p.key === 'admin') return role === 'admin';
+      if (p.key === 'teacher' || p.key === 'analytics') return signedIn && (role === 'teacher' || role === 'admin');
+      if (p.key === 'student' || p.key === 'chat') return signedIn && (role === 'student' || role === 'admin');
+      return true;
+    });
     return visiblePages.map((p) => `<a class="nav-link ${p.key === active ? 'active' : ''}" href="${p.href}">${p.label}</a>`).join('');
   }
   function renderSettingsForm(settings = {}) { return `<label class="field-label">API Base URL</label><input name="apiBaseUrl" type="url" value="${escapeHtml(settings.apiBaseUrl || '')}" placeholder="https://openrouter.ai/api/v1" /><label class="field-label">Model</label><input name="apiModel" type="text" value="${escapeHtml(settings.apiModel || '')}" placeholder="openai/gpt-4.1-mini" /><label class="field-label">API Key</label><input name="apiKey" type="password" value="${escapeHtml(settings.apiKey || '')}" placeholder="sk-..." /><div class="inline-actions"><button class="button button-primary" type="submit">儲存</button><button class="button button-ghost" type="button" data-clear-settings>清除</button></div>`; }
@@ -128,21 +139,106 @@
   function renderAdminPanel(users = [], session = {}) { if (session.role !== 'admin') return '<div class="panel-header"><div><span class="eyebrow">Admin</span><h3>角色管理</h3></div></div><p class="muted">此區僅在 Firestore profile.role = admin 時顯示。</p>'; return `<div class="panel-header"><div><span class="eyebrow">Admin</span><h3>角色管理</h3></div></div><form class="admin-role-form" data-admin-role-form><label class="field-label">選擇使用者</label><select name="uid">${users.map((u) => `<option value="${escapeHtml(u.uid)}">${escapeHtml(u.name || u.email || u.uid)} · ${escapeHtml(u.role || 'student')}</option>`).join('')}</select><label class="field-label">新角色</label><select name="role">${['student', 'teacher', 'admin'].map((r) => `<option value="${r}">${r}</option>`).join('')}</select><div class="inline-actions"><button class="button button-primary" type="submit">更新角色</button></div></form>`; }
   async function sendChat(message, studentName) { const s = getSettings(); const res = await fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message, topic: 'fractions', mode: 'socratic', studentName, apiBaseUrl: s.apiBaseUrl || '', model: s.apiModel || '', apiKey: s.apiKey || '' }) }); const data = await res.json(); if (!res.ok) throw new Error(data.error || 'Chat request failed'); return data; }
   async function runLessonLoop(student, classroom) { const s = getSettings(); const res = await fetch('/api/teacher/lesson-loop', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ topic: 'fractions', weakness: student.weaknessLabel, studentName: student.name, grade: classroom.grade, apiBaseUrl: s.apiBaseUrl || '', model: s.apiModel || '', apiKey: s.apiKey || '' }) }); const data = await res.json(); if (!res.ok) throw new Error(data.error || 'Lesson loop request failed'); return data; }
+  const metricValue = (label, fallback) => firestoreData.metrics.find((item) => item.label === label)?.value || fallback;
+  const studentMastery = (student) => Number(student?.summary?.mastery || student?.mastery || 0);
+  const studentWeakness = (student) => student?.summary?.weaknessLabel || student?.weaknessLabel || '待補資料';
+  const studentWeaknessScore = (student) => student?.summary?.weaknessScore || student?.weaknessScore || '—';
+  const studentLevel = (student) => student?.summary?.level || student?.level || 1;
+  const studentXp = (student) => student?.summary?.xp || student?.xp || 0;
+  const studentNextXp = (student) => student?.summary?.nextLevelXp || student?.nextLevelXp || 0;
+  const studentStreak = (student) => student?.summary?.streak || student?.streak || 0;
+  const studentStatus = (student) => studentMastery(student) >= 85 ? '穩定' : studentMastery(student) >= 75 ? '追蹤中' : '需加強';
 
   function setShell() { qsa('[data-nav]').forEach((n) => n.innerHTML = renderNav(page)); qsa('[data-brand]').forEach((n) => n.textContent = `${demoData.brand.name} ${demoData.brand.version}`); qsa('[data-promise]').forEach((n) => n.textContent = demoData.brand.promise); qsa('[data-topbar-auth]').forEach((n) => n.innerHTML = renderAuthPanel(state.session, !!window.QuestClassFirebase?.enabled?.())); }
   function wireSettings() { qsa('[data-settings-form]').forEach((form) => { form.innerHTML = renderSettingsForm(getSettings()); form.onsubmit = (e) => { e.preventDefault(); saveSettings(Object.fromEntries(new FormData(form).entries())); showToast('AI 設定已儲存'); }; const clearBtn = qs('[data-clear-settings]', form); if (clearBtn) clearBtn.onclick = () => { clearSettings(); wireSettings(); showToast('AI 設定已清除'); }; }); }
   function wireFirebaseStatus() { qsa('[data-firebase-status]').forEach((node) => node.innerHTML = renderFirebaseStatus()); }
   function applyFirebaseUser(user) { state.session.authMode = 'firebase'; state.session.role = user.role || state.session.role; state.session.userName = user.name || state.session.userName; state.session.email = user.email || state.session.email; state.session.uid = user.uid || state.session.uid; state.session.photoURL = user.photoURL || state.session.photoURL || ''; state.session.profileRole = user.profileRole || ''; state.session.derivedRole = user.derivedRole || ''; saveState(state); }
-  function clearFirebaseSession() { state.session.authMode = 'demo'; state.session.role = 'teacher'; state.session.userName = 'Alan Teacher'; state.session.email = 'teacher@questclass.app'; state.session.uid = null; state.session.photoURL = ''; state.session.profileRole = ''; state.session.derivedRole = ''; saveState(state); }
+  function clearFirebaseSession() { state.session.authMode = 'demo'; state.session.role = 'teacher'; state.session.userName = 'Alan Teacher'; state.session.email = 'teacher@questclass.app'; state.session.uid = null; state.session.photoURL = ''; state.session.profileRole = ''; state.session.derivedRole = ''; firestoreData = { mode: 'demo', classrooms: [], classroom: null, students: [], student: null, summary: null, submissions: [], metrics: [] }; saveState(state); }
   function enforcePageGuard() { if (state.session.authMode !== 'firebase' || !state.session.uid) { if (page === 'admin') window.location.replace('/'); return; } const allowed = rolePages[state.session.role] || []; if (page !== 'landing' && !allowed.includes(page)) window.location.replace(state.session.role === 'teacher' ? '/teacher' : (state.session.role === 'admin' ? '/admin' : '/student')); }
   async function refreshAdminUsers() { if (state.session.role !== 'admin' || !window.QuestClassFirebase?.listUsers) { adminUsers = []; adminSelectedUid = null; return; } const result = await window.QuestClassFirebase.listUsers(); adminUsers = result?.ok ? (result.users || []) : []; if (!adminUsers.length) adminSelectedUid = null; else if (!adminSelectedUid || !adminUsers.some((u) => u.uid === adminSelectedUid)) adminSelectedUid = adminUsers[0].uid; }
-  async function handleGoogleLogin() { try { if (!window.QuestClassFirebase?.signInWithGoogle) return showToast('Firebase 尚未啟用'); const result = await window.QuestClassFirebase.signInWithGoogle(); if (!result.ok) return showToast(result.error || 'Google 登入失敗'); applyFirebaseUser(result.user); firebaseProfile = result.user.profile || firebaseProfile; await refreshAdminUsers(); renderAll(); enforcePageGuard(); showToast('已登入 Google'); } catch (e) { showToast(e?.message || 'Google 登入失敗'); } }
+  async function syncFirestoreData() {
+    if (state.session.authMode !== 'firebase' || !state.session.uid || !window.QuestClassFirebase?.enabled?.()) {
+      firestoreData = { mode: 'demo', classrooms: [], classroom: null, students: [], student: null, summary: null, submissions: [], metrics: [] };
+      return;
+    }
+    try {
+      if (state.session.role === 'teacher' || state.session.role === 'admin') {
+        const dashboard = await window.QuestClassFirebase.getTeacherDashboard(state.currentClassroomId || null);
+        if (!dashboard?.ok) throw new Error(dashboard?.error || 'Teacher dashboard load failed');
+        firestoreData = { mode: 'firestore', classrooms: dashboard.classrooms || [], classroom: dashboard.classroom || null, students: dashboard.students || [], student: null, summary: null, submissions: dashboard.submissions || [], metrics: dashboard.metrics || [] };
+        if (firestoreData.classroom?.id) state.currentClassroomId = firestoreData.classroom.id;
+        if (firestoreData.students.length && !firestoreData.students.some((student) => student.id === state.currentStudentId)) state.currentStudentId = firestoreData.students[0].id;
+      } else {
+        const dashboard = await window.QuestClassFirebase.getStudentDashboard();
+        if (!dashboard?.ok) throw new Error(dashboard?.error || 'Student dashboard load failed');
+        firestoreData = { mode: 'firestore', classrooms: dashboard.classrooms || [], classroom: dashboard.classrooms?.[0] || null, students: [], student: dashboard.student || null, summary: dashboard.summary || null, submissions: dashboard.submissions || [], metrics: [] };
+        if (firestoreData.student?.id) state.currentStudentId = firestoreData.student.id;
+      }
+      saveState(state);
+    } catch (error) {
+      console.error(error);
+      firestoreData = { mode: 'error', classrooms: [], classroom: null, students: [], student: null, summary: null, submissions: [], metrics: [] };
+      showToast(error?.message || 'Firestore 資料載入失敗');
+    }
+  }
+  async function handleGoogleLogin() { try { if (!window.QuestClassFirebase?.signInWithGoogle) return showToast('Firebase 尚未啟用'); const result = await window.QuestClassFirebase.signInWithGoogle(); if (!result.ok) return showToast(result.error || 'Google 登入失敗'); applyFirebaseUser(result.user); firebaseProfile = result.user.profile || firebaseProfile; await refreshAdminUsers(); await syncFirestoreData(); renderAll(); enforcePageGuard(); showToast('已登入 Google'); } catch (e) { showToast(e?.message || 'Google 登入失敗'); } }
   async function handleLogout() { try { if (window.QuestClassFirebase?.signOut) await window.QuestClassFirebase.signOut(); clearFirebaseSession(); firebaseProfile = null; adminUsers = []; adminSelectedUid = null; renderAll(); if (page === 'admin') window.location.replace('/'); showToast('已登出'); } catch (e) { showToast(e?.message || '登出失敗'); } }
 
   function renderLanding() { const roadmap = qs('[data-roadmap]'); const spotlight = qs('[data-spotlight]'); if (roadmap) roadmap.innerHTML = demoData.roadmap.map((i) => `<li>${escapeHtml(i)}</li>`).join(''); if (spotlight) spotlight.innerHTML = demoData.pages.filter((i) => i.key !== 'landing' && (i.key !== 'admin' || state.session.role === 'admin')).map((i) => `<a class="surface-link" href="${i.href}"><strong>${i.label}</strong><span>進入 ${i.label} 頁面</span></a>`).join(''); }
-  function renderTeacher() { const student = currentStudent(state); const classroom = currentClassroom(state); const hero = qs('[data-teacher-hero]'); if (hero) hero.innerHTML = `<div class="hero-copy"><span class="eyebrow">Teacher OS</span><h1>${escapeHtml(classroom.name)}</h1><p>目前焦點學生：${escapeHtml(student.name)} · 弱點：${escapeHtml(student.weaknessLabel)}</p></div><div class="hero-stats"><div><strong>${classroom.activeStudents}</strong><span>活躍學生</span></div><div><strong>${classroom.completionRate}%</strong><span>完成率</span></div></div>`; const metrics = qs('[data-teacher-metrics]'); if (metrics) metrics.innerHTML = demoData.teacherMetrics.map((m) => `<article class="metric-card"><span>${m.label}</span><strong>${m.value}</strong></article>`).join(''); const students = qs('[data-student-cards]'); if (students) { students.innerHTML = demoData.students.map((i) => `<button class="list-card ${i.id === state.currentStudentId ? 'active' : ''}" data-student-id="${i.id}"><strong>${i.name}</strong><span>${i.status}</span><p>${i.weaknessLabel}</p></button>`).join(''); qsa('[data-student-id]', students).forEach((b) => b.onclick = () => { state.currentStudentId = b.dataset.studentId; saveState(state); renderTeacher(); }); } const cls = qs('[data-classroom-list]'); if (cls) { cls.innerHTML = demoData.classrooms.map((i) => `<button class="list-card ${i.id === state.currentClassroomId ? 'active' : ''}" data-classroom-id="${i.id}"><strong>${i.name}</strong><span>${i.grade} · ${i.subject}</span></button>`).join(''); qsa('[data-classroom-id]', cls).forEach((b) => b.onclick = () => { state.currentClassroomId = b.dataset.classroomId; saveState(state); renderTeacher(); }); } const summary = qs('[data-teacher-summary]'); if (summary) summary.innerHTML = state.teacherSummary.map((i) => `<li>${escapeHtml(i)}</li>`).join(''); const assignment = qs('[data-assignment]'); if (assignment) assignment.innerHTML = state.assignment.map((i) => `<li>${escapeHtml(i)}</li>`).join(''); const insight = qs('[data-insight]'); if (insight) insight.textContent = state.insight; const mode = qs('[data-loop-mode]'); if (mode) mode.textContent = state.modes.loop; const output = qs('[data-loop-output]'); if (output) output.innerHTML = (state.loopSteps.length ? state.loopSteps : ['按下「產生 lesson loop」取得新一輪教學流程。']).map((i) => `<div class="timeline-item">${escapeHtml(i)}</div>`).join(''); const runBtn = qs('[data-run-loop]'); if (runBtn) runBtn.onclick = async () => { try { const data = await runLessonLoop(currentStudent(state), currentClassroom(state)); state.assignment = data.assignment || state.assignment; state.insight = data.insight || state.insight; state.teacherSummary = data.teacherSummary || state.teacherSummary; state.loopSteps = data.steps || []; state.modes.loop = data.mode === 'live' ? 'Live AI' : 'Demo mode'; saveState(state); renderTeacher(); showToast('教學流程已更新'); } catch (e) { showToast(e?.message || '教學流程更新失敗'); } }; }
-  function renderStudent() { const student = currentStudent(state); const hero = qs('[data-student-hero]'); if (hero) hero.innerHTML = `<div class="hero-copy"><span class="eyebrow">Student Home</span><h1>${escapeHtml(student.name)}</h1><p>目前弱點：${escapeHtml(student.weaknessLabel)} · 連續學習 ${student.streak} 天</p></div><div class="hero-stats"><div><strong>Lv.${student.level}</strong><span>目前等級</span></div><div><strong>${student.mastery}%</strong><span>技能掌握</span></div></div>`; const progress = qs('[data-student-progress]'); if (progress) progress.innerHTML = `<article class="metric-card"><span>XP</span><strong>${student.xp}</strong></article><article class="metric-card"><span>下一級目標</span><strong>${student.nextLevelXp}</strong></article><article class="metric-card"><span>弱點分數</span><strong>${student.weaknessScore}</strong></article>`; const quests = qs('[data-quests]'); if (quests) quests.innerHTML = demoData.dailyQuests.map((q) => `<article class="list-card"><strong>${q.title}</strong><span>${q.meta}</span></article>`).join(''); const roster = qs('[data-student-roster]'); if (roster) { roster.innerHTML = demoData.students.map((i) => `<button class="list-card ${i.id === state.currentStudentId ? 'active' : ''}" data-roster-student="${i.id}"><strong>${i.name}</strong><span>Level ${i.level}</span></button>`).join(''); qsa('[data-roster-student]', roster).forEach((b) => b.onclick = () => { state.currentStudentId = b.dataset.rosterStudent; saveState(state); renderStudent(); }); } }
-  function renderChatPage() { const messages = qs('[data-chat-messages]'); if (messages) messages.innerHTML = state.chat.map((m) => `<div class="chat-bubble ${m.role}">${escapeHtml(m.text)}</div>`).join(''); const status = qs('[data-chat-mode]'); if (status) status.textContent = state.modes.chat; const form = qs('[data-chat-form]'); if (form) form.onsubmit = async (e) => { e.preventDefault(); const input = qs('[name="message"]', form); const msg = input?.value.trim(); if (!msg) return; state.chat.push({ role: 'user', text: msg }); saveState(state); renderChatPage(); input.value = ''; try { const data = await sendChat(msg, currentStudent(state).name); state.chat.push({ role: 'ai', text: data.reply || '目前沒有回應。' }); state.modes.chat = data.mode === 'live' ? 'Live AI' : 'Demo mode'; saveState(state); renderChatPage(); } catch (e2) { state.chat.push({ role: 'ai', text: '目前連線失敗，我先用 demo 模式陪你拆題。先說說你最卡的那一步。' }); state.modes.chat = 'Demo fallback'; saveState(state); renderChatPage(); showToast(e2?.message || 'Chat 失敗'); } }; qsa('[data-seed-prompt]').forEach((b) => b.onclick = () => { const i = qs('[name="message"]'); if (i) i.value = b.dataset.seedPrompt || ''; }); }
+  function renderTeacher() {
+    const student = currentTeacherStudent();
+    const classroom = currentTeacherClassroom();
+    const hero = qs('[data-teacher-hero]');
+    if (hero) hero.innerHTML = `<div class="hero-copy"><span class="eyebrow">Teacher OS</span><h1>${escapeHtml(classroom?.name || '尚未連接班級')}</h1><p>目前焦點學生：${escapeHtml(student?.name || '—')} · 弱點：${escapeHtml(studentWeakness(student))}</p></div><div class="hero-stats"><div><strong>${escapeHtml(String(classroom?.activeStudents || classroom?.studentIds?.length || 0))}</strong><span>活躍學生</span></div><div><strong>${escapeHtml(String(classroom?.completionRate || metricValue('班級完成率', '0%')))}</strong><span>完成率</span></div></div>`;
+    const metrics = qs('[data-teacher-metrics]');
+    if (metrics) metrics.innerHTML = (firestoreData.mode === 'firestore' ? firestoreData.metrics : demoData.teacherMetrics).map((m) => `<article class="metric-card"><span>${m.label}</span><strong>${m.value}</strong></article>`).join('');
+    const students = qs('[data-student-cards]');
+    if (students) {
+      const source = firestoreData.mode === 'firestore' ? firestoreData.students : demoData.students;
+      students.innerHTML = source.length ? source.map((i) => `<button class="list-card ${i.id === state.currentStudentId ? 'active' : ''}" data-student-id="${i.id}"><strong>${escapeHtml(i.name)}</strong><span>${escapeHtml(studentStatus(i))}</span><p>${escapeHtml(studentWeakness(i))}</p></button>`).join('') : '<p class="muted">這個班級目前還沒有學生資料。</p>';
+      qsa('[data-student-id]', students).forEach((b) => b.onclick = () => { state.currentStudentId = b.dataset.studentId; saveState(state); renderTeacher(); });
+    }
+    const cls = qs('[data-classroom-list]');
+    if (cls) {
+      const source = firestoreData.mode === 'firestore' ? firestoreData.classrooms : demoData.classrooms;
+      cls.innerHTML = source.length ? source.map((i) => `<button class="list-card ${i.id === state.currentClassroomId ? 'active' : ''}" data-classroom-id="${i.id}"><strong>${escapeHtml(i.name)}</strong><span>${escapeHtml(i.grade || '')} · ${escapeHtml(i.subject || '')}</span></button>`).join('') : '<p class="muted">目前沒有可顯示的班級。</p>';
+      qsa('[data-classroom-id]', cls).forEach((b) => b.onclick = async () => { state.currentClassroomId = b.dataset.classroomId; saveState(state); await syncFirestoreData(); renderTeacher(); });
+    }
+    const summary = qs('[data-teacher-summary]'); if (summary) summary.innerHTML = state.teacherSummary.map((i) => `<li>${escapeHtml(i)}</li>`).join('');
+    const assignment = qs('[data-assignment]'); if (assignment) assignment.innerHTML = state.assignment.map((i) => `<li>${escapeHtml(i)}</li>`).join('');
+    const insight = qs('[data-insight]'); if (insight) insight.textContent = state.insight;
+    const mode = qs('[data-loop-mode]'); if (mode) mode.textContent = state.modes.loop + (firestoreData.mode === 'firestore' ? ' · Firestore data' : '');
+    const output = qs('[data-loop-output]');
+    if (output) {
+      const recentSubmissions = firestoreData.mode === 'firestore' ? firestoreData.submissions.filter((item) => item.studentId === student?.id).slice(0, 3).map((item) => `最近提交：${item.assignmentTitle || item.topic || '未命名作業'} · ${item.score ?? '—'} 分`) : [];
+      const items = state.loopSteps.length ? state.loopSteps : (recentSubmissions.length ? recentSubmissions : ['按下「產生 lesson loop」取得新一輪教學流程。']);
+      output.innerHTML = items.map((i) => `<div class="timeline-item">${escapeHtml(i)}</div>`).join('');
+    }
+    const runBtn = qs('[data-run-loop]'); if (runBtn) runBtn.onclick = async () => { try { const data = await runLessonLoop({ name: student?.name || 'Ada', weaknessLabel: studentWeakness(student) }, { grade: classroom?.grade || 'Grade 5' }); state.assignment = data.assignment || state.assignment; state.insight = data.insight || state.insight; state.teacherSummary = data.teacherSummary || state.teacherSummary; state.loopSteps = data.steps || []; state.modes.loop = data.mode === 'live' ? 'Live AI' : 'Demo mode'; saveState(state); renderTeacher(); showToast('教學流程已更新'); } catch (e) { showToast(e?.message || '教學流程更新失敗'); } };
+  }
+  function renderStudent() {
+    const student = currentStudentView();
+    const summaryData = firestoreData.summary || student?.summary || {};
+    const hero = qs('[data-student-hero]');
+    if (hero) hero.innerHTML = `<div class="hero-copy"><span class="eyebrow">Student Home</span><h1>${escapeHtml(student?.name || '尚未建立學生檔案')}</h1><p>目前弱點：${escapeHtml(summaryData.weaknessLabel || studentWeakness(student))} · 連續學習 ${escapeHtml(String(summaryData.streak || studentStreak(student)))} 天</p></div><div class="hero-stats"><div><strong>Lv.${escapeHtml(String(summaryData.level || studentLevel(student)))}</strong><span>目前等級</span></div><div><strong>${escapeHtml(String(summaryData.mastery || studentMastery(student)))}%</strong><span>技能掌握</span></div></div>`;
+    const progress = qs('[data-student-progress]');
+    if (progress) progress.innerHTML = `<article class="metric-card"><span>XP</span><strong>${escapeHtml(String(summaryData.xp || studentXp(student)))}</strong></article><article class="metric-card"><span>下一級目標</span><strong>${escapeHtml(String(summaryData.nextLevelXp || studentNextXp(student)))}</strong></article><article class="metric-card"><span>弱點分數</span><strong>${escapeHtml(summaryData.weaknessScore || studentWeaknessScore(student))}</strong></article>`;
+    const quests = qs('[data-quests]');
+    if (quests) {
+      const source = firestoreData.mode === 'firestore' && firestoreData.submissions.length
+        ? firestoreData.submissions.slice(0, 3).map((item) => ({ title: item.assignmentTitle || item.topic || '未命名任務', meta: `${item.status || 'submitted'} · ${item.score ?? '—'} 分` }))
+        : demoData.dailyQuests;
+      quests.innerHTML = source.map((q) => `<article class="list-card"><strong>${escapeHtml(q.title)}</strong><span>${escapeHtml(q.meta)}</span></article>`).join('');
+    }
+    const roster = qs('[data-student-roster]');
+    if (roster) {
+      const source = firestoreData.mode === 'firestore' && firestoreData.classrooms.length
+        ? firestoreData.classrooms.map((room) => ({ id: room.id, name: room.name, label: `${room.grade || ''} · ${room.subject || ''}` }))
+        : demoData.students.map((i) => ({ id: i.id, name: i.name, label: `Level ${i.level}` }));
+      roster.innerHTML = source.map((i) => `<article class="list-card ${i.id === state.currentClassroomId || i.id === state.currentStudentId ? 'active' : ''}"><strong>${escapeHtml(i.name)}</strong><span>${escapeHtml(i.label)}</span></article>`).join('');
+    }
+  }
+  function renderChatPage() { const messages = qs('[data-chat-messages]'); if (messages) messages.innerHTML = state.chat.map((m) => `<div class="chat-bubble ${m.role}">${escapeHtml(m.text)}</div>`).join(''); const status = qs('[data-chat-mode]'); if (status) status.textContent = state.modes.chat; const form = qs('[data-chat-form]'); if (form) form.onsubmit = async (e) => { e.preventDefault(); const input = qs('[name="message"]', form); const msg = input?.value.trim(); if (!msg) return; state.chat.push({ role: 'user', text: msg }); saveState(state); renderChatPage(); input.value = ''; try { const data = await sendChat(msg, currentStudentView()?.name || currentTeacherStudent()?.name || 'Ada'); state.chat.push({ role: 'ai', text: data.reply || '目前沒有回應。' }); state.modes.chat = data.mode === 'live' ? 'Live AI' : 'Demo mode'; saveState(state); renderChatPage(); } catch (e2) { state.chat.push({ role: 'ai', text: '目前連線失敗，我先用 demo 模式陪你拆題。先說說你最卡的那一步。' }); state.modes.chat = 'Demo fallback'; saveState(state); renderChatPage(); showToast(e2?.message || 'Chat 失敗'); } }; qsa('[data-seed-prompt]').forEach((b) => b.onclick = () => { const i = qs('[name="message"]'); if (i) i.value = b.dataset.seedPrompt || ''; }); }
   function renderAnalytics() { const units = qs('[data-units]'); if (units) units.innerHTML = demoData.units.map((u) => `<article class="list-card"><strong>${u.name}</strong><span>${u.tag}</span><p>${u.progress}</p></article>`).join(''); const bank = qs('[data-question-bank]'); if (bank) bank.innerHTML = demoData.questionBank.map((i) => `<article class="list-card"><strong>${i.type}</strong><p>${i.title}</p></article>`).join(''); const map = qs('[data-knowledge-map]'); if (map) map.innerHTML = demoData.knowledgeMap.map((i) => `<article class="map-card ${i.status}"><strong>${i.title}</strong><span>${i.meta}</span></article>`).join(''); const skills = qs('[data-skills]'); if (skills) skills.innerHTML = demoData.skills.map((i) => `<div class="skill-row"><span>${i.label}</span><div class="skill-bar"><div style="width:${i.score}%"></div></div><strong>${i.score}%</strong></div>`).join(''); const heatmap = qs('[data-heatmap]'); if (heatmap) heatmap.innerHTML = demoData.heatmap.map((i) => `<div class="heat-cell ${i.level}">${i.label}</div>`).join(''); const links = qs('[data-mistake-links]'); if (links) links.innerHTML = demoData.mistakeLinks.map((i) => `<article class="list-card"><strong>${i.title}</strong><p>${i.text}</p></article>`).join(''); }
   function adminDisplayStatus(user = {}) { return String(user.accountStatus || 'active').toLowerCase(); }
   function adminHasIssue(user = {}) { return !!(adminDisplayStatus(user) !== 'active' || String(user.adminNote || '').trim()); }
@@ -193,7 +289,7 @@
   function wireAuthUi() { qsa('[data-auth-action="google"]').forEach((b) => b.onclick = handleGoogleLogin); qsa('[data-auth-action="logout"]').forEach((b) => b.onclick = handleLogout); }
   function wireProfileUi() { qsa('[data-profile-panel]').forEach((node) => { if (state.session.authMode !== 'firebase' || !state.session.uid) { node.innerHTML = '<div class="panel-header"><div><span class="eyebrow">Profile</span><h3>角色 / 個人檔案</h3></div></div><p class="muted">先登入，才能把 profile / requestedRole 寫入 Firestore。</p>'; return; } node.innerHTML = renderProfilePanel(state.session, firebaseProfile || {}); const form = qs('[data-profile-form]', node); if (!form) return; form.onsubmit = async (e) => { e.preventDefault(); const result = await window.QuestClassFirebase.saveMyProfile(Object.fromEntries(new FormData(form).entries())); if (!result.ok) return showToast(result.error || 'Profile 儲存失敗'); applyFirebaseUser(result.user); firebaseProfile = result.user.profile || firebaseProfile; await refreshAdminUsers(); renderAll(); showToast('Profile 已儲存'); }; }); qsa('[data-admin-panel]').forEach((node) => { node.innerHTML = renderAdminPanel(adminUsers, state.session); const form = qs('[data-admin-role-form]', node); if (!form) return; form.onsubmit = async (e) => { e.preventDefault(); const fd = new FormData(form); const result = await window.QuestClassFirebase.adminUpdateUserAccount(fd.get('uid'), { role: fd.get('role') }); if (!result.ok) return showToast(result.error || '角色更新失敗'); await refreshAdminUsers(); renderAll(); showToast('角色已更新'); }; }); }
   function renderAll() { setShell(); wireSettings(); wireFirebaseStatus(); renderLanding(); renderTeacher(); renderStudent(); renderChatPage(); renderAnalytics(); renderAdminPage(); wireAuthUi(); wireProfileUi(); }
-  async function initFirebaseSession() { if (!window.QuestClassFirebase?.init) return; try { const result = await window.QuestClassFirebase.init(); if (result?.user) { applyFirebaseUser(result.user); firebaseProfile = result.user.profile || firebaseProfile; await refreshAdminUsers(); } wireFirebaseStatus(); enforcePageGuard(); } catch (e) { console.error(e); wireFirebaseStatus(); } }
+  async function initFirebaseSession() { if (!window.QuestClassFirebase?.init) return; try { const result = await window.QuestClassFirebase.init(); if (result?.user) { applyFirebaseUser(result.user); firebaseProfile = result.user.profile || firebaseProfile; await refreshAdminUsers(); await syncFirestoreData(); } wireFirebaseStatus(); enforcePageGuard(); } catch (e) { console.error(e); wireFirebaseStatus(); } }
   async function boot() { renderAll(); await initFirebaseSession(); renderAll(); }
   window.addEventListener('error', (e) => { if (e?.message) showToast(e.message); });
   boot();
