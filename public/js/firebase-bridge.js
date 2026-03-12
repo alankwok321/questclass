@@ -96,14 +96,28 @@ window.QuestClassFirebase = {
     };
   },
 
+  _plainValue(value) {
+    if (value == null) return value;
+    if (typeof value?.toDate === 'function') return value.toDate().toISOString();
+    if (Array.isArray(value)) return value.map((item) => this._plainValue(item));
+    if (typeof value === 'object') {
+      return Object.fromEntries(Object.entries(value).map(([key, entry]) => [key, this._plainValue(entry)]));
+    }
+    return value;
+  },
+
+  _docData(docSnap) {
+    if (!docSnap?.exists()) return null;
+    return { id: docSnap.id, ...this._plainValue(docSnap.data() || {}) };
+  },
+
   async _loadProfile(uid) {
     const ready = await this._ensure();
     if (!ready) return null;
     const { db, sdk } = ready;
     try {
       const snap = await sdk.getDoc(sdk.doc(db, 'users', uid));
-      if (!snap.exists()) return null;
-      return snap.data() || null;
+      return this._docData(snap);
     } catch {
       return null;
     }
@@ -249,6 +263,15 @@ window.QuestClassFirebase = {
     return { ok: true, authUser, me, ready };
   },
 
+  async _requireSignedIn() {
+    const ready = await this._ensure();
+    if (!ready) return { ok: false, error: 'Firebase config missing' };
+    const authUser = await this.waitForAuthState();
+    if (!authUser) return { ok: false, error: '請先登入' };
+    const me = await this._loadProfile(authUser.uid);
+    return { ok: true, authUser, me, ready };
+  },
+
   async listUsers(limit = 50) {
     const adminCheck = await this._requireAdmin();
     if (!adminCheck.ok) return { ok: false, error: adminCheck.error, users: [] };
@@ -257,7 +280,7 @@ window.QuestClassFirebase = {
       const snap = await sdk.getDocs(sdk.query(sdk.collection(db, 'users'), sdk.limit(limit)));
       return {
         ok: true,
-        users: snap.docs.map((doc) => ({ uid: doc.id, ...doc.data() }))
+        users: snap.docs.map((doc) => ({ uid: doc.id, ...this._plainValue(doc.data()) }))
       };
     } catch (error) {
       return { ok: false, error: error?.message || 'User list failed', users: [] };
@@ -282,5 +305,120 @@ window.QuestClassFirebase = {
     } catch (error) {
       return { ok: false, error: error?.message || 'Account update failed' };
     }
+  },
+
+  async listClassrooms() {
+    const check = await this._requireSignedIn();
+    if (!check.ok) return { ok: false, error: check.error, classrooms: [] };
+    const { db, sdk } = check.ready;
+    const me = check.me || {};
+    try {
+      let snap;
+      if (me.role === 'admin') {
+        snap = await sdk.getDocs(sdk.collection(db, 'classrooms'));
+      } else if (me.role === 'teacher') {
+        snap = await sdk.getDocs(sdk.query(sdk.collection(db, 'classrooms'), sdk.where('teacherUids', 'array-contains', check.authUser.uid)));
+      } else {
+        snap = await sdk.getDocs(sdk.query(sdk.collection(db, 'classrooms'), sdk.where('studentUids', 'array-contains', check.authUser.uid)));
+      }
+      const classrooms = snap.docs.map((doc) => this._docData(doc)).filter(Boolean);
+      return { ok: true, classrooms };
+    } catch (error) {
+      return { ok: false, error: error?.message || 'Classroom list failed', classrooms: [] };
+    }
+  },
+
+  async listStudentsForClassroom(classroomId) {
+    const check = await this._requireSignedIn();
+    if (!check.ok) return { ok: false, error: check.error, students: [] };
+    const { db, sdk } = check.ready;
+    try {
+      const classroomSnap = await sdk.getDoc(sdk.doc(db, 'classrooms', classroomId));
+      const classroom = this._docData(classroomSnap);
+      if (!classroom) return { ok: false, error: 'Classroom not found', students: [] };
+      const studentIds = Array.isArray(classroom.studentIds) ? classroom.studentIds : [];
+      const students = await Promise.all(studentIds.map(async (studentId) => {
+        const [studentSnap, summarySnap] = await Promise.all([
+          sdk.getDoc(sdk.doc(db, 'students', studentId)),
+          sdk.getDoc(sdk.doc(db, 'progressSummaries', studentId))
+        ]);
+        const student = this._docData(studentSnap);
+        const summary = this._docData(summarySnap);
+        return student ? { ...student, summary: summary || null } : null;
+      }));
+      return { ok: true, classroom, students: students.filter(Boolean) };
+    } catch (error) {
+      return { ok: false, error: error?.message || 'Student list failed', students: [] };
+    }
+  },
+
+  async getStudentDashboard(studentId = null) {
+    const check = await this._requireSignedIn();
+    if (!check.ok) return { ok: false, error: check.error };
+    const { db, sdk } = check.ready;
+    try {
+      let targetStudentId = studentId;
+      if (!targetStudentId) {
+        const snap = await sdk.getDocs(sdk.query(sdk.collection(db, 'students'), sdk.where('userUid', '==', check.authUser.uid), sdk.limit(1)));
+        targetStudentId = snap.docs[0]?.id || null;
+      }
+      if (!targetStudentId) return { ok: false, error: '找不到 student 檔案' };
+      const [studentSnap, summarySnap, classroomsResult, submissionsSnap] = await Promise.all([
+        sdk.getDoc(sdk.doc(db, 'students', targetStudentId)),
+        sdk.getDoc(sdk.doc(db, 'progressSummaries', targetStudentId)),
+        this.listClassrooms(),
+        sdk.getDocs(sdk.query(sdk.collection(db, 'submissions'), sdk.where('studentUid', '==', check.authUser.uid), sdk.limit(8)))
+      ]);
+      const student = this._docData(studentSnap);
+      const summary = this._docData(summarySnap);
+      if (!student) return { ok: false, error: '找不到 student 檔案' };
+      const classrooms = (classroomsResult.classrooms || []).length
+        ? (classroomsResult.classrooms || [])
+        : (student.classroomIds || []).length
+          ? (await Promise.all((student.classroomIds || []).map(async (classroomId) => {
+              try {
+                const roomSnap = await sdk.getDoc(sdk.doc(db, 'classrooms', classroomId));
+                return this._docData(roomSnap);
+              } catch {
+                return null;
+              }
+            }))).filter(Boolean)
+          : [];
+      return {
+        ok: true,
+        student,
+        summary,
+        classrooms,
+        submissions: submissionsSnap.docs.map((doc) => this._docData(doc)).filter(Boolean)
+      };
+    } catch (error) {
+      return { ok: false, error: error?.message || 'Student dashboard failed' };
+    }
+  },
+
+  async getTeacherDashboard(classroomId = null) {
+    const check = await this._requireSignedIn();
+    if (!check.ok) return { ok: false, error: check.error };
+    const classroomsResult = await this.listClassrooms();
+    if (!classroomsResult.ok) return { ok: false, error: classroomsResult.error || 'Classroom list failed' };
+    const classrooms = classroomsResult.classrooms || [];
+    const targetClassroomId = classroomId || classrooms[0]?.id;
+    if (!targetClassroomId) return { ok: true, classrooms: [], classroom: null, students: [], submissions: [], metrics: [] };
+    const studentResult = await this.listStudentsForClassroom(targetClassroomId);
+    if (!studentResult.ok) return { ok: false, error: studentResult.error || 'Student list failed' };
+    const { db, sdk } = check.ready;
+    const submissionsSnap = await sdk.getDocs(sdk.query(sdk.collection(db, 'submissions'), sdk.where('classroomId', '==', targetClassroomId), sdk.limit(25)));
+    const submissions = submissionsSnap.docs.map((doc) => this._docData(doc)).filter(Boolean);
+    const students = studentResult.students || [];
+    const avgMastery = students.length ? Math.round(students.reduce((sum, item) => sum + Number(item.summary?.mastery || item.mastery || 0), 0) / students.length) : 0;
+    const focusCount = students.filter((item) => Number(item.summary?.mastery || item.mastery || 0) < 75).length;
+    const completionRate = Number(studentResult.classroom?.completionRate || 0);
+    const metrics = [
+      { label: '班級完成率', value: `${completionRate}%` },
+      { label: '平均掌握度', value: `${avgMastery}%` },
+      { label: '需關注學生', value: `${focusCount} 人` },
+      { label: '最近提交數', value: `${submissions.length} 筆` }
+    ];
+    return { ok: true, classrooms, classroom: studentResult.classroom, students, submissions, metrics };
   }
 };
