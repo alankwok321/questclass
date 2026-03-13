@@ -130,32 +130,48 @@ async function resolveProviderConfig(body = {}) {
 
 async function callChatCompletion({ system, user, apiKey, apiBaseUrl, model, temperature = 0.7, responseFormat }) {
   if (!apiKey) return { ok: false, status: 400, error: 'AI provider is not configured. Set an API key first.' };
-  try {
-    const response = await fetch(apiBaseUrl + '/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: 'Bearer ' + apiKey,
-      },
-      body: JSON.stringify({
-        model,
-        temperature,
-        response_format: responseFormat,
-        messages: [
-          ...(system ? [{ role: 'system', content: system }] : []),
-          { role: 'user', content: user },
-        ],
-      }),
-    });
 
-    const raw = await response.text();
-    let data;
-    try { data = JSON.parse(raw); } catch { data = { raw }; }
-    if (!response.ok) return { ok: false, status: response.status, error: data.error?.message || raw || 'Upstream API error' };
-    const text = data.choices?.[0]?.message?.content || '';
-    return { ok: true, status: 200, text, data };
+  const base = String(apiBaseUrl || '').replace(/\/+$/, '');
+  const candidates = [base];
+  // Common OpenAI-compatible deployments expect /v1 prefix.
+  if (base && !/\/v\d+$/.test(base) && !base.endsWith('/v1')) candidates.push(base + '/v1');
+
+  try {
+    let last = null;
+    for (const b of candidates) {
+      const response = await fetch(b + '/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: 'Bearer ' + apiKey,
+        },
+        body: JSON.stringify({
+          model,
+          temperature,
+          response_format: responseFormat,
+          messages: [
+            ...(system ? [{ role: 'system', content: system }] : []),
+            { role: 'user', content: user },
+          ],
+        }),
+      });
+
+      const raw = await response.text();
+      let data;
+      try { data = JSON.parse(raw); } catch { data = { raw }; }
+      if (response.ok) {
+        const text = data.choices?.[0]?.message?.content || '';
+        return { ok: true, status: 200, text, data, usedBaseUrl: b };
+      }
+
+      last = { status: response.status, error: data.error?.message || raw || 'Upstream API error', usedBaseUrl: b };
+      // Only fallback baseUrl variants on 404/405.
+      if (![404, 405].includes(response.status)) break;
+    }
+
+    return { ok: false, status: last?.status || 500, error: last?.error || 'Upstream API error', usedBaseUrl: last?.usedBaseUrl || base };
   } catch (error) {
-    return { ok: false, status: 500, error: error.message };
+    return { ok: false, status: 500, error: error.message, usedBaseUrl: base };
   }
 }
 
