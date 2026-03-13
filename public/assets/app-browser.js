@@ -659,12 +659,31 @@
     }
 
     if (form) {
+      const clearBtn = form.querySelector('[data-chat-clear]');
+      if (clearBtn) {
+        clearBtn.onclick = () => {
+          state.chat = [];
+          saveState(state);
+          renderChat();
+          showToast('已清空對話');
+        };
+      }
+
+      form.querySelectorAll('[data-seed-prompt]').forEach((btn) => {
+        btn.onclick = () => {
+          const text = btn.getAttribute('data-seed-prompt') || '';
+          const input = form.querySelector('[name="message"]');
+          if (input) input.value = text;
+          input?.focus?.();
+        };
+      });
+
       form.onsubmit = async (e) => {
         e.preventDefault();
         const fd = new FormData(form);
         const message = String(fd.get('message') || '').trim();
         if (!message) return;
-        const settings = getSettings();
+
         try {
           state.chat.push({ role: 'user', text: message });
           const idToken = await window.QuestClassFirebase?.getIdToken?.();
@@ -693,11 +712,8 @@
                 classroomName: firestoreState.classroom?.name || '',
                 classroomGrade: firestoreState.classroom?.grade || ''
               },
-              apiBaseUrl: settings.apiBaseUrl || '',
-              model: settings.apiModel || '',
-              apiKey: settings.apiKey || '',
               idToken,
-              studentUid: settings.aiStudentUid || activeStudent?.userUid || ''
+              studentUid: activeStudent?.userUid || ''
             })
           });
           const data = await res.json();
