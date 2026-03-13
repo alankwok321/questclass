@@ -1,6 +1,10 @@
 const express = require('express');
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
+const { initializeApp, cert, getApps } = require('firebase-admin/app');
+const { getAuth } = require('firebase-admin/auth');
+const { getFirestore, FieldValue } = require('firebase-admin/firestore');
 
 const app = express();
 const PORT = process.env.PORT || 18890;
@@ -31,6 +35,96 @@ function getProviderConfig(body = {}) {
     apiKey: body.apiKey || process.env.OPENAI_API_KEY || process.env.OPENROUTER_API_KEY || '',
     apiBaseUrl: (body.apiBaseUrl || process.env.OPENAI_BASE_URL || process.env.OPENROUTER_BASE_URL || 'https://openrouter.ai/api/v1').replace(/\/+$/, ''),
     model: body.model || process.env.AI_MODEL || 'openai/gpt-4.1-mini',
+  };
+}
+
+function getEncryptionKey() {
+  const raw = process.env.AI_CONFIG_ENCRYPTION_KEY || '';
+  if (!raw) return null;
+  return crypto.createHash('sha256').update(raw).digest();
+}
+
+function encryptApiKey(value) {
+  const key = getEncryptionKey();
+  if (!key) throw new Error('AI_CONFIG_ENCRYPTION_KEY is not configured');
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
+  const enc = Buffer.concat([cipher.update(String(value || ''), 'utf8'), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  return {
+    ciphertext: enc.toString('base64'),
+    iv: iv.toString('base64'),
+    tag: tag.toString('base64')
+  };
+}
+
+function decryptApiKey(payload = {}) {
+  const key = getEncryptionKey();
+  if (!key) throw new Error('AI_CONFIG_ENCRYPTION_KEY is not configured');
+  const iv = Buffer.from(payload.iv || '', 'base64');
+  const tag = Buffer.from(payload.tag || '', 'base64');
+  const data = Buffer.from(payload.ciphertext || '', 'base64');
+  const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv);
+  decipher.setAuthTag(tag);
+  const out = Buffer.concat([decipher.update(data), decipher.final()]);
+  return out.toString('utf8');
+}
+
+function getFirebaseAdmin() {
+  if (!getApps().length) {
+    const serviceAccountJson = process.env.FIREBASE_SERVICE_ACCOUNT_JSON || '';
+    if (serviceAccountJson) {
+      initializeApp({ credential: cert(JSON.parse(serviceAccountJson)) });
+    } else {
+      initializeApp();
+    }
+  }
+  return {
+    auth: getAuth(),
+    db: getFirestore()
+  };
+}
+
+async function verifyUserFromToken(idToken) {
+  if (!idToken) return null;
+  const { auth, db } = getFirebaseAdmin();
+  const decoded = await auth.verifyIdToken(idToken);
+  const userSnap = await db.collection('users').doc(decoded.uid).get();
+  const profile = userSnap.exists ? userSnap.data() : {};
+  return {
+    uid: decoded.uid,
+    email: decoded.email || '',
+    role: profile?.role || 'student'
+  };
+}
+
+function canManageStudent(user, targetUid) {
+  if (!user || !targetUid) return false;
+  if (user.role === 'admin' || user.role === 'teacher') return true;
+  return user.uid === targetUid;
+}
+
+async function resolveProviderConfig(body = {}) {
+  let cfg = getProviderConfig(body);
+  if (!body?.idToken) return cfg;
+
+  const actor = await verifyUserFromToken(body.idToken);
+  if (!actor) return cfg;
+  const targetUid = String(body.studentUid || '').trim() || actor.uid;
+  if (!canManageStudent(actor, targetUid)) {
+    const err = new Error('Insufficient role to use this student config');
+    err.status = 403;
+    throw err;
+  }
+
+  const { db } = getFirebaseAdmin();
+  const snap = await db.collection('aiProviderConfigs').doc(targetUid).get();
+  if (!snap.exists) return cfg;
+  const data = snap.data() || {};
+  return {
+    apiKey: decryptApiKey(data.secret || {}),
+    apiBaseUrl: String(data?.provider?.apiBaseUrl || cfg.apiBaseUrl || 'https://openrouter.ai/api/v1').replace(/\/+$/, ''),
+    model: String(data?.provider?.model || cfg.model || 'openai/gpt-4.1-mini')
   };
 }
 
@@ -72,12 +166,41 @@ app.get('/js/firebase-config.js', (req, res) => {
 
 app.get('/api/runtime-config', (req, res) => {
   const firebase = getFirebaseRuntimeConfig();
-  const aiConfigured = Boolean(process.env.OPENAI_API_KEY || process.env.OPENROUTER_API_KEY);
+  const aiConfigured = Boolean(process.env.OPENAI_API_KEY || process.env.OPENROUTER_API_KEY || process.env.AI_CONFIG_ENCRYPTION_KEY);
   res.json({
     firebase: firebase.firebase,
     firebaseEnabled: firebase.enabled,
     aiConfigured
   });
+});
+
+app.post('/api/ai-config/upsert', async (req, res) => {
+  try {
+    const { idToken, studentUid, apiKey, apiBaseUrl, model } = req.body || {};
+    const actor = await verifyUserFromToken(idToken);
+    if (!actor) return res.status(401).json({ error: 'Unauthorized' });
+
+    const targetUid = String(studentUid || '').trim() || actor.uid;
+    if (!canManageStudent(actor, targetUid)) return res.status(403).json({ error: 'Insufficient role to manage this student config' });
+    if (!String(apiKey || '').trim()) return res.status(400).json({ error: 'apiKey required' });
+
+    const enc = encryptApiKey(apiKey);
+    const { db } = getFirebaseAdmin();
+    await db.collection('aiProviderConfigs').doc(targetUid).set({
+      studentUid: targetUid,
+      provider: {
+        apiBaseUrl: String(apiBaseUrl || 'https://openrouter.ai/api/v1').trim().replace(/\/+$/, ''),
+        model: String(model || 'openai/gpt-4.1-mini').trim()
+      },
+      secret: enc,
+      updatedBy: actor.uid,
+      updatedAt: FieldValue.serverTimestamp()
+    }, { merge: true });
+
+    return res.json({ ok: true, studentUid: targetUid });
+  } catch (error) {
+    return res.status(500).json({ error: error?.message || 'save ai config failed' });
+  }
 });
 
 app.use(express.static(publicDir));
@@ -90,10 +213,16 @@ app.post('/api/chat', async (req, res) => {
   const { message, topic = 'general', mode = 'socratic', studentName = 'student' } = req.body || {};
   if (!message?.trim()) return res.status(400).json({ error: 'Message required' });
 
-  const cfg = getProviderConfig(req.body);
+  let cfg;
+  try {
+    cfg = await resolveProviderConfig(req.body || {});
+  } catch (e) {
+    return res.status(e.status || 401).json({ error: e.message || 'Invalid auth token' });
+  }
+
   if (!cfg.apiKey) {
     return res.status(400).json({
-      error: 'AI chat is not configured. Add an API key in settings or environment variables.'
+      error: 'AI chat is not configured. Ask admin/teacher to set student AI key or add one in settings.'
     });
   }
 
@@ -113,11 +242,16 @@ app.post('/api/chat', async (req, res) => {
 
 app.post('/api/teacher/lesson-loop', async (req, res) => {
   const { topic = 'general', weakness = '', studentName = 'student', grade = '' } = req.body || {};
-  const cfg = getProviderConfig(req.body);
+  let cfg;
+  try {
+    cfg = await resolveProviderConfig(req.body || {});
+  } catch (e) {
+    return res.status(e.status || 401).json({ error: e.message || 'Invalid auth token' });
+  }
 
   if (!cfg.apiKey) {
     return res.status(400).json({
-      error: 'Lesson loop is not configured. Add an API key in settings or environment variables.'
+      error: 'Lesson loop is not configured. Ask admin/teacher to set student AI key or add one in settings.'
     });
   }
 

@@ -151,7 +151,7 @@
   }
 
   function renderSettingsForm(settings = {}) {
-    return `<label class="field-label">API Base URL</label><input name="apiBaseUrl" type="url" value="${escapeHtml(settings.apiBaseUrl || '')}" placeholder="https://openrouter.ai/api/v1" /><label class="field-label">Model</label><input name="apiModel" type="text" value="${escapeHtml(settings.apiModel || '')}" placeholder="openai/gpt-4.1-mini" /><label class="field-label">API Key</label><input name="apiKey" type="password" value="${escapeHtml(settings.apiKey || '')}" placeholder="sk-..." /><div class="inline-actions"><button class="button button-primary" type="submit">儲存</button><button class="button button-ghost" type="button" data-clear-settings>清除</button></div>`;
+    return `<label class="field-label">API Base URL</label><input name="apiBaseUrl" type="url" value="${escapeHtml(settings.apiBaseUrl || '')}" placeholder="https://openrouter.ai/api/v1" /><label class="field-label">Model</label><input name="apiModel" type="text" value="${escapeHtml(settings.apiModel || '')}" placeholder="openai/gpt-4.1-mini" /><label class="field-label">API Key</label><input name="apiKey" type="password" value="${escapeHtml(settings.apiKey || '')}" placeholder="sk-..." /><label class="field-label">Student UID（由 admin/teacher 代設可填）</label><input name="aiStudentUid" type="text" value="${escapeHtml(settings.aiStudentUid || '')}" placeholder="留空=自己" /><div class="inline-actions"><button class="button button-primary" type="submit">儲存本機設定</button><button class="button button-ghost" type="button" data-save-ai-profile>儲存到 Firebase（給學生）</button><button class="button button-ghost" type="button" data-clear-settings>清除</button></div>`;
   }
 
   function renderFirebaseStatus() {
@@ -175,6 +175,37 @@
         saveSettings(Object.fromEntries(new FormData(form).entries()));
         showToast('AI 設定已儲存');
       };
+
+      const saveRemoteBtn = form.querySelector('[data-save-ai-profile]');
+      if (saveRemoteBtn) {
+        saveRemoteBtn.onclick = async () => {
+          const payload = Object.fromEntries(new FormData(form).entries());
+          const idToken = await window.QuestClassFirebase?.getIdToken?.();
+          if (!idToken) {
+            showToast('請先登入 Firebase');
+            return;
+          }
+          const res = await fetch('/api/ai-config/upsert', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              idToken,
+              studentUid: String(payload.aiStudentUid || '').trim(),
+              apiKey: payload.apiKey || '',
+              apiBaseUrl: payload.apiBaseUrl || '',
+              model: payload.apiModel || ''
+            })
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) {
+            showToast(data.error || '儲存 Firebase AI 設定失敗');
+            return;
+          }
+          saveSettings(payload);
+          showToast(`已儲存 Firebase AI 設定（studentUid: ${data.studentUid || payload.aiStudentUid || state.session.uid || 'self'}）`);
+        };
+      }
+
       const clearBtn = form.querySelector('[data-clear-settings]');
       if (clearBtn) {
         clearBtn.onclick = () => {
@@ -434,11 +465,8 @@
     if (runBtn) {
       runBtn.onclick = async () => {
         const settings = getSettings();
-        if (!settings.apiKey) {
-          showToast('先設定 API key');
-          return;
-        }
         try {
+          const idToken = await window.QuestClassFirebase?.getIdToken?.();
           const res = await fetch('/api/teacher/lesson-loop', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -449,7 +477,9 @@
               grade: firestoreState.classroom?.grade || '',
               apiBaseUrl: settings.apiBaseUrl || '',
               model: settings.apiModel || '',
-              apiKey: settings.apiKey || ''
+              apiKey: settings.apiKey || '',
+              idToken,
+              studentUid: settings.aiStudentUid || ''
             })
           });
           const data = await res.json();
@@ -625,12 +655,9 @@
         const message = String(fd.get('message') || '').trim();
         if (!message) return;
         const settings = getSettings();
-        if (!settings.apiKey) {
-          showToast('先設定 API key');
-          return;
-        }
         try {
           state.chat.push({ role: 'user', text: message });
+          const idToken = await window.QuestClassFirebase?.getIdToken?.();
           const res = await fetch('/api/chat', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -641,7 +668,9 @@
               studentName: state.session.userName || 'student',
               apiBaseUrl: settings.apiBaseUrl || '',
               model: settings.apiModel || '',
-              apiKey: settings.apiKey || ''
+              apiKey: settings.apiKey || '',
+              idToken,
+              studentUid: settings.aiStudentUid || ''
             })
           });
           const data = await res.json();

@@ -221,6 +221,18 @@ window.QuestClassFirebase = {
     return this._initResult;
   },
 
+  async getIdToken(forceRefresh = false) {
+    const ready = await this._ensure();
+    if (!ready) return null;
+    const authUser = await this.waitForAuthState();
+    if (!authUser) return null;
+    try {
+      return await authUser.getIdToken(forceRefresh);
+    } catch {
+      return null;
+    }
+  },
+
   async saveMyProfile(input = {}) {
     const ready = await this._ensure();
     if (!ready) return { ok: false, error: 'Firebase config missing' };
