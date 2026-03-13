@@ -329,12 +329,20 @@ window.QuestClassFirebase = {
     }
   },
 
+  _generateStudentId(input = {}) {
+    const clean = (v) => String(v || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+    const fromUid = clean(input.userUid || '').slice(0, 12);
+    const fromName = clean(input.name || '').slice(0, 12);
+    const stamp = Date.now().toString(36).slice(-6);
+    const base = fromName || fromUid || 'student';
+    return `stu-${base}-${stamp}`;
+  },
+
   async adminUpsertStudent(studentId, input = {}) {
     const adminCheck = await this._requireAdmin();
     if (!adminCheck.ok) return { ok: false, error: adminCheck.error };
     const { db, sdk } = adminCheck.ready;
-    const id = String(studentId || input.studentId || '').trim();
-    if (!id) return { ok: false, error: 'studentId required' };
+    const id = String(studentId || input.studentId || '').trim() || this._generateStudentId(input);
 
     const classroomIds = String(input.classroomIds || '')
       .split(',')

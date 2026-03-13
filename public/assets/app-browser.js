@@ -119,6 +119,13 @@
     return `<article class="status-card muted"><strong>${escapeHtml(title)}</strong><span>${escapeHtml(body)}</span></article>`;
   }
 
+  function draftStudentId(selectedUser, selectedStudent) {
+    if (selectedStudent?.id) return selectedStudent.id;
+    if (selectedUser?.studentId) return selectedUser.studentId;
+    const uid = String(selectedUser?.uid || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 10);
+    return uid ? `stu-${uid}` : '';
+  }
+
   function renderNav(active) {
     return app.pages.map((p) => `<a class="nav-link ${p.key === active ? 'active' : ''}" href="${p.href}">${p.label}</a>`).join('');
   }
@@ -772,7 +779,7 @@
     }
 
     if (studentManagerNode) {
-      const studentIdValue = selectedStudent?.id || selectedUser?.studentId || '';
+      const studentIdValue = draftStudentId(selectedUser, selectedStudent);
       studentManagerNode.innerHTML = `<form data-admin-student-form><label class="field-label">studentId</label><input name="studentId" value="${escapeHtml(studentIdValue)}" placeholder="e.g. ada or student-001" /><label class="field-label">userUid</label><input name="userUid" value="${escapeHtml(selectedStudent?.userUid || selectedUser?.uid || '')}" placeholder="Firebase Auth UID" /><label class="field-label">name</label><input name="name" value="${escapeHtml(selectedStudent?.name || selectedUser?.name || '')}" /><label class="field-label">gradeLevel</label><input name="gradeLevel" value="${escapeHtml(selectedStudent?.gradeLevel || '')}" placeholder="Grade 5" /><label class="field-label">classroomIds</label><input name="classroomIds" value="${escapeHtml((selectedStudent?.classroomIds || []).join(', '))}" placeholder="cls-5a" /><label class="field-label">primaryTeacherUid</label><input name="primaryTeacherUid" value="${escapeHtml(selectedStudent?.primaryTeacherUid || '')}" /><label class="field-label">status</label><select name="status"><option value="active" ${(selectedStudent?.status || 'active') === 'active' ? 'selected' : ''}>active</option><option value="review" ${selectedStudent?.status === 'review' ? 'selected' : ''}>review</option><option value="suspended" ${selectedStudent?.status === 'suspended' ? 'selected' : ''}>suspended</option></select><label class="field-label">currentLevel</label><input name="currentLevel" type="number" value="${escapeHtml(selectedStudent?.currentLevel ?? selectedStudent?.summary?.level ?? '')}" /><label class="field-label">xp</label><input name="xp" type="number" value="${escapeHtml(selectedStudent?.xp ?? selectedStudent?.summary?.xp ?? '')}" /><label class="field-label">nextLevelXp</label><input name="nextLevelXp" type="number" value="${escapeHtml(selectedStudent?.nextLevelXp ?? selectedStudent?.summary?.nextLevelXp ?? '')}" /><label class="field-label">streak</label><input name="streak" type="number" value="${escapeHtml(selectedStudent?.streak ?? selectedStudent?.summary?.streak ?? '')}" /><label class="field-label">mastery</label><input name="mastery" type="number" value="${escapeHtml(selectedStudent?.mastery ?? selectedStudent?.summary?.mastery ?? '')}" /><label class="field-label">weaknessLabel</label><input name="weaknessLabel" value="${escapeHtml(selectedStudent?.weaknessLabel || selectedStudent?.summary?.weaknessLabel || '')}" /><label class="field-label">weaknessScore</label><input name="weaknessScore" value="${escapeHtml(selectedStudent?.weaknessScore || selectedStudent?.summary?.weaknessScore || '')}" /><label class="field-label">focusSkills</label><input name="focusSkills" value="${escapeHtml((selectedStudent?.focusSkills || []).join(', '))}" placeholder="comma, separated" /><label class="field-label">focusAreas</label><input name="focusAreas" value="${escapeHtml((selectedStudent?.summary?.focusAreas || []).join(', '))}" placeholder="comma, separated" /><label class="field-label">recentQuestTitles</label><textarea name="recentQuestTitles" rows="3">${escapeHtml((selectedStudent?.summary?.recentQuestTitles || []).join(', '))}</textarea><div class="inline-actions"><button class="button button-primary" type="submit">儲存學生資料</button><button class="button button-ghost" type="button" data-admin-bind-student>綁定 user → student</button><button class="button button-ghost" type="button" data-admin-delete-student>刪除學生</button><button class="button button-ghost" type="button" data-admin-student-new>新增空白學生</button></div></form>${renderAdminDebugPanel()}`;
       const studentForm = studentManagerNode.querySelector('[data-admin-student-form]');
       const newBtn = studentManagerNode.querySelector('[data-admin-student-new]');
@@ -787,10 +794,6 @@
           e.preventDefault();
           const payload = Object.fromEntries(new FormData(studentForm).entries());
           const studentId = String(payload.studentId || '').trim();
-          if (!studentId) {
-            showToast('studentId 必填');
-            return;
-          }
           if (!window.QuestClassFirebase?.adminUpsertStudent) {
             showToast('Student admin API 不可用');
             return;
@@ -830,7 +833,7 @@
           }
           await syncFirestoreState();
           renderAdmin();
-          showToast('學生資料已儲存');
+          showToast(`學生資料已儲存（studentId: ${result?.studentId || studentId || 'auto'}）`);
         };
       }
 
