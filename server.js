@@ -210,7 +210,7 @@ app.get('/api/health', (req, res) => {
 });
 
 app.post('/api/chat', async (req, res) => {
-  const { message, topic = 'general', mode = 'socratic', studentName = 'student' } = req.body || {};
+  const { message, topic = 'general', mode = 'socratic', studentName = 'student', studentContext = null } = req.body || {};
   if (!message?.trim()) return res.status(400).json({ error: 'Message required' });
 
   let cfg;
@@ -234,7 +234,26 @@ app.post('/api/chat', async (req, res) => {
     'If useful, give 1 next step, 1 hint, and 1 quick check question.'
   ].join(' ');
 
-  const user = `Student: ${studentName}\nTopic: ${topic}\nTeaching mode: ${mode}\nStudent message: ${message}\nRespond in Traditional Chinese.`;
+  const contextText = studentContext
+    ? `Student profile:\n${JSON.stringify({
+        studentId: studentContext.studentId || '',
+        gradeLevel: studentContext.gradeLevel || '',
+        mastery: studentContext.mastery ?? '',
+        level: studentContext.level ?? '',
+        xp: studentContext.xp ?? '',
+        streak: studentContext.streak ?? '',
+        weaknessLabel: studentContext.weaknessLabel || '',
+        weaknessScore: studentContext.weaknessScore || '',
+        focusAreas: studentContext.focusAreas || [],
+        focusSkills: studentContext.focusSkills || [],
+        recentQuestTitles: studentContext.recentQuestTitles || [],
+        classroomId: studentContext.classroomId || '',
+        classroomName: studentContext.classroomName || '',
+        classroomGrade: studentContext.classroomGrade || ''
+      }, null, 2)}`
+    : 'Student profile: unavailable';
+
+  const user = `Student: ${studentName}\nTopic: ${topic}\nTeaching mode: ${mode}\n${contextText}\nStudent message: ${message}\nUse the student profile to personalize explanation difficulty and examples. Respond in Traditional Chinese.`;
   const result = await callChatCompletion({ ...cfg, system, user, temperature: 0.8 });
   if (!result.ok) return res.status(result.status).json({ error: result.error });
   res.json({ mode: 'live', reply: result.text });

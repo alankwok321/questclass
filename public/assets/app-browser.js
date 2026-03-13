@@ -658,19 +658,38 @@
         try {
           state.chat.push({ role: 'user', text: message });
           const idToken = await window.QuestClassFirebase?.getIdToken?.();
+          const activeStudent = firestoreState.student || null;
+          const activeSummary = firestoreState.summary || activeStudent?.summary || null;
           const res = await fetch('/api/chat', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               message,
-              topic: 'general',
+              topic: activeSummary?.focusAreas?.[0] || activeStudent?.weaknessLabel || 'general',
               mode: 'socratic',
-              studentName: state.session.userName || 'student',
+              studentName: activeStudent?.name || state.session.userName || 'student',
+              studentContext: {
+                studentId: activeStudent?.id || '',
+                studentUid: activeStudent?.userUid || state.session.uid || '',
+                gradeLevel: activeStudent?.gradeLevel || '',
+                mastery: Number(activeSummary?.mastery ?? activeStudent?.mastery ?? 0),
+                level: Number(activeSummary?.level ?? activeStudent?.currentLevel ?? 0),
+                xp: Number(activeSummary?.xp ?? activeStudent?.xp ?? 0),
+                streak: Number(activeSummary?.streak ?? activeStudent?.streak ?? 0),
+                weaknessLabel: activeSummary?.weaknessLabel || activeStudent?.weaknessLabel || '',
+                weaknessScore: activeSummary?.weaknessScore || activeStudent?.weaknessScore || '',
+                focusAreas: activeSummary?.focusAreas || [],
+                focusSkills: activeStudent?.focusSkills || [],
+                recentQuestTitles: activeSummary?.recentQuestTitles || [],
+                classroomId: firestoreState.classroom?.id || '',
+                classroomName: firestoreState.classroom?.name || '',
+                classroomGrade: firestoreState.classroom?.grade || ''
+              },
               apiBaseUrl: settings.apiBaseUrl || '',
               model: settings.apiModel || '',
               apiKey: settings.apiKey || '',
               idToken,
-              studentUid: settings.aiStudentUid || ''
+              studentUid: settings.aiStudentUid || activeStudent?.userUid || ''
             })
           });
           const data = await res.json();
