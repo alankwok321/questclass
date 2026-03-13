@@ -64,14 +64,14 @@ service cloud.firestore {
 
       allow update: if (
           isSelf(userId)
-          && request.resource.data.keys().hasOnly(allowedUserKeys())
+          && request.resource.data.diff(resource.data).changedKeys().hasOnly(allowedUserKeys())
           && request.resource.data.role == resource.data.role
           && request.resource.data.email == resource.data.email
           && request.resource.data.requestedRole in ['', 'student', 'teacher', 'admin']
           && selfProfileKeysAreSafe()
         ) || (
           isAdmin()
-          && request.resource.data.keys().hasOnly(allowedUserKeys())
+          && request.resource.data.diff(resource.data).changedKeys().hasOnly(allowedUserKeys())
           && request.resource.data.requestedRole in ['', 'student', 'teacher', 'admin']
           && request.resource.data.role in ['student', 'teacher', 'admin']
           && (!('accountStatus' in request.resource.data) || request.resource.data.accountStatus in ['active', 'review', 'suspended'])
@@ -83,13 +83,15 @@ service cloud.firestore {
 
     match /students/{studentId} {
       allow read: if isTeacherLike() || (isSignedIn() && resource.data.userUid == request.auth.uid);
-      allow create, update: if isTeacherLike() && request.resource.data.keys().hasOnly(allowedStudentKeys());
+      allow create: if isTeacherLike() && request.resource.data.keys().hasOnly(allowedStudentKeys());
+      allow update: if isTeacherLike() && request.resource.data.diff(resource.data).changedKeys().hasOnly(allowedStudentKeys());
       allow delete: if isAdmin();
     }
 
     match /classrooms/{classroomId} {
       allow read: if isTeacherLike() || (isSignedIn() && request.auth.uid in resource.data.studentUids);
-      allow create, update: if isTeacherLike() && request.resource.data.keys().hasOnly(allowedClassroomKeys());
+      allow create: if isTeacherLike() && request.resource.data.keys().hasOnly(allowedClassroomKeys());
+      allow update: if isTeacherLike() && request.resource.data.diff(resource.data).changedKeys().hasOnly(allowedClassroomKeys());
       allow delete: if isAdmin();
 
       match /members/{memberId} {
@@ -101,13 +103,14 @@ service cloud.firestore {
     match /submissions/{submissionId} {
       allow read: if isTeacherLike() || (isSignedIn() && resource.data.studentUid == request.auth.uid);
       allow create: if (isSignedIn() && request.resource.data.studentUid == request.auth.uid) || isTeacherLike();
-      allow update: if isTeacherLike() && request.resource.data.keys().hasOnly(allowedSubmissionKeys());
+      allow update: if isTeacherLike() && request.resource.data.diff(resource.data).changedKeys().hasOnly(allowedSubmissionKeys());
       allow delete: if isAdmin();
     }
 
     match /progressSummaries/{summaryId} {
       allow read: if isTeacherLike() || (isSignedIn() && resource.data.userUid == request.auth.uid);
-      allow create, update: if isTeacherLike() && request.resource.data.keys().hasOnly(allowedProgressKeys());
+      allow create: if isTeacherLike() && request.resource.data.keys().hasOnly(allowedProgressKeys());
+      allow update: if isTeacherLike() && request.resource.data.diff(resource.data).changedKeys().hasOnly(allowedProgressKeys());
       allow delete: if isAdmin();
     }
 
