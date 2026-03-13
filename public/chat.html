@@ -8,50 +8,41 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/assets/css/style.css" />
+  <link rel="stylesheet" href="/assets/css/chatbox.css" />
 </head>
-<body data-page="chat">
-  <main>
-    <header class="topbar">
-      <div class="brand" data-brand></div>
-      <nav class="nav" data-nav></nav>
-      <div class="topbar-auth" data-topbar-auth></div>
+<body data-page="chat" class="chatbox-body">
+  <div class="chatbox-shell">
+    <header class="chatbox-header">
+      <div class="chatbox-title">
+        <span class="chatbox-mark">QC</span>
+        <div>
+          <div class="chatbox-title-main">QuestClass · AI Chat</div>
+          <div class="chatbox-title-sub" data-chat-status></div>
+        </div>
+      </div>
+      <div class="chatbox-auth" data-topbar-auth></div>
     </header>
 
-    <section class="hero">
-      <div class="hero-copy">
-        <span class="eyebrow">Chat-first learning</span>
-        <h1>AI 老師對話區</h1>
-        <p>保留 `/api/chat`，但不再提供 demo 回覆；未設定 AI 時會直接提示你先完成設定。</p>
-      </div>
-      <div class="hero-stats">
-        <div><strong data-chat-mode>AI required</strong><span>目前模式</span></div>
-        <div><strong>TRAD</strong><span>預設繁中回覆</span></div>
-      </div>
-    </section>
+    <section class="chatbox-context" data-chat-context></section>
 
-    <section class="chat-shell">
-      <section class="panel">
-        <div class="panel-header"><div><span class="eyebrow">Conversation</span><h2>對話紀錄</h2></div></div>
-        <div class="chat-thread" data-chat-messages></div>
-        <form class="chat-form" data-chat-form>
-          <input name="message" type="text" placeholder="例如：我不懂為什麼 3/4 會大於 2/3？" />
-          <button class="button button-ghost" type="button" data-chat-clear>清空</button>
-          <button class="button button-primary" type="submit">送出</button>
-        </form>
-        <div class="quick-actions" style="margin-top:10px;">
-          <button class="button button-ghost" type="button" data-seed-prompt="請一步步引導我，不要直接給答案">一步步引導</button>
-          <button class="button button-ghost" type="button" data-seed-prompt="先給我提示，再讓我自己算">先提示</button>
-          <button class="button button-ghost" type="button" data-seed-prompt="用生活例子解釋">生活例子</button>
-        </div>
-      </section>
+    <main class="chatbox-main">
+      <div class="chatbox-thread" data-chat-messages></div>
 
-      <section class="panel">
-        <div class="panel-header"><div><span class="eyebrow">Live context</span><h3>學習狀態快照</h3></div></div>
-        <div data-chat-context></div>
-        <div data-firebase-status style="margin-top:18px;"></div>
-      </section>
-    </section>
-  </main>
+      <form class="chatbox-form" data-chat-form>
+        <input class="chatbox-input" name="message" type="text" placeholder="例如：我不懂為什麼 3/4 會大於 2/3？" />
+        <button class="button button-ghost" type="button" data-chat-clear>清空</button>
+        <button class="button button-primary" type="submit">送出</button>
+      </form>
+
+      <div class="chatbox-quick" aria-label="Quick prompts">
+        <button class="button button-ghost" type="button" data-seed-prompt="請一步步引導我，不要直接給答案">一步步引導</button>
+        <button class="button button-ghost" type="button" data-seed-prompt="先給我提示，再讓我自己算">先提示</button>
+        <button class="button button-ghost" type="button" data-seed-prompt="用生活例子解釋">生活例子</button>
+      </div>
+
+      <div class="chatbox-footer" data-firebase-status></div>
+    </main>
+  </div>
 
   <div class="toast" data-toast></div>
   <script src="/js/firebase-config.js"></script>

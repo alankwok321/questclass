@@ -1,0 +1,127 @@
+:root {
+  --chat-bg: #1a1a2e;
+  --chat-surface: #16213e;
+  --chat-surface2: #0f3460;
+  --chat-accent: #e94560;
+  --chat-text: #eee;
+  --chat-muted: #999;
+  --chat-border: #2a2a4a;
+  --chat-user-bg: #533483;
+  --chat-ai-bg: #0f3460;
+  --chat-radius: 12px;
+}
+
+body.chatbox-body {
+  background: var(--chat-bg);
+  color: var(--chat-text);
+}
+
+.chatbox-shell {
+  height: 100vh;
+  display: grid;
+  grid-template-rows: auto auto 1fr;
+  max-width: 980px;
+  margin: 0 auto;
+}
+
+.chatbox-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--chat-border);
+  background: var(--chat-surface);
+}
+
+.chatbox-title { display: flex; gap: 12px; align-items: center; }
+.chatbox-mark {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  background: var(--chat-accent);
+  color: white;
+  font-weight: 800;
+}
+
+.chatbox-title-main { font-weight: 800; }
+.chatbox-title-sub { font-size: 12px; color: var(--chat-muted); margin-top: 2px; }
+
+.chatbox-context {
+  padding: 12px 18px;
+  border-bottom: 1px solid var(--chat-border);
+  background: linear-gradient(180deg, rgba(22,33,62,.98), rgba(15,52,96,.85));
+}
+
+.chatbox-main {
+  display: grid;
+  grid-template-rows: 1fr auto auto auto;
+  padding: 14px 18px;
+  gap: 10px;
+}
+
+.chatbox-thread {
+  overflow: auto;
+  padding-right: 6px;
+  display: grid;
+  gap: 10px;
+}
+
+.chatbox-thread .message {
+  padding: 10px 12px;
+  border-radius: var(--chat-radius);
+  border: 1px solid var(--chat-border);
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+
+.chatbox-thread .message.user {
+  background: var(--chat-user-bg);
+  justify-self: end;
+  max-width: 78%;
+}
+
+.chatbox-thread .message.ai {
+  background: var(--chat-ai-bg);
+  justify-self: start;
+  max-width: 78%;
+}
+
+.chatbox-thread .message.assistant {
+  background: var(--chat-ai-bg);
+  justify-self: start;
+  max-width: 78%;
+}
+
+.chatbox-form {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 10px;
+}
+
+.chatbox-input {
+  padding: 12px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--chat-border);
+  background: rgba(0,0,0,.2);
+  color: var(--chat-text);
+}
+
+.chatbox-quick {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.chatbox-footer {
+  color: var(--chat-muted);
+  font-size: 12px;
+  padding-bottom: 8px;
+}
+
+@media (max-width: 720px) {
+  .chatbox-shell { max-width: 100%; }
+  .chatbox-form { grid-template-columns: 1fr auto; }
+  .chatbox-form button.button-ghost { display: none; }
+}
