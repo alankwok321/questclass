@@ -16,12 +16,18 @@ body.chatbox-body {
   color: var(--chat-text);
 }
 
+body.chatbox-body .topbar {
+  margin-bottom: 22px;
+}
+
 .chatbox-shell {
-  height: 100vh;
+  min-height: 100vh;
+  width: min(calc(100% - 32px), var(--max-width));
   display: grid;
-  grid-template-rows: auto auto 1fr;
-  max-width: 980px;
+  grid-template-rows: auto auto auto 1fr;
+  max-width: var(--max-width);
   margin: 0 auto;
+  padding: 24px 0 40px;
 }
 
 .chatbox-header {
