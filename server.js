@@ -209,6 +209,13 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', app: 'teaching-app', ts: new Date().toISOString() });
 });
 
+app.get('/api/chat', (req, res) => {
+  res.status(405).json({
+    error: 'Method not allowed. Use POST /api/chat',
+    hint: 'If you opened this in a browser, that is a GET request. The chat UI should send POST.'
+  });
+});
+
 app.post('/api/chat', async (req, res) => {
   const { message, topic = 'general', mode = 'socratic', studentName = 'student', studentContext = null } = req.body || {};
   if (!message?.trim()) return res.status(400).json({ error: 'Message required' });
