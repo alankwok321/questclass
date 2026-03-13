@@ -642,12 +642,22 @@
     const status = document.querySelector('[data-chat-status]');
     const messages = document.querySelector('[data-chat-messages]');
     const form = document.querySelector('[data-chat-form]');
-    if (status) status.innerHTML = renderFirebaseStatus();
+    const contextNode = document.querySelector('[data-chat-context]');
+    if (status) status.textContent = state.modes.chat || 'live';
     if (messages) {
       messages.innerHTML = state.chat.length
         ? state.chat.map((msg) => `<div class="message ${escapeHtml(msg.role || 'ai')}">${escapeHtml(msg.text || '')}</div>`).join('')
-        : emptyCard('尚無聊天紀錄', '設定 AI key 並送出第一則訊息後才會顯示內容。');
+        : emptyCard('尚無聊天紀錄', '直接送出第一則訊息開始對話。');
     }
+
+    const activeStudent = firestoreState.student || null;
+    const activeSummary = firestoreState.summary || activeStudent?.summary || null;
+    if (contextNode) {
+      contextNode.innerHTML = activeStudent
+        ? `<div class="list-grid"><article class="list-card active"><strong>${escapeHtml(activeStudent.name || 'student')}</strong><span>${escapeHtml(activeStudent.gradeLevel || '—')}</span></article><article class="list-card active"><strong>Mastery</strong><span>${escapeHtml(String(activeSummary?.mastery ?? activeStudent?.mastery ?? '0'))}</span></article><article class="list-card active"><strong>Weakness</strong><span>${escapeHtml(activeSummary?.weaknessLabel || activeStudent?.weaknessLabel || '—')}</span></article><article class="list-card active"><strong>Focus</strong><span>${escapeHtml((activeSummary?.focusAreas || activeStudent?.focusSkills || []).join(', ') || '—')}</span></article></div>`
+        : emptyCard('尚未載入學生資料', '登入後會自動帶入學生真實學習資料供 AI 對話使用。');
+    }
+
     if (form) {
       form.onsubmit = async (e) => {
         e.preventDefault();
@@ -658,8 +668,6 @@
         try {
           state.chat.push({ role: 'user', text: message });
           const idToken = await window.QuestClassFirebase?.getIdToken?.();
-          const activeStudent = firestoreState.student || null;
-          const activeSummary = firestoreState.summary || activeStudent?.summary || null;
           const res = await fetch('/api/chat', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
