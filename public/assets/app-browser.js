@@ -780,7 +780,7 @@
       if (!selectedUser) {
         detailNode.innerHTML = emptyCard('沒有選取帳號', '左側有帳號後，點一個就能看詳情。');
       } else {
-        detailNode.innerHTML = `<div class="status-card muted"><strong>${escapeHtml(selectedUser.name || selectedUser.email || selectedUser.uid)}</strong><span>${escapeHtml(selectedUser.email || 'no email')}</span></div><div class="list-grid"><article class="list-card active"><strong>uid</strong><span>${escapeHtml(selectedUser.uid || '—')}</span></article><article class="list-card active"><strong>learnerStage</strong><span>${escapeHtml(selectedUser.learnerStage || '—')}</span></article><article class="list-card active"><strong>lastLoginAt</strong><span>${escapeHtml(selectedUser.lastLoginAt || '—')}</span></article></div><form data-admin-edit-form style="margin-top:12px;"><label class="field-label">role</label><select name="role"><option value="student" ${selectedUser.role === 'student' ? 'selected' : ''}>student</option><option value="teacher" ${selectedUser.role === 'teacher' ? 'selected' : ''}>teacher</option><option value="admin" ${selectedUser.role === 'admin' ? 'selected' : ''}>admin</option></select><label class="field-label">accountStatus</label><select name="accountStatus"><option value="active" ${(selectedUser.accountStatus || 'active') === 'active' ? 'selected' : ''}>active</option><option value="review" ${selectedUser.accountStatus === 'review' ? 'selected' : ''}>review</option><option value="suspended" ${selectedUser.accountStatus === 'suspended' ? 'selected' : ''}>suspended</option></select><div class="inline-actions" style="margin-top:12px;"><button class="button button-primary" type="submit">儲存帳號變更</button></div></form>`;
+        detailNode.innerHTML = `<div class="status-card muted"><strong>${escapeHtml(selectedUser.name || selectedUser.email || selectedUser.uid)}</strong><span>${escapeHtml(selectedUser.email || 'no email')}</span></div><div class="list-grid"><article class="list-card active"><strong>uid</strong><span>${escapeHtml(selectedUser.uid || '—')}</span></article><article class="list-card active"><strong>learnerStage</strong><span>${escapeHtml(selectedUser.learnerStage || '—')}</span></article><article class="list-card active"><strong>lastLoginAt</strong><span>${escapeHtml(selectedUser.lastLoginAt || '—')}</span></article></div><form data-admin-edit-form style="margin-top:12px;"><label class="field-label">role</label><select name="role"><option value="student" ${selectedUser.role === 'student' ? 'selected' : ''}>student</option><option value="teacher" ${selectedUser.role === 'teacher' ? 'selected' : ''}>teacher</option><option value="admin" ${selectedUser.role === 'admin' ? 'selected' : ''}>admin</option></select><label class="field-label">accountStatus</label><select name="accountStatus"><option value="active" ${(selectedUser.accountStatus || 'active') === 'active' ? 'selected' : ''}>active</option><option value="review" ${selectedUser.accountStatus === 'review' ? 'selected' : ''}>review</option><option value="suspended" ${selectedUser.accountStatus === 'suspended' ? 'selected' : ''}>suspended</option></select><div class="inline-actions" style="margin-top:12px;"><button class="button button-primary" type="submit">儲存帳號變更</button></div></form><form data-admin-ai-form style="margin-top:16px;"><label class="field-label">Student AI API Base URL</label><input name="apiBaseUrl" type="url" placeholder="https://openrouter.ai/api/v1" /><label class="field-label">Student AI Model</label><input name="apiModel" type="text" placeholder="openai/gpt-4.1-mini" /><label class="field-label">Student AI API Key</label><input name="apiKey" type="password" placeholder="sk-..." /><input type="hidden" name="studentUid" value="${escapeHtml(selectedUser.uid || '')}" /><div class="inline-actions" style="margin-top:12px;"><button class="button button-ghost" type="submit">儲存此學生 AI Key</button></div></form>`;
         const form = detailNode.querySelector('[data-admin-edit-form]');
         if (form) {
           form.onsubmit = async (e) => {
@@ -802,6 +802,45 @@
             await syncFirestoreState();
             renderAdmin();
             showToast('帳號已更新');
+          };
+        }
+
+        const aiForm = detailNode.querySelector('[data-admin-ai-form]');
+        if (aiForm) {
+          aiForm.onsubmit = async (e) => {
+            e.preventDefault();
+            const payload = Object.fromEntries(new FormData(aiForm).entries());
+            if (!payload.apiKey?.trim()) {
+              showToast('請輸入 API Key');
+              return;
+            }
+            const idToken = await window.QuestClassFirebase?.getIdToken?.();
+            if (!idToken) {
+              showToast('請先登入 Firebase');
+              return;
+            }
+            addAdminDebug('ai-config.upsert', 'start', `studentUid=${payload.studentUid}`);
+            const res = await fetch('/api/ai-config/upsert', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                idToken,
+                studentUid: payload.studentUid,
+                apiKey: payload.apiKey,
+                apiBaseUrl: payload.apiBaseUrl,
+                model: payload.apiModel
+              })
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+              addAdminDebug('ai-config.upsert', 'error', data.error || '儲存失敗');
+              renderAdmin();
+              showToast(data.error || '儲存學生 AI Key 失敗');
+              return;
+            }
+            addAdminDebug('ai-config.upsert', 'ok', `studentUid=${data.studentUid || payload.studentUid}`);
+            renderAdmin();
+            showToast('已儲存學生 AI Key');
           };
         }
       }
