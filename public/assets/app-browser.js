@@ -75,6 +75,22 @@
     toastTimer = setTimeout(() => toastNode.classList.remove('show'), 2400);
   };
 
+  function addAdminDebug(step, status, detail = '') {
+    adminDebugLogs.unshift({
+      ts: new Date().toISOString(),
+      step,
+      status,
+      detail: String(detail || '')
+    });
+    adminDebugLogs = adminDebugLogs.slice(0, 20);
+  }
+
+  function renderAdminDebugPanel() {
+    if (!adminDebugLogs.length) return '<div class="status-card muted" style="margin-top:12px;"><strong>Admin debug</strong><span>尚無紀錄</span></div>';
+    const items = adminDebugLogs.map((log) => `<article class="list-card ${log.status === 'error' ? '' : 'active'}"><strong>${escapeHtml(log.step)} · ${escapeHtml(log.status)}</strong><span>${escapeHtml(log.ts)}</span><p>${escapeHtml(log.detail || '—')}</p></article>`).join('');
+    return `<div class="status-card muted" style="margin-top:12px;"><strong>Admin debug（最近 20 筆）</strong><span>快速查看卡在哪個步驟/collection</span></div><div class="list-grid" style="margin-top:8px;">${items}</div>`;
+  }
+
   const state = loadState();
   let runtimeConfig = { firebaseEnabled: false, aiConfigured: false };
   let firebaseProfile = null;
@@ -86,6 +102,7 @@
   let studentSortMode = 'name';
   let adminUserSearchTerm = '';
   let adminUserSortMode = 'name';
+  let adminDebugLogs = [];
   let firestoreState = {
     mode: 'empty',
     classroom: null,
@@ -737,11 +754,15 @@
               showToast('Admin update API 不可用');
               return;
             }
+            addAdminDebug('users.update(account)', 'start', `uid=${selectedUser.uid}`);
             const result = await window.QuestClassFirebase.adminUpdateUserAccount(selectedUser.uid, payload);
             if (!result?.ok) {
+              addAdminDebug('users.update(account)', 'error', result?.error || '帳號更新失敗');
+              renderAdmin();
               showToast(result?.error || '帳號更新失敗');
               return;
             }
+            addAdminDebug('users.update(account)', 'ok', `uid=${selectedUser.uid}`);
             await syncFirestoreState();
             renderAdmin();
             showToast('帳號已更新');
@@ -752,12 +773,12 @@
 
     if (studentManagerNode) {
       const studentIdValue = selectedStudent?.id || selectedUser?.studentId || '';
-      studentManagerNode.innerHTML = `<form data-admin-student-form><label class="field-label">studentId</label><input name="studentId" value="${escapeHtml(studentIdValue)}" placeholder="e.g. ada or student-001" /><label class="field-label">userUid</label><input name="userUid" value="${escapeHtml(selectedStudent?.userUid || selectedUser?.uid || '')}" placeholder="Firebase Auth UID" /><label class="field-label">name</label><input name="name" value="${escapeHtml(selectedStudent?.name || selectedUser?.name || '')}" /><label class="field-label">gradeLevel</label><input name="gradeLevel" value="${escapeHtml(selectedStudent?.gradeLevel || '')}" placeholder="Grade 5" /><label class="field-label">classroomIds</label><input name="classroomIds" value="${escapeHtml((selectedStudent?.classroomIds || []).join(', '))}" placeholder="cls-5a" /><label class="field-label">primaryTeacherUid</label><input name="primaryTeacherUid" value="${escapeHtml(selectedStudent?.primaryTeacherUid || '')}" /><label class="field-label">status</label><select name="status"><option value="active" ${(selectedStudent?.status || 'active') === 'active' ? 'selected' : ''}>active</option><option value="review" ${selectedStudent?.status === 'review' ? 'selected' : ''}>review</option><option value="suspended" ${selectedStudent?.status === 'suspended' ? 'selected' : ''}>suspended</option></select><label class="field-label">currentLevel</label><input name="currentLevel" type="number" value="${escapeHtml(selectedStudent?.currentLevel ?? selectedStudent?.summary?.level ?? '')}" /><label class="field-label">xp</label><input name="xp" type="number" value="${escapeHtml(selectedStudent?.xp ?? selectedStudent?.summary?.xp ?? '')}" /><label class="field-label">nextLevelXp</label><input name="nextLevelXp" type="number" value="${escapeHtml(selectedStudent?.nextLevelXp ?? selectedStudent?.summary?.nextLevelXp ?? '')}" /><label class="field-label">streak</label><input name="streak" type="number" value="${escapeHtml(selectedStudent?.streak ?? selectedStudent?.summary?.streak ?? '')}" /><label class="field-label">mastery</label><input name="mastery" type="number" value="${escapeHtml(selectedStudent?.mastery ?? selectedStudent?.summary?.mastery ?? '')}" /><label class="field-label">weaknessLabel</label><input name="weaknessLabel" value="${escapeHtml(selectedStudent?.weaknessLabel || selectedStudent?.summary?.weaknessLabel || '')}" /><label class="field-label">weaknessScore</label><input name="weaknessScore" value="${escapeHtml(selectedStudent?.weaknessScore || selectedStudent?.summary?.weaknessScore || '')}" /><label class="field-label">focusSkills</label><input name="focusSkills" value="${escapeHtml((selectedStudent?.focusSkills || []).join(', '))}" placeholder="comma, separated" /><label class="field-label">focusAreas</label><input name="focusAreas" value="${escapeHtml((selectedStudent?.summary?.focusAreas || []).join(', '))}" placeholder="comma, separated" /><label class="field-label">recentQuestTitles</label><textarea name="recentQuestTitles" rows="3">${escapeHtml((selectedStudent?.summary?.recentQuestTitles || []).join(', '))}</textarea><div class="inline-actions"><button class="button button-primary" type="submit">儲存學生資料</button><button class="button button-ghost" type="button" data-admin-bind-student>綁定 user → student</button><button class="button button-ghost" type="button" data-admin-delete-student>刪除學生</button><button class="button button-ghost" type="button" data-admin-student-new>新增空白學生</button></div></form>`;
+      studentManagerNode.innerHTML = `<form data-admin-student-form><label class="field-label">studentId</label><input name="studentId" value="${escapeHtml(studentIdValue)}" placeholder="e.g. ada or student-001" /><label class="field-label">userUid</label><input name="userUid" value="${escapeHtml(selectedStudent?.userUid || selectedUser?.uid || '')}" placeholder="Firebase Auth UID" /><label class="field-label">name</label><input name="name" value="${escapeHtml(selectedStudent?.name || selectedUser?.name || '')}" /><label class="field-label">gradeLevel</label><input name="gradeLevel" value="${escapeHtml(selectedStudent?.gradeLevel || '')}" placeholder="Grade 5" /><label class="field-label">classroomIds</label><input name="classroomIds" value="${escapeHtml((selectedStudent?.classroomIds || []).join(', '))}" placeholder="cls-5a" /><label class="field-label">primaryTeacherUid</label><input name="primaryTeacherUid" value="${escapeHtml(selectedStudent?.primaryTeacherUid || '')}" /><label class="field-label">status</label><select name="status"><option value="active" ${(selectedStudent?.status || 'active') === 'active' ? 'selected' : ''}>active</option><option value="review" ${selectedStudent?.status === 'review' ? 'selected' : ''}>review</option><option value="suspended" ${selectedStudent?.status === 'suspended' ? 'selected' : ''}>suspended</option></select><label class="field-label">currentLevel</label><input name="currentLevel" type="number" value="${escapeHtml(selectedStudent?.currentLevel ?? selectedStudent?.summary?.level ?? '')}" /><label class="field-label">xp</label><input name="xp" type="number" value="${escapeHtml(selectedStudent?.xp ?? selectedStudent?.summary?.xp ?? '')}" /><label class="field-label">nextLevelXp</label><input name="nextLevelXp" type="number" value="${escapeHtml(selectedStudent?.nextLevelXp ?? selectedStudent?.summary?.nextLevelXp ?? '')}" /><label class="field-label">streak</label><input name="streak" type="number" value="${escapeHtml(selectedStudent?.streak ?? selectedStudent?.summary?.streak ?? '')}" /><label class="field-label">mastery</label><input name="mastery" type="number" value="${escapeHtml(selectedStudent?.mastery ?? selectedStudent?.summary?.mastery ?? '')}" /><label class="field-label">weaknessLabel</label><input name="weaknessLabel" value="${escapeHtml(selectedStudent?.weaknessLabel || selectedStudent?.summary?.weaknessLabel || '')}" /><label class="field-label">weaknessScore</label><input name="weaknessScore" value="${escapeHtml(selectedStudent?.weaknessScore || selectedStudent?.summary?.weaknessScore || '')}" /><label class="field-label">focusSkills</label><input name="focusSkills" value="${escapeHtml((selectedStudent?.focusSkills || []).join(', '))}" placeholder="comma, separated" /><label class="field-label">focusAreas</label><input name="focusAreas" value="${escapeHtml((selectedStudent?.summary?.focusAreas || []).join(', '))}" placeholder="comma, separated" /><label class="field-label">recentQuestTitles</label><textarea name="recentQuestTitles" rows="3">${escapeHtml((selectedStudent?.summary?.recentQuestTitles || []).join(', '))}</textarea><div class="inline-actions"><button class="button button-primary" type="submit">儲存學生資料</button><button class="button button-ghost" type="button" data-admin-bind-student>綁定 user → student</button><button class="button button-ghost" type="button" data-admin-delete-student>刪除學生</button><button class="button button-ghost" type="button" data-admin-student-new>新增空白學生</button></div></form>${renderAdminDebugPanel()}`;
       const studentForm = studentManagerNode.querySelector('[data-admin-student-form]');
       const newBtn = studentManagerNode.querySelector('[data-admin-student-new]');
       if (newBtn) {
         newBtn.onclick = () => {
-          studentManagerNode.innerHTML = `<form data-admin-student-form><label class="field-label">studentId</label><input name="studentId" value="" placeholder="new-student-id" /><label class="field-label">userUid</label><input name="userUid" value="" placeholder="Firebase Auth UID" /><label class="field-label">name</label><input name="name" value="" /><label class="field-label">gradeLevel</label><input name="gradeLevel" value="" placeholder="Grade 5" /><label class="field-label">classroomIds</label><input name="classroomIds" value="" placeholder="cls-5a" /><label class="field-label">primaryTeacherUid</label><input name="primaryTeacherUid" value="" /><label class="field-label">status</label><select name="status"><option value="active">active</option><option value="review">review</option><option value="suspended">suspended</option></select><label class="field-label">currentLevel</label><input name="currentLevel" type="number" value="" /><label class="field-label">xp</label><input name="xp" type="number" value="" /><label class="field-label">nextLevelXp</label><input name="nextLevelXp" type="number" value="" /><label class="field-label">streak</label><input name="streak" type="number" value="" /><label class="field-label">mastery</label><input name="mastery" type="number" value="" /><label class="field-label">weaknessLabel</label><input name="weaknessLabel" value="" /><label class="field-label">weaknessScore</label><input name="weaknessScore" value="" /><label class="field-label">focusSkills</label><input name="focusSkills" value="" placeholder="comma, separated" /><label class="field-label">focusAreas</label><input name="focusAreas" value="" placeholder="comma, separated" /><label class="field-label">recentQuestTitles</label><textarea name="recentQuestTitles" rows="3"></textarea><div class="inline-actions"><button class="button button-primary" type="submit">建立學生</button></div></form>`;
+          studentManagerNode.innerHTML = `<form data-admin-student-form><label class="field-label">studentId</label><input name="studentId" value="" placeholder="new-student-id" /><label class="field-label">userUid</label><input name="userUid" value="" placeholder="Firebase Auth UID" /><label class="field-label">name</label><input name="name" value="" /><label class="field-label">gradeLevel</label><input name="gradeLevel" value="" placeholder="Grade 5" /><label class="field-label">classroomIds</label><input name="classroomIds" value="" placeholder="cls-5a" /><label class="field-label">primaryTeacherUid</label><input name="primaryTeacherUid" value="" /><label class="field-label">status</label><select name="status"><option value="active">active</option><option value="review">review</option><option value="suspended">suspended</option></select><label class="field-label">currentLevel</label><input name="currentLevel" type="number" value="" /><label class="field-label">xp</label><input name="xp" type="number" value="" /><label class="field-label">nextLevelXp</label><input name="nextLevelXp" type="number" value="" /><label class="field-label">streak</label><input name="streak" type="number" value="" /><label class="field-label">mastery</label><input name="mastery" type="number" value="" /><label class="field-label">weaknessLabel</label><input name="weaknessLabel" value="" /><label class="field-label">weaknessScore</label><input name="weaknessScore" value="" /><label class="field-label">focusSkills</label><input name="focusSkills" value="" placeholder="comma, separated" /><label class="field-label">focusAreas</label><input name="focusAreas" value="" placeholder="comma, separated" /><label class="field-label">recentQuestTitles</label><textarea name="recentQuestTitles" rows="3"></textarea><div class="inline-actions"><button class="button button-primary" type="submit">建立學生</button></div></form>${renderAdminDebugPanel()}`;
           renderAdmin();
         };
       }
@@ -774,11 +795,15 @@
             showToast('Student admin API 不可用');
             return;
           }
+          addAdminDebug('students.upsert', 'start', `studentId=${studentId}`);
           const result = await window.QuestClassFirebase.adminUpsertStudent(studentId, payload);
           if (!result?.ok) {
+            addAdminDebug('students.upsert', 'error', result?.error || '學生資料更新失敗');
+            renderAdmin();
             showToast(result?.error || '學生資料更新失敗');
             return;
           }
+          addAdminDebug('students.upsert', 'ok', `studentId=${studentId}`);
           const classroomIds = String(payload.classroomIds || '').split(',').map((v) => v.trim()).filter(Boolean);
           if (!payload.name?.trim()) {
             showToast('學生姓名必填');
@@ -793,7 +818,15 @@
             return;
           }
           if (selectedUser?.uid && payload.userUid) {
-            await window.QuestClassFirebase.adminUpdateUserAccount(selectedUser.uid, { role: 'student', accountStatus: 'active' });
+            addAdminDebug('users.update(role)', 'start', `uid=${selectedUser.uid}`);
+            const userRes = await window.QuestClassFirebase.adminUpdateUserAccount(selectedUser.uid, { role: 'student', accountStatus: 'active' });
+            if (!userRes?.ok) {
+              addAdminDebug('users.update(role)', 'error', userRes?.error || '帳號更新失敗');
+              renderAdmin();
+              showToast(userRes?.error || '帳號更新失敗');
+              return;
+            }
+            addAdminDebug('users.update(role)', 'ok', `uid=${selectedUser.uid}`);
           }
           await syncFirestoreState();
           renderAdmin();
@@ -810,11 +843,15 @@
             showToast('要先填 studentId 和 userUid');
             return;
           }
+          addAdminDebug('bind user→student', 'start', `uid=${userUid}, studentId=${studentId}`);
           const result = await window.QuestClassFirebase.adminBindUserStudent(userUid, studentId);
           if (!result?.ok) {
+            addAdminDebug('bind user→student', 'error', result?.error || '綁定失敗');
+            renderAdmin();
             showToast(result?.error || '綁定失敗');
             return;
           }
+          addAdminDebug('bind user→student', 'ok', `uid=${userUid}, studentId=${studentId}`);
           await syncFirestoreState();
           renderAdmin();
           showToast('已綁定 user 與 student');
@@ -832,11 +869,15 @@
           }
           const ok = confirm(`Delete student ${studentId}? This removes student + summary.`);
           if (!ok) return;
+          addAdminDebug('students.delete', 'start', `studentId=${studentId}`);
           const result = await window.QuestClassFirebase.adminDeleteStudent(studentId, userUid);
           if (!result?.ok) {
+            addAdminDebug('students.delete', 'error', result?.error || '刪除失敗');
+            renderAdmin();
             showToast(result?.error || '刪除失敗');
             return;
           }
+          addAdminDebug('students.delete', 'ok', `studentId=${studentId}`);
           await syncFirestoreState();
           renderAdmin();
           showToast('學生資料已刪除');
