@@ -225,8 +225,9 @@ app.use(express.static(publicDir));
 // Serve new React web app build at /app and for SPA routes (teacher/student/admin/chat/analytics)
 const webDistDir = path.join(__dirname, 'web', 'dist');
 if (fs.existsSync(webDistDir)) {
-  app.use('/app', express.static(webDistDir));
-  app.use('/assets', express.static(path.join(webDistDir, 'assets')));
+  // Static assets
+  app.use('/web/assets', express.static(path.join(webDistDir, 'assets')));
+  app.use('/web', express.static(webDistDir));
 }
 
 app.get('/api/health', (req, res) => {
@@ -331,15 +332,14 @@ const spaRoutes = new Set(['/teacher', '/student', '/admin', '/chat', '/analytic
 app.get('*', (req, res) => {
   if (req.path.startsWith('/api/')) return res.status(404).json({ error: 'Not found' });
 
-  // New React SPA routes (serve web/dist/index.html if present)
-  if (spaRoutes.has(req.path.replace(/\/$/, '')) && fs.existsSync(path.join(webDistDir, 'index.html'))) {
-    return res.type('html').send(fs.readFileSync(path.join(webDistDir, 'index.html'), 'utf8'));
-  }
-
-  // /app always serves React entry
-  if (req.path === '/app' || req.path.startsWith('/app/')) {
-    if (fs.existsSync(path.join(webDistDir, 'index.html'))) {
-      return res.type('html').send(fs.readFileSync(path.join(webDistDir, 'index.html'), 'utf8'));
+    // New React SPA routes (serve web/dist/index.html if present)
+  if (fs.existsSync(path.join(webDistDir, 'index.html'))) {
+    const p = req.path.replace(/\/$/, '');
+    if (spaRoutes.has(p) || p === '/app' || p.startsWith('/app/')) {
+      let html = fs.readFileSync(path.join(webDistDir, 'index.html'), 'utf8');
+      // Make Vite-built asset URLs work under /teacher|/student|... by forcing absolute /web/assets/ paths.
+      html = html.replaceAll('/assets/', '/web/assets/');
+      return res.type('html').send(html);
     }
   }
 

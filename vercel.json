@@ -1,14 +1,9 @@
 {
   "version": 2,
   "builds": [
-    { "src": "server.js", "use": "@vercel/node" },
-    { "src": "web/package.json", "use": "@vercel/static-build", "config": { "distDir": "dist" } }
+    { "src": "server.js", "use": "@vercel/node" }
   ],
   "routes": [
-    { "src": "/(teacher|student|admin|chat|analytics)(/.*)?$", "dest": "/index.html" },
-    { "src": "/assets/(.*)", "dest": "/assets/$1" },
-    { "src": "/app(/.*)?$", "dest": "/index.html" },
-    { "src": "/api/(.*)", "dest": "/server.js" },
     { "src": "/(.*)", "dest": "/server.js" }
   ]
 }
