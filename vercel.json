@@ -1,9 +1,12 @@
 {
   "version": 2,
   "builds": [
-    { "src": "server.js", "use": "@vercel/node" }
+    { "src": "server.js", "use": "@vercel/node" },
+    { "src": "web/package.json", "use": "@vercel/static-build", "config": { "distDir": "web/dist" } }
   ],
   "routes": [
+    { "src": "/(teacher|student|admin|chat|analytics)(/.*)?$", "dest": "web/dist/index.html" },
+    { "src": "/assets/(.*)", "dest": "web/dist/assets/$1" },
     { "src": "/(.*)", "dest": "/server.js" }
   ]
 }

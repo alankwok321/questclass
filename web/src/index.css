@@ -1,0 +1,5 @@
+/* keep minimal; actual styling in style.css */
+:root { color-scheme: light; }
+* { box-sizing: border-box; }
+html, body, #root { height: 100%; }
+body { margin: 0; }

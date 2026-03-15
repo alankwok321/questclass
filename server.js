@@ -219,7 +219,15 @@ app.post('/api/ai-config/upsert', async (req, res) => {
   }
 });
 
+// Serve legacy static pages & assets
 app.use(express.static(publicDir));
+
+// Serve new React web app build at /app and for SPA routes (teacher/student/admin/chat/analytics)
+const webDistDir = path.join(__dirname, 'web', 'dist');
+if (fs.existsSync(webDistDir)) {
+  app.use('/app', express.static(webDistDir));
+  app.use('/assets', express.static(path.join(webDistDir, 'assets')));
+}
 
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', app: 'teaching-app', ts: new Date().toISOString() });
@@ -314,22 +322,35 @@ app.post('/api/teacher/lesson-loop', async (req, res) => {
   }
 });
 
-const pageMap = {
-  '/': 'index.html',
-  '/teacher': 'teacher.html',
-  '/student': 'student.html',
-  '/chat': 'chat.html',
-  '/analytics': 'analytics.html',
-  '/admin': 'admin.html'
+const legacyPageMap = {
+  '/': 'index.html'
 };
+
+const spaRoutes = new Set(['/teacher', '/student', '/admin', '/chat', '/analytics']);
 
 app.get('*', (req, res) => {
   if (req.path.startsWith('/api/')) return res.status(404).json({ error: 'Not found' });
-  const target = pageMap[req.path] || pageMap[req.path.replace(/\.html$/, '')];
+
+  // New React SPA routes (serve web/dist/index.html if present)
+  if (spaRoutes.has(req.path.replace(/\/$/, '')) && fs.existsSync(path.join(webDistDir, 'index.html'))) {
+    return res.type('html').send(fs.readFileSync(path.join(webDistDir, 'index.html'), 'utf8'));
+  }
+
+  // /app always serves React entry
+  if (req.path === '/app' || req.path.startsWith('/app/')) {
+    if (fs.existsSync(path.join(webDistDir, 'index.html'))) {
+      return res.type('html').send(fs.readFileSync(path.join(webDistDir, 'index.html'), 'utf8'));
+    }
+  }
+
+  // Legacy landing
+  const target = legacyPageMap[req.path] || legacyPageMap[req.path.replace(/\.html$/, '')];
   if (target) {
     const filePath = path.join(publicDir, target);
     return res.type('html').send(fs.readFileSync(filePath, 'utf8'));
   }
+
+  // Fallback: legacy index
   res.type('html').send(fs.readFileSync(path.join(publicDir, 'index.html'), 'utf8'));
 });
 

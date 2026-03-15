@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js",
-    "seed:firestore": "node scripts/seed-firestore.js"
+    "seed:firestore": "node scripts/seed-firestore.js",
+    "build": "cd web && npm ci --include=dev && npm run build"
   },
   "dependencies": {
     "express": "^4.18.2",
