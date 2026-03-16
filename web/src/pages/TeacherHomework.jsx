@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { listClassrooms, createHomeworkAssignment, listHomeworkAssignments } from '../services/firebase.js';
-import { chat } from '../services/api.js';
+import { chat, getAiConfig } from '../services/api.js';
 
 export default function TeacherHomework() {
   const [form, setForm] = useState({
@@ -17,6 +17,9 @@ export default function TeacherHomework() {
   const [questions, setQuestions] = useState([]);
   const [listLoading, setListLoading] = useState(false);
   const [items, setItems] = useState([]);
+
+  const [debugOpen, setDebugOpen] = useState(true);
+  const [debug, setDebug] = useState({ running: false, result: null, error: null });
 
   const canGenerate = useMemo(() => Boolean(String(form.title || '').trim()), [form.title]);
 
@@ -48,6 +51,29 @@ export default function TeacherHomework() {
     return () => { mounted = false; };
   }, []);
 
+  const onRunDebug = async () => {
+    setDebug({ running: true, result: null, error: null });
+    try {
+      const idToken = await window.QuestClassFirebase?.getIdToken?.();
+      const out = {
+        actorUid: window.__qc_user?.uid || null,
+        hasIdToken: Boolean(idToken),
+      };
+
+      if (idToken) {
+        const cfg = await getAiConfig({ idToken, uid: window.__qc_user?.uid });
+        out.aiConfig = cfg;
+
+        const chatRes = await chat({ debug: true, idToken, message: 'debug ping' });
+        out.chatDebug = chatRes;
+      }
+
+      setDebug({ running: false, result: out, error: null });
+    } catch (e) {
+      setDebug({ running: false, result: null, error: e?.message || String(e) });
+    }
+  };
+
   const onGenerateQuestions = async () => {
     if (!canGenerate) return;
     setGenLoading(true);
@@ -76,7 +102,32 @@ export default function TeacherHomework() {
   return (
     <div style={{ display: 'grid', gap: 16 }}>
       <div className="card">
-        <div style={{ fontWeight: 900, marginBottom: 10 }}>指派作業</div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 10 }}>
+          <div style={{ fontWeight: 900 }}>指派作業</div>
+          <button type="button" style={btnGhost} onClick={() => setDebugOpen(v => !v)}>
+            {debugOpen ? '隱藏 Debug' : '顯示 Debug'}
+          </button>
+        </div>
+
+        {debugOpen ? (
+          <div style={{ marginBottom: 12, padding: 12, borderRadius: 18, border: '1px solid rgba(17,24,39,0.10)', background: '#F9FAFB' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 8 }}>
+              <div style={{ fontWeight: 900 }}>Debug</div>
+              <button type="button" style={btnPrimary} onClick={onRunDebug} disabled={debug.running}>
+                {debug.running ? '檢查中…' : 'Run debug'}
+              </button>
+            </div>
+            {debug.error ? <div style={{ color: '#B91C1C', fontWeight: 900 }}>{debug.error}</div> : null}
+            {debug.result ? (
+              <pre style={{ margin: 0, padding: 10, borderRadius: 14, border: '1px solid rgba(17,24,39,0.10)', background: 'white', overflow: 'auto', fontSize: 12 }}>
+                {JSON.stringify(debug.result, null, 2)}
+              </pre>
+            ) : (
+              <div style={{ color: '#6B7280', fontWeight: 700, fontSize: 12 }}>按 Run debug 會檢查：idToken、有無 aiProviderConfigs、以及 /api/chat debug 回應（不顯示 key）。</div>
+            )}
+          </div>
+        ) : null}
+
         <div style={{ display: 'grid', gap: 10 }}>
           <label style={{ display: 'grid', gap: 6 }}>
             <div style={label}>標題</div>
