@@ -219,6 +219,51 @@ app.post('/api/ai-config/upsert', async (req, res) => {
   }
 });
 
+app.post('/api/admin/seed', async (req, res) => {
+  try {
+    const { idToken, mode = 'merge' } = req.body || {};
+    const actor = await verifyUserFromToken(idToken);
+    if (!actor) return res.status(401).json({ error: 'Unauthorized' });
+    if (String(actor.role || '').toLowerCase() !== 'admin') return res.status(403).json({ error: 'Admin only' });
+
+    const seedPath = path.join(__dirname, 'seeds', 'sample-firestore-data.json');
+    if (!fs.existsSync(seedPath)) return res.status(500).json({ error: 'Seed file missing on server' });
+
+    const seed = JSON.parse(fs.readFileSync(seedPath, 'utf8'));
+    const { db } = getFirebaseAdmin();
+
+    const convert = (value) => {
+      if (Array.isArray(value)) return value.map(convert);
+      if (value && typeof value === 'object') {
+        if (value.__type === 'serverTimestamp') return FieldValue.serverTimestamp();
+        return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, convert(v)]));
+      }
+      return value;
+    };
+
+    const merge = mode !== 'overwrite';
+    const result = { ok: true, merge, written: {} };
+
+    const writeCollection = async (collectionName, docs = {}) => {
+      const entries = Object.entries(docs || {});
+      for (const [docId, payload] of entries) {
+        await db.collection(collectionName).doc(docId).set(convert(payload), { merge });
+      }
+      result.written[collectionName] = entries.length;
+    };
+
+    await writeCollection('classrooms', seed.classrooms);
+    await writeCollection('students', seed.students);
+    await writeCollection('progressSummaries', seed.progressSummaries);
+    await writeCollection('submissions', seed.submissions);
+    await writeCollection('users', seed.users || {});
+
+    return res.json({ ...result, ts: new Date().toISOString() });
+  } catch (error) {
+    return res.status(500).json({ error: error?.message || 'seed failed' });
+  }
+});
+
 // Serve legacy static pages & assets
 app.use(express.static(publicDir));
 
