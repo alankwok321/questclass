@@ -20,3 +20,7 @@ export async function signOut() {
 export async function getIdToken(forceRefresh = false) {
   return await window.QuestClassFirebase?.getIdToken?.(forceRefresh);
 }
+
+export async function getTeacherDashboard(classroomId = null) {
+  return await window.QuestClassFirebase?.getTeacherDashboard?.(classroomId);
+}

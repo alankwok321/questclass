@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useToast } from '../components/Toast.jsx';
+import ApiSettingsCard from '../components/ApiSettingsCard.jsx';
 
 function isAdmin(user) {
   return String(user?.role || '').toLowerCase() === 'admin';
@@ -138,6 +139,8 @@ export default function AdminPage({ user }) {
         </div>
 
         <div style={{ display: 'grid', gap: 14 }}>
+          <ApiSettingsCard title="API 設定（本機）" />
+
           <div className="card">
             <div style={{ fontWeight: 900, marginBottom: 12 }}>帳號設定</div>
             {!selectedUser ? (

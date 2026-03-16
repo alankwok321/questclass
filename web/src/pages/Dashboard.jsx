@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
+import { loadDashboardData } from '../services/dashboard.js';
 
 function StatCard({ title, value, subtitle, tone }) {
   const tones = {
@@ -28,23 +29,62 @@ function StatCard({ title, value, subtitle, tone }) {
 }
 
 export default function Dashboard() {
+  const [state, setState] = useState({ loading: true, err: '', data: null });
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const res = await loadDashboardData();
+        if (!mounted) return;
+        if (!res?.ok) {
+          setState({ loading: false, err: res?.error || '載入失敗', data: null });
+          return;
+        }
+        setState({ loading: false, err: '', data: res });
+      } catch (e) {
+        if (!mounted) return;
+        setState({ loading: false, err: e?.message || '載入失敗', data: null });
+      }
+    })();
+    return () => { mounted = false; };
+  }, []);
+
+  const metrics = state.data?.metrics || [];
+  const detail = state.data?.detail || {};
+
   return (
     <div style={{ display: 'grid', gap: 24 }}>
       <div className="qcGrid4">
-        <StatCard title="今日出席率" value="96%" subtitle="27/28 人已到" tone="green" />
-        <StatCard title="待批改作業" value="12" subtitle="3 份即將逾期" tone="orange" />
-        <StatCard title="學習預警" value="2" subtitle="名學生需關注" tone="red" />
-        <StatCard title="班級平均" value="86.5" subtitle="數學小測驗" tone="blue" />
+        {(metrics.length ? metrics : [
+          { title: '班級完成率', value: '—', subtitle: state.loading ? '載入中…' : '無資料', tone: 'blue' },
+          { title: '最近提交', value: '—', subtitle: state.loading ? '載入中…' : '無資料', tone: 'orange' },
+          { title: '需關注學生', value: '—', subtitle: state.loading ? '載入中…' : '無資料', tone: 'red' },
+          { title: '平均掌握度', value: '—', subtitle: state.loading ? '載入中…' : '無資料', tone: 'blue' },
+        ]).map((m) => (
+          <StatCard key={m.key || m.title} title={m.title} value={m.value} subtitle={m.subtitle} tone={m.tone} />
+        ))}
       </div>
 
       <div className="qcCard" style={{ padding: 24, borderRadius: 32 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 16 }}>
-          <div style={{ fontWeight: 900, fontSize: 16 }}>主要功能</div>
-          <div style={{ color: '#007AFF', fontWeight: 900, fontSize: 13 }}>查看全部</div>
+          <div style={{ fontWeight: 900, fontSize: 16 }}>Dashboard 狀態</div>
+          <button
+            type="button"
+            onClick={() => window.location.reload()}
+            style={{ border: 0, background: 'transparent', color: '#007AFF', fontWeight: 900, fontSize: 13, cursor: 'pointer' }}
+          >
+            重新整理
+          </button>
         </div>
-        <div style={{ color: '#6B7280', fontWeight: 700, lineHeight: 1.7 }}>
-          這是新的 iPadOS 風格儀表板版面。接下來我會把舊版的真實資料讀取（Firestore classrooms/students/submissions）逐步接進來。
-        </div>
+
+        {state.err ? (
+          <div style={{ color: '#B91C1C', fontWeight: 900 }}>{state.err}</div>
+        ) : (
+          <div style={{ color: '#6B7280', fontWeight: 700, lineHeight: 1.7 }}>
+            mode: <strong style={{ color: '#111827' }}>{state.data?.mode || '—'}</strong> · classroom: <strong style={{ color: '#111827' }}>{detail.classroom?.name || '—'}</strong> · students: <strong style={{ color: '#111827' }}>{(detail.students || []).length}</strong> · submissions: <strong style={{ color: '#111827' }}>{(detail.submissions || []).length}</strong>
+          </div>
+        )}
       </div>
     </div>
   );
