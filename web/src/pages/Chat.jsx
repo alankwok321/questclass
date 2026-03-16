@@ -45,7 +45,7 @@ export default function ChatPage() {
         <div style={{ flex: 1, minHeight: 0, overflow: 'auto', display: 'grid', gap: 10 }}>
           {items.length === 0 ? (
             <div style={{ color: '#6B7280', fontWeight: 700 }}>
-              在下面輸入訊息，會呼叫 <code>/api/chat</code>。
+              在下面輸入訊息，會呼叫 <code>/api/chat</code>（繁中回覆）。
             </div>
           ) : null}
 
@@ -90,7 +90,7 @@ export default function ChatPage() {
               minWidth: 96,
             }}
           >
-            {loading ? '送出中…' : 'Send'}
+            {loading ? '送出中…' : '送出'}
           </button>
         </div>
       </div>

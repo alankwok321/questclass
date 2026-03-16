@@ -51,12 +51,12 @@ function Shell({ user, setUser, fbReady, setFbReady, children }) {
   }, [location.pathname]);
 
   const items = [
-    { to: '/teacher', label: 'Teacher', icon: LayoutDashboard },
-    { to: '/student', label: 'Student', icon: Users },
-    { to: '/admin', label: 'Admin', icon: FileText },
-    { to: '/chat', label: 'Chat', icon: MessageSquare },
-    { to: '/analytics', label: 'Analytics', icon: TrendingUp },
-    { to: '/', label: 'Landing', icon: BookOpen },
+    { to: '/teacher', label: '教師', icon: LayoutDashboard },
+    { to: '/student', label: '學生', icon: Users },
+    { to: '/admin', label: '管理', icon: FileText },
+    { to: '/chat', label: '聊天', icon: MessageSquare },
+    { to: '/analytics', label: '分析', icon: TrendingUp },
+    { to: '/', label: '首頁', icon: BookOpen },
   ];
 
   const onLogin = async () => {
@@ -129,7 +129,7 @@ function Shell({ user, setUser, fbReady, setFbReady, children }) {
               type="button"
               onClick={user ? onLogout : onLogin}
               disabled={!fbReady}
-              title={user ? 'Logout' : 'Login'}
+              title={user ? '登出' : '登入'}
               style={{
                 border: '1px solid rgba(17,24,39,0.10)',
                 background: '#F2F2F7',
@@ -143,7 +143,7 @@ function Shell({ user, setUser, fbReady, setFbReady, children }) {
                 opacity: fbReady ? 1 : 0.6
               }}
             >
-              {user ? 'Logout' : 'Login'}
+              {user ? '登出' : '登入'}
             </button>
           </div>
         </div>
@@ -202,7 +202,7 @@ function Placeholder({ name }) {
     <div className="card" style={{ height: 360, display: 'grid', placeItems: 'center' }}>
       <div style={{ textAlign: 'center' }}>
         <div style={{ fontWeight: 900, fontSize: 18 }}>{name}</div>
-        <div style={{ marginTop: 8, color: '#6B7280', fontWeight: 700 }}>待搬遷</div>
+        <div style={{ marginTop: 8, color: '#6B7280', fontWeight: 700 }}>功能開發中</div>
       </div>
     </div>
   );
@@ -211,7 +211,7 @@ function Placeholder({ name }) {
 function AppRoutes({ user }) {
   return (
     <Routes>
-      <Route path="/" element={<Placeholder name="Landing" />} />
+      <Route path="/" element={<Placeholder name="首頁" />} />
       <Route path="/teacher" element={<Teacher />} />
       <Route path="/chat" element={<ChatPage />} />
       <Route path="/student" element={<Placeholder name="Student" />} />

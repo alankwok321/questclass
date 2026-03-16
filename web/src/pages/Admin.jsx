@@ -140,7 +140,7 @@ export default function AdminPage({ user }) {
             <div style={{ color: '#6B7280', fontWeight: 700, marginTop: 4, fontSize: 13 }}>users / students（Firestore）</div>
           </div>
           <button type="button" onClick={refresh} disabled={loading} style={btnGhost}>
-            {loading ? '刷新中…' : 'Refresh'}
+            {loading ? '刷新中…' : '重新整理'}
           </button>
         </div>
         {err ? <div style={{ marginTop: 10, color: '#B91C1C', fontWeight: 800 }}>{err}</div> : null}
@@ -148,7 +148,7 @@ export default function AdminPage({ user }) {
 
       <div style={{ display: 'grid', gridTemplateColumns: '320px minmax(0, 1fr)', gap: 14 }}>
         <div className="card" style={{ padding: 12, overflow: 'hidden' }}>
-          <div style={{ fontWeight: 900, marginBottom: 10 }}>Users</div>
+          <div style={{ fontWeight: 900, marginBottom: 10 }}>使用者</div>
           <div style={{ maxHeight: 520, overflow: 'auto', display: 'grid', gap: 8 }}>
             {users.map((u) => (
               <button
@@ -175,7 +175,7 @@ export default function AdminPage({ user }) {
 
         <div style={{ display: 'grid', gap: 14 }}>
           <div className="card">
-            <div style={{ fontWeight: 900, marginBottom: 12 }}>Account</div>
+            <div style={{ fontWeight: 900, marginBottom: 12 }}>帳號設定</div>
             {!selectedUser ? (
               <div style={{ color: '#6B7280', fontWeight: 700 }}>尚未選擇使用者</div>
             ) : (
@@ -187,7 +187,7 @@ export default function AdminPage({ user }) {
 
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                   <label style={{ display: 'grid', gap: 6 }}>
-                    <div style={label}>Role</div>
+                    <div style={label}>角色</div>
                     <select value={accountRole} onChange={(e) => setAccountRole(e.target.value)} style={selectStyle}>
                       <option value="student">student</option>
                       <option value="teacher">teacher</option>
@@ -196,7 +196,7 @@ export default function AdminPage({ user }) {
                   </label>
 
                   <label style={{ display: 'grid', gap: 6 }}>
-                    <div style={label}>Status</div>
+                    <div style={label}>狀態</div>
                     <select value={accountStatus} onChange={(e) => setAccountStatus(e.target.value)} style={selectStyle}>
                       <option value="active">active</option>
                       <option value="review">review</option>
@@ -206,19 +206,19 @@ export default function AdminPage({ user }) {
                 </div>
 
                 <label style={{ display: 'grid', gap: 6 }}>
-                  <div style={label}>Admin Note</div>
+                  <div style={label}>管理備註</div>
                   <input value={adminNote} onChange={(e) => setAdminNote(e.target.value)} style={inputStyle} placeholder="notes..." />
                 </label>
 
                 <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-                  <button type="button" onClick={onUpdateAccount} style={btnPrimary}>Save</button>
+                  <button type="button" onClick={onUpdateAccount} style={btnPrimary}>儲存</button>
                 </div>
               </div>
             )}
           </div>
 
           <div className="card">
-            <div style={{ fontWeight: 900, marginBottom: 12 }}>Upsert Student</div>
+            <div style={{ fontWeight: 900, marginBottom: 12 }}>新增/更新學生</div>
             <div style={{ display: 'grid', gap: 10 }}>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                 <label style={{ display: 'grid', gap: 6 }}>
@@ -248,13 +248,13 @@ export default function AdminPage({ user }) {
               </label>
 
               <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-                <button type="button" onClick={onUpsertStudent} style={btnPrimary}>Save Student</button>
+                <button type="button" onClick={onUpsertStudent} style={btnPrimary}>儲存學生</button>
               </div>
             </div>
           </div>
 
           <div className="card" style={{ padding: 12 }}>
-            <div style={{ fontWeight: 900, marginBottom: 10 }}>Students ({students.length})</div>
+            <div style={{ fontWeight: 900, marginBottom: 10 }}>學生（{students.length}）</div>
             <div style={{ maxHeight: 260, overflow: 'auto', display: 'grid', gap: 8 }}>
               {students.slice(0, 50).map((s) => (
                 <div key={s.id} style={{ padding: 10, borderRadius: 16, border: '1px solid rgba(17,24,39,0.10)', background: '#F2F2F7' }}>
