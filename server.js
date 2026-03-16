@@ -449,10 +449,8 @@ app.post('/api/teacher/lesson-loop', async (req, res) => {
   }
 });
 
-const legacyPageMap = {
-  // legacy landing moved off root
-  '/legacy': 'index.html'
-};
+// Legacy UI removed
+const legacyPageMap = {};
 
 const spaRoutes = new Set(['/', '/dashboard', '/teacher', '/student', '/admin', '/chat', '/analytics']);
 
@@ -470,15 +468,14 @@ app.get('*', (req, res) => {
     }
   }
 
-  // Legacy landing
+  // Legacy UI removed: do not serve public/*.html as pages.
   const target = legacyPageMap[req.path] || legacyPageMap[req.path.replace(/\.html$/, '')];
   if (target) {
     const filePath = path.join(publicDir, target);
     return res.type('html').send(fs.readFileSync(filePath, 'utf8'));
   }
 
-  // Fallback: legacy index
-  res.type('html').send(fs.readFileSync(path.join(publicDir, 'index.html'), 'utf8'));
+  return res.status(404).type('text').send('Not found');
 });
 
 if (!process.env.VERCEL) {
