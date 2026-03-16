@@ -310,6 +310,12 @@ window.QuestClassFirebase = {
       accountStatus: nextStatus,
       adminNote: String(input.adminNote || '').trim()
     };
+
+    if ('classroomIds' in input) {
+      const raw = Array.isArray(input.classroomIds) ? input.classroomIds.join(',') : String(input.classroomIds || '');
+      const ids = raw.split(',').map(s => s.trim()).filter(Boolean);
+      payload.classroomIds = ids;
+    }
     if (nextRole) payload.role = nextRole;
     try {
       await sdk.setDoc(sdk.doc(db, 'users', uid), payload, { merge: true });

@@ -13,6 +13,7 @@ export default function AdminPage({ user }) {
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState('');
   const [remoteSaving, setRemoteSaving] = useState(false);
+  const [classroomIdsText, setClassroomIdsText] = useState('');
 
   const initialSettings = useMemo(() => {
     const s = loadSettings();
@@ -71,6 +72,7 @@ export default function AdminPage({ user }) {
     setAccountRole(selectedUser.role || '');
     setAccountStatus(selectedUser.accountStatus || 'active');
     setAdminNote(selectedUser.adminNote || '');
+    setClassroomIdsText(Array.isArray(selectedUser.classroomIds) ? selectedUser.classroomIds.join(', ') : String(selectedUser.classroomIds || ''));
 
     // Load per-user AI config from Firestore when selection changes
     (async () => {
@@ -102,7 +104,8 @@ export default function AdminPage({ user }) {
       const res = await fb.adminUpdateUserAccount?.(selectedUid, {
         role: accountRole,
         accountStatus,
-        adminNote
+        adminNote,
+        classroomIds: classroomIdsText
       });
       if (!res?.ok) throw new Error(res?.error || 'update failed');
 
@@ -227,6 +230,11 @@ export default function AdminPage({ user }) {
                 <label style={{ display: 'grid', gap: 6 }}>
                   <div style={label}>管理備註</div>
                   <input value={adminNote} onChange={(e) => setAdminNote(e.target.value)} style={inputStyle} placeholder="notes..." />
+                </label>
+
+                <label style={{ display: 'grid', gap: 6 }}>
+                  <div style={label}>Classroom IDs（逗號分隔）</div>
+                  <input value={classroomIdsText} onChange={(e) => setClassroomIdsText(e.target.value)} style={inputStyle} placeholder="classroom-001, classroom-002" />
                 </label>
 
                 <div style={{ height: 6 }} />
