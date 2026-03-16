@@ -61,6 +61,7 @@ button, input { font: inherit; }
   gap: 6px;
   padding: 0 12px;
   margin-top: 12px;
+  overflow: auto;
 }
 
 .navItem {

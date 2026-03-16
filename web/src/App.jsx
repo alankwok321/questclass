@@ -96,7 +96,7 @@ function Shell({ user, setUser, fbReady, setFbReady, children }) {
     <div className="appShell">
       <aside className="sidebar">
         <div className="brand">QuestClass</div>
-        <nav className="nav">
+        <nav className="nav noScrollbar">
           {items.map(({ to, label, icon: Icon }) => (
             <NavLink
               key={to}

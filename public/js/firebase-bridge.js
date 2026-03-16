@@ -486,6 +486,40 @@ window.QuestClassFirebase = {
     }
   },
 
+  async createHomeworkAssignment(payload = {}) {
+    const check = await this._requireSignedIn();
+    if (!check.ok) return { ok: false, error: check.error };
+    const { db, sdk } = check.ready;
+    const me = check.me || {};
+    if (!['teacher', 'admin'].includes(String(me.role || '').toLowerCase())) {
+      return { ok: false, error: 'Teacher/admin only' };
+    }
+
+    const classroomId = String(payload.classroomId || '').trim();
+    if (!classroomId) return { ok: false, error: 'classroomId required' };
+
+    const docRef = sdk.doc(sdk.collection(db, 'homeworkAssignments'));
+    const assignment = {
+      id: docRef.id,
+      classroomId,
+      title: String(payload.title || '').trim(),
+      description: String(payload.description || '').trim(),
+      dueDate: String(payload.dueDate || '').trim(),
+      points: Number(payload.points || 0),
+      questions: Array.isArray(payload.questions) ? payload.questions : [],
+      createdBy: check.authUser.uid,
+      createdAt: sdk.serverTimestamp(),
+      updatedAt: sdk.serverTimestamp(),
+    };
+
+    try {
+      await sdk.setDoc(docRef, assignment, { merge: true });
+      return { ok: true, assignmentId: docRef.id };
+    } catch (error) {
+      return { ok: false, error: error?.message || 'Create homework failed' };
+    }
+  },
+
   async listStudentsForClassroom(classroomId) {
     const check = await this._requireSignedIn();
     if (!check.ok) return { ok: false, error: check.error, students: [] };

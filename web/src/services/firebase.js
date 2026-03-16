@@ -24,3 +24,11 @@ export async function getIdToken(forceRefresh = false) {
 export async function getTeacherDashboard(classroomId = null) {
   return await window.QuestClassFirebase?.getTeacherDashboard?.(classroomId);
 }
+
+export async function listClassrooms() {
+  return await window.QuestClassFirebase?.listClassrooms?.();
+}
+
+export async function createHomeworkAssignment(payload) {
+  return await window.QuestClassFirebase?.createHomeworkAssignment?.(payload);
+}
