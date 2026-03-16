@@ -19,12 +19,9 @@ import AdminPage from './pages/Admin.jsx';
 import { ToastProvider, useToast } from './components/Toast.jsx';
 import { firebaseEnabled, firebaseInit, signInWithGoogle, signOut } from './services/firebase.js';
 
-function Shell({ children }) {
+function Shell({ user, setUser, fbReady, setFbReady, children }) {
   const location = useLocation();
   const toast = useToast();
-
-  const [user, setUser] = useState(null);
-  const [fbReady, setFbReady] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -226,11 +223,14 @@ function AppRoutes({ user }) {
 }
 
 export default function App() {
+  const [user, setUser] = useState(null);
+  const [fbReady, setFbReady] = useState(false);
+
   return (
     <ToastProvider>
       <BrowserRouter>
-        <Shell>
-          <AppRoutes user={window.__qc_user || null} />
+        <Shell user={user} setUser={setUser} fbReady={fbReady} setFbReady={setFbReady}>
+          <AppRoutes user={user} />
         </Shell>
       </BrowserRouter>
     </ToastProvider>
