@@ -494,9 +494,22 @@ window.QuestClassFirebase = {
     if (!['teacher', 'admin'].includes(String(me.role || '').toLowerCase())) {
       return { ok: false, error: 'Teacher/admin only' };
     }
-
     const classroomId = String(payload.classroomId || '').trim();
     if (!classroomId) return { ok: false, error: 'classroomId required' };
+
+    // Ensure teacher can only write to classrooms they belong to (unless admin)
+    if (String(me.role || '').toLowerCase() === 'teacher') {
+      try {
+        const classroomSnap = await sdk.getDoc(sdk.doc(db, 'classrooms', classroomId));
+        const classroom = this._docData(classroomSnap);
+        const teacherUids = Array.isArray(classroom?.teacherUids) ? classroom.teacherUids : [];
+        if (!teacherUids.includes(check.authUser.uid)) {
+          return { ok: false, error: 'Insufficient role for this classroom' };
+        }
+      } catch (e) {
+        return { ok: false, error: e?.message || 'Classroom permission check failed' };
+      }
+    }
 
     const docRef = sdk.doc(sdk.collection(db, 'homeworkAssignments'));
     const assignment = {

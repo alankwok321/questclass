@@ -452,7 +452,7 @@ app.post('/api/teacher/lesson-loop', async (req, res) => {
 // Legacy UI removed
 const legacyPageMap = {};
 
-const spaRoutes = new Set(['/', '/dashboard', '/teacher', '/student', '/admin', '/chat', '/analytics']);
+const spaRoutes = new Set(['/', '/dashboard', '/teacher', '/student', '/admin', '/chat', '/analytics', '/teacher-homework', '/student-homework']);
 
 app.get('*', (req, res) => {
   if (req.path.startsWith('/api/')) return res.status(404).json({ error: 'Not found' });
@@ -475,7 +475,8 @@ app.get('*', (req, res) => {
     return res.type('html').send(fs.readFileSync(filePath, 'utf8'));
   }
 
-  return res.status(404).type('text').send('Not found');
+  // Redirect unknown routes back to main page
+  return res.redirect('/');
 });
 
 if (!process.env.VERCEL) {
