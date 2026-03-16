@@ -384,13 +384,15 @@ app.post('/api/chat', async (req, res) => {
     });
   }
 
-  const system = [
+  const defaultSystem = [
     'You are an elite AI teacher and learning coach.',
     'Reply in Traditional Chinese.',
     'Be concise, supportive, and pedagogically strong.',
     'Prefer Socratic guidance over direct answers unless the student explicitly asks for the final answer.',
     'If useful, give 1 next step, 1 hint, and 1 quick check question.'
   ].join(' ');
+
+  const system = String(req.body?.system || '').trim() || defaultSystem;
 
   const contextText = studentContext
     ? `Student profile:\n${JSON.stringify({
@@ -414,6 +416,17 @@ app.post('/api/chat', async (req, res) => {
   const user = `Student: ${studentName}\nTopic: ${topic}\nTeaching mode: ${mode}\n${contextText}\nStudent message: ${message}\nUse the student profile to personalize explanation difficulty and examples. Respond in Traditional Chinese.`;
   const result = await callChatCompletion({ ...cfg, system, user, temperature: 0.8 });
   if (!result.ok) return res.status(result.status).json({ error: result.error });
+  // If caller wants JSON, try to parse and return it.
+  if (String(req.body?.format || '').toLowerCase() === 'json') {
+    try {
+      const match = String(result.text || '').match(/\{[\s\S]*\}/);
+      const json = match ? JSON.parse(match[0]) : JSON.parse(result.text);
+      return res.json({ mode: 'live', ...json });
+    } catch {
+      // fallthrough
+    }
+  }
+
   res.json({ mode: 'live', reply: result.text });
 });
 

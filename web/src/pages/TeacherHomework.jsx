@@ -61,7 +61,7 @@ export default function TeacherHomework() {
         studentName: 'teacher',
         message: user,
         system,
-        debug: false
+        format: 'json'
       });
 
       const qs = res?.questions || [];
