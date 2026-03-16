@@ -11,7 +11,6 @@ export default function AdminPage({ user }) {
   const [err, setErr] = useState('');
 
   const [users, setUsers] = useState([]);
-  const [students, setStudents] = useState([]);
 
   const [selectedUid, setSelectedUid] = useState('');
   const selectedUser = useMemo(() => users.find(u => u.uid === selectedUid) || null, [users, selectedUid]);
@@ -20,25 +19,6 @@ export default function AdminPage({ user }) {
   const [accountStatus, setAccountStatus] = useState('active');
   const [adminNote, setAdminNote] = useState('');
 
-  const [studentForm, setStudentForm] = useState({
-    studentId: '',
-    userUid: '',
-    name: '',
-    gradeLevel: '',
-    classroomIds: '',
-    primaryTeacherUid: '',
-    status: 'active',
-    currentLevel: 0,
-    xp: 0,
-    nextLevelXp: 0,
-    streak: 0,
-    mastery: 0,
-    weaknessLabel: '',
-    weaknessScore: '',
-    focusSkills: '',
-    focusAreas: '',
-    recentQuestTitles: ''
-  });
 
   const refresh = async () => {
     setErr('');
@@ -52,16 +32,11 @@ export default function AdminPage({ user }) {
       // Ensure auth state is loaded.
       await fb.init?.();
 
-      const [uRes, sRes] = await Promise.all([
-        fb.listUsers?.(80),
-        fb.listAllStudents?.()
-      ]);
+      const uRes = await fb.listUsers?.(80);
 
       if (!uRes?.ok) throw new Error(uRes?.error || 'listUsers failed');
-      if (!sRes?.ok) throw new Error(sRes?.error || 'listAllStudents failed');
 
       setUsers(uRes.users || []);
-      setStudents(sRes.students || []);
 
       // keep selection stable
       if (!selectedUid && (uRes.users || []).length) setSelectedUid(uRes.users[0].uid);
@@ -101,17 +76,6 @@ export default function AdminPage({ user }) {
     }
   };
 
-  const onUpsertStudent = async () => {
-    try {
-      const fb = window.QuestClassFirebase;
-      const res = await fb.adminUpsertStudent?.(studentForm.studentId, studentForm);
-      if (!res?.ok) throw new Error(res?.error || 'upsert student failed');
-      toast.show(`學生已儲存：${res.studentId || studentForm.studentId || ''}`);
-      await refresh();
-    } catch (e) {
-      toast.show(e.message || '儲存失敗');
-    }
-  };
 
   if (!user) {
     return (
@@ -217,58 +181,6 @@ export default function AdminPage({ user }) {
             )}
           </div>
 
-          <div className="card">
-            <div style={{ fontWeight: 900, marginBottom: 12 }}>新增/更新學生</div>
-            <div style={{ display: 'grid', gap: 10 }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                <label style={{ display: 'grid', gap: 6 }}>
-                  <div style={label}>studentId (optional)</div>
-                  <input value={studentForm.studentId} onChange={(e) => setStudentForm(s => ({ ...s, studentId: e.target.value }))} style={inputStyle} />
-                </label>
-                <label style={{ display: 'grid', gap: 6 }}>
-                  <div style={label}>userUid</div>
-                  <input value={studentForm.userUid} onChange={(e) => setStudentForm(s => ({ ...s, userUid: e.target.value }))} style={inputStyle} />
-                </label>
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                <label style={{ display: 'grid', gap: 6 }}>
-                  <div style={label}>name</div>
-                  <input value={studentForm.name} onChange={(e) => setStudentForm(s => ({ ...s, name: e.target.value }))} style={inputStyle} />
-                </label>
-                <label style={{ display: 'grid', gap: 6 }}>
-                  <div style={label}>gradeLevel</div>
-                  <input value={studentForm.gradeLevel} onChange={(e) => setStudentForm(s => ({ ...s, gradeLevel: e.target.value }))} style={inputStyle} />
-                </label>
-              </div>
-
-              <label style={{ display: 'grid', gap: 6 }}>
-                <div style={label}>classroomIds (comma)</div>
-                <input value={studentForm.classroomIds} onChange={(e) => setStudentForm(s => ({ ...s, classroomIds: e.target.value }))} style={inputStyle} placeholder="class-a, class-b" />
-              </label>
-
-              <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-                <button type="button" onClick={onUpsertStudent} style={btnPrimary}>儲存學生</button>
-              </div>
-            </div>
-          </div>
-
-          <div className="card" style={{ padding: 12 }}>
-            <div style={{ fontWeight: 900, marginBottom: 10 }}>學生（{students.length}）</div>
-            <div style={{ maxHeight: 260, overflow: 'auto', display: 'grid', gap: 8 }}>
-              {students.slice(0, 50).map((s) => (
-                <div key={s.id} style={{ padding: 10, borderRadius: 16, border: '1px solid rgba(17,24,39,0.10)', background: '#F2F2F7' }}>
-                  <div style={{ fontWeight: 900, fontSize: 13 }}>{s.name || s.id}</div>
-                  <div style={{ marginTop: 2, color: '#6B7280', fontWeight: 800, fontSize: 11 }}>
-                    id: {s.id} · grade: {s.gradeLevel || '—'} · level: {s.currentLevel ?? '—'}
-                  </div>
-                </div>
-              ))}
-              {students.length > 50 ? (
-                <div style={{ color: '#6B7280', fontWeight: 800, fontSize: 12 }}>只顯示前 50 筆</div>
-              ) : null}
-            </div>
-          </div>
         </div>
       </div>
     </div>
