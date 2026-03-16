@@ -100,7 +100,7 @@ export default function AdminPage({ user }) {
       }
       await upsertAiConfig({
         idToken,
-        studentUid: selectedUid,
+        uid: selectedUid,
         apiKey: s.apiKey || '',
         apiBaseUrl: s.apiBaseUrl || '',
         model: s.apiModel || ''

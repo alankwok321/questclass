@@ -9,6 +9,6 @@ export function withLocalApiSettings(body = {}) {
     apiKey: body.apiKey ?? s.apiKey,
     apiBaseUrl: body.apiBaseUrl ?? s.apiBaseUrl,
     model: body.model ?? s.apiModel,
-    studentUid: body.studentUid ?? s.aiStudentUid,
+    uid: body.uid ?? s.uid,
   };
 }

@@ -110,7 +110,7 @@ async function resolveProviderConfig(body = {}) {
 
   const actor = await verifyUserFromToken(body.idToken);
   if (!actor) return cfg;
-  const targetUid = String(body.studentUid || '').trim() || actor.uid;
+  const targetUid = String(body.uid || '').trim() || actor.uid;
   if (!canManageStudent(actor, targetUid)) {
     const err = new Error('Insufficient role to use this student config');
     err.status = 403;
@@ -192,18 +192,18 @@ app.get('/api/runtime-config', (req, res) => {
 
 app.post('/api/ai-config/upsert', async (req, res) => {
   try {
-    const { idToken, studentUid, apiKey, apiBaseUrl, model } = req.body || {};
+    const { idToken, uid, apiKey, apiBaseUrl, model } = req.body || {};
     const actor = await verifyUserFromToken(idToken);
     if (!actor) return res.status(401).json({ error: 'Unauthorized' });
 
-    const targetUid = String(studentUid || '').trim() || actor.uid;
+    const targetUid = String(uid || '').trim() || actor.uid;
     if (!canManageStudent(actor, targetUid)) return res.status(403).json({ error: 'Insufficient role to manage this student config' });
     if (!String(apiKey || '').trim()) return res.status(400).json({ error: 'apiKey required' });
 
     const enc = encryptApiKey(apiKey);
     const { db } = getFirebaseAdmin();
     await db.collection('aiProviderConfigs').doc(targetUid).set({
-      studentUid: targetUid,
+      uid: targetUid,
       provider: {
         apiBaseUrl: String(apiBaseUrl || 'https://openrouter.ai/api/v1').trim().replace(/\/+$/, ''),
         model: String(model || 'openai/gpt-4.1-mini').trim()
@@ -213,7 +213,7 @@ app.post('/api/ai-config/upsert', async (req, res) => {
       updatedAt: FieldValue.serverTimestamp()
     }, { merge: true });
 
-    return res.json({ ok: true, studentUid: targetUid });
+    return res.json({ ok: true, uid: targetUid });
   } catch (error) {
     return res.status(500).json({ error: error?.message || 'save ai config failed' });
   }
@@ -310,7 +310,7 @@ app.post('/api/chat', async (req, res) => {
         if (hasIdToken) {
           actor = await verifyUserFromToken(req.body.idToken);
           if (actor) {
-            targetUid = String(req.body.studentUid || '').trim() || actor.uid;
+            targetUid = String(req.body.uid || '').trim() || actor.uid;
             const { db } = getFirebaseAdmin();
             const snap = await db.collection('aiProviderConfigs').doc(targetUid).get();
             if (snap.exists) {

@@ -56,7 +56,7 @@ export default function Teacher() {
       }
       await upsertAiConfig({
         idToken,
-        studentUid: String(settings.aiStudentUid || '').trim(),
+        uid: String(settings.aiStudentUid || '').trim(),
         apiKey: settings.apiKey || '',
         apiBaseUrl: settings.apiBaseUrl || '',
         model: settings.apiModel || ''

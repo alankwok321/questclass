@@ -21,8 +21,8 @@ async function withAuth(payload = {}) {
     const idToken = payload?.idToken || (getIdToken ? await getIdToken() : null);
 
     // Default: use logged-in user (actor) config on server.
-    // If caller explicitly sets studentUid, keep it (admin/teacher acting for student).
-    const studentUid = payload?.studentUid;
+    // If caller explicitly sets uid, keep it (admin/teacher acting for that user).
+    const uid = payload?.uid;
 
     const withLocalFallback = {
       ...payload,
@@ -37,7 +37,7 @@ async function withAuth(payload = {}) {
     return {
       ...withLocalFallback,
       idToken,
-      ...(studentUid ? { studentUid } : {}),
+      ...(uid ? { uid } : {}),
     };
   } catch {
     return payload;
