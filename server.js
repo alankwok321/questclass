@@ -369,10 +369,11 @@ app.post('/api/teacher/lesson-loop', async (req, res) => {
 });
 
 const legacyPageMap = {
-  '/': 'index.html'
+  // legacy landing moved off root
+  '/legacy': 'index.html'
 };
 
-const spaRoutes = new Set(['/teacher', '/student', '/admin', '/chat', '/analytics']);
+const spaRoutes = new Set(['/', '/dashboard', '/teacher', '/student', '/admin', '/chat', '/analytics']);
 
 app.get('*', (req, res) => {
   if (req.path.startsWith('/api/')) return res.status(404).json({ error: 'Not found' });
