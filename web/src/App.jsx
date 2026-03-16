@@ -15,6 +15,7 @@ import {
 import './style.css';
 import Teacher from './pages/Teacher.jsx';
 import ChatPage from './pages/Chat.jsx';
+import AdminPage from './pages/Admin.jsx';
 import { ToastProvider, useToast } from './components/Toast.jsx';
 import { firebaseEnabled, firebaseInit, signInWithGoogle, signOut } from './services/firebase.js';
 
@@ -34,6 +35,7 @@ function Shell({ children }) {
         const res = await firebaseInit();
         if (!mounted) return;
         setUser(res?.user || null);
+        window.__qc_user = res?.user || null;
       } catch {
         // ignore
       }
@@ -65,6 +67,7 @@ function Shell({ children }) {
     const res = await signInWithGoogle();
     if (res?.ok) {
       setUser(res.user || null);
+      window.__qc_user = res.user || null;
       toast.show('登入成功');
     } else {
       toast.show(res?.error || '登入失敗');
@@ -74,6 +77,7 @@ function Shell({ children }) {
   const onLogout = async () => {
     await signOut();
     setUser(null);
+    window.__qc_user = null;
     toast.show('已登出');
   };
 
@@ -207,14 +211,14 @@ function Placeholder({ name }) {
   );
 }
 
-function AppRoutes() {
+function AppRoutes({ user }) {
   return (
     <Routes>
       <Route path="/" element={<Placeholder name="Landing" />} />
       <Route path="/teacher" element={<Teacher />} />
       <Route path="/chat" element={<ChatPage />} />
       <Route path="/student" element={<Placeholder name="Student" />} />
-      <Route path="/admin" element={<Placeholder name="Admin" />} />
+      <Route path="/admin" element={<AdminPage user={user} />} />
       <Route path="/analytics" element={<Placeholder name="Analytics" />} />
       <Route path="*" element={<Placeholder name="Not Found" />} />
     </Routes>
@@ -226,7 +230,7 @@ export default function App() {
     <ToastProvider>
       <BrowserRouter>
         <Shell>
-          <AppRoutes />
+          <AppRoutes user={window.__qc_user || null} />
         </Shell>
       </BrowserRouter>
     </ToastProvider>
