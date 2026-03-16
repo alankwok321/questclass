@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useToast } from '../components/Toast.jsx';
-import { clearSettings, loadSettings, saveSettings } from '../services/settings.js';
+import { loadSettings } from '../services/settings.js';
 import { upsertAiConfig } from '../services/api.js';
 import { getIdToken } from '../services/firebase.js';
 
@@ -79,14 +79,7 @@ export default function AdminPage({ user }) {
       const fb = window.QuestClassFirebase;
       if (!selectedUid) return toast.show('請先選擇使用者');
 
-      // 1) Save local API settings (for this browser)
-      saveSettings({
-        apiBaseUrl: String(apiForm.apiBaseUrl || '').trim(),
-        apiModel: String(apiForm.apiModel || '').trim(),
-        apiKey: String(apiForm.apiKey || '').trim(),
-      });
-
-      // 2) Save account settings (Firestore)
+      // 1) Save account settings (Firestore)
       const res = await fb.adminUpdateUserAccount?.(selectedUid, {
         role: accountRole,
         accountStatus,
@@ -94,19 +87,21 @@ export default function AdminPage({ user }) {
       });
       if (!res?.ok) throw new Error(res?.error || 'update failed');
 
-      // 3) Save per-user AI config (Firestore)
+      // 2) Save per-user AI config (Firestore only; no localStorage)
       const idToken = await getIdToken();
       if (!idToken) throw new Error('請先登入 Firebase');
 
-      if (String(apiForm.apiKey || '').trim()) {
-        await upsertAiConfig({
-          idToken,
-          uid: selectedUid,
-          apiKey: apiForm.apiKey || '',
-          apiBaseUrl: apiForm.apiBaseUrl || '',
-          model: apiForm.apiModel || ''
-        });
+      if (!String(apiForm.apiKey || '').trim()) {
+        throw new Error('請填入 API Key（會加密存到 Firebase）');
       }
+
+      await upsertAiConfig({
+        idToken,
+        uid: selectedUid,
+        apiKey: apiForm.apiKey || '',
+        apiBaseUrl: apiForm.apiBaseUrl || '',
+        model: apiForm.apiModel || ''
+      });
 
       toast.show('已儲存');
       await refresh();
@@ -115,12 +110,6 @@ export default function AdminPage({ user }) {
     } finally {
       setRemoteSaving(false);
     }
-  };
-
-  const onClearLocalApi = () => {
-    clearSettings();
-    setApiForm({ apiBaseUrl: 'https://openrouter.ai/api/v1', apiModel: 'openai/gpt-4.1-mini', apiKey: '' });
-    toast.show('已清除本機 API 設定');
   };
 
 
@@ -222,7 +211,7 @@ export default function AdminPage({ user }) {
                 </label>
 
                 <div style={{ height: 6 }} />
-                <div style={{ fontWeight: 900, marginBottom: 6 }}>API 設定（本機 / 可同步到此使用者）</div>
+                <div style={{ fontWeight: 900, marginBottom: 6 }}>API 設定（僅存到此使用者 / Firebase，加密）</div>
 
                 <label style={{ display: 'grid', gap: 6 }}>
                   <div style={label}>API Base URL</div>
@@ -239,8 +228,7 @@ export default function AdminPage({ user }) {
                   <input value={apiForm.apiKey} onChange={(e) => setApiForm(s => ({ ...s, apiKey: e.target.value }))} style={inputStyle} placeholder="sk-..." type="password" />
                 </label>
 
-                <div style={{ display: 'flex', gap: 10, justifyContent: 'space-between', flexWrap: 'wrap' }}>
-                  <button type="button" onClick={onClearLocalApi} style={btnGhost}>清除本機 API</button>
+                <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
                   <button type="button" onClick={onSaveAll} disabled={remoteSaving} style={btnPrimary}>
                     {remoteSaving ? '儲存中…' : '儲存'}
                   </button>
