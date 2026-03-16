@@ -16,6 +16,8 @@ import './style.css';
 import Teacher from './pages/Teacher.jsx';
 import ChatPage from './pages/Chat.jsx';
 import AdminPage from './pages/Admin.jsx';
+import Dashboard from './pages/Dashboard.jsx';
+import PlaceholderTab from './pages/PlaceholderTab.jsx';
 import { ToastProvider, useToast } from './components/Toast.jsx';
 import { firebaseEnabled, firebaseInit, signInWithGoogle, signOut } from './services/firebase.js';
 
@@ -51,10 +53,18 @@ function Shell({ user, setUser, fbReady, setFbReady, children }) {
   }, [location.pathname]);
 
   const items = [
-    { to: '/teacher', label: '教師', icon: LayoutDashboard },
-    { to: '/student', label: '學生', icon: Users },
-    { to: '/admin', label: '管理', icon: FileText },
-    { to: '/chat', label: '聊天', icon: MessageSquare },
+    { to: '/dashboard', label: '儀表板', icon: LayoutDashboard },
+    { to: '/classroom', label: '班級管理', icon: Users },
+    { to: '/assignments', label: '作業批改', icon: BookOpen },
+    { to: '/progress', label: '進度追蹤', icon: TrendingUp },
+    { to: '/reports', label: '學習報告', icon: FileText },
+    { to: '/parents', label: '家長通知', icon: MessageSquare },
+  ];
+
+  const extraItems = [
+    { to: '/teacher', label: '教師工具', icon: LayoutDashboard },
+    { to: '/chat', label: 'AI 聊天', icon: MessageSquare },
+    { to: '/admin', label: '系統管理', icon: FileText },
     { to: '/analytics', label: '分析', icon: TrendingUp },
     { to: '/', label: '首頁', icon: BookOpen },
   ];
@@ -84,6 +94,20 @@ function Shell({ user, setUser, fbReady, setFbReady, children }) {
         <div className="brand">QuestClass</div>
         <nav className="nav">
           {items.map(({ to, label, icon: Icon }) => (
+            <NavLink
+              key={to}
+              to={to}
+              className={({ isActive }) => `navItem ${isActive ? 'navItemActive' : ''}`}
+              end={to === '/'}
+            >
+              <Icon size={20} />
+              <span>{label}</span>
+            </NavLink>
+          ))}
+
+          <div className="sidebarDivider" />
+
+          {extraItems.map(({ to, label, icon: Icon }) => (
             <NavLink
               key={to}
               to={to}
@@ -211,13 +235,21 @@ function Placeholder({ name }) {
 function AppRoutes({ user }) {
   return (
     <Routes>
-      <Route path="/" element={<Placeholder name="首頁" />} />
+      <Route path="/" element={<Dashboard />} />
+      <Route path="/dashboard" element={<Dashboard />} />
+      <Route path="/classroom" element={<PlaceholderTab title="班級管理" />} />
+      <Route path="/assignments" element={<PlaceholderTab title="作業批改" />} />
+      <Route path="/progress" element={<PlaceholderTab title="進度追蹤" />} />
+      <Route path="/reports" element={<PlaceholderTab title="學習報告" />} />
+      <Route path="/parents" element={<PlaceholderTab title="家長通知" />} />
+
+      {/* Existing core tools */}
       <Route path="/teacher" element={<Teacher />} />
       <Route path="/chat" element={<ChatPage />} />
-      <Route path="/student" element={<Placeholder name="Student" />} />
       <Route path="/admin" element={<AdminPage user={user} />} />
-      <Route path="/analytics" element={<Placeholder name="Analytics" />} />
-      <Route path="*" element={<Placeholder name="Not Found" />} />
+      <Route path="/analytics" element={<PlaceholderTab title="分析" />} />
+
+      <Route path="*" element={<PlaceholderTab title="找不到頁面" />} />
     </Routes>
   );
 }
