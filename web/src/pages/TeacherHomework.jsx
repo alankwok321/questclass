@@ -6,9 +6,9 @@ export default function TeacherHomework() {
   const [form, setForm] = useState({
     title: '',
     description: '',
-    dueDate: '',
+    dueAt: '',
     classroomId: '',
-    points: 10,
+    status: 'published',
   });
 
   const [classrooms, setClassrooms] = useState([]);
@@ -52,16 +52,19 @@ export default function TeacherHomework() {
     if (!canGenerate) return;
     setGenLoading(true);
     try {
-      const prompt = `你是一個老師助教。請根據作業標題與說明產出 5 題題目（適合國小/國中皆可），每題包含：id(短字串)、question(題目)、answer(參考答案)、points(整數)。輸出 JSON 格式：{\"questions\":[...]}`;
+      const system = `你是一個老師助教。請產出「作業題目」JSON，輸出必須是純 JSON，不要 markdown。\n\n規格：{\n  \"questions\": [\n    {\n      \"id\": \"q1\",\n      \"type\": \"short_text|multiple_choice|true_false|numeric\",\n      \"prompt\": \"題目文字\",\n      \"points\": 1,\n      \"answerKey\": { 依 type 決定 },\n      \"meta\": { \"tags\": [..], \"difficulty\": 1 }\n    }\n  ]\n}\n\nanswerKey 規則：\n- short_text: { \"reference\": \"...\", \"keywords\": [..] }\n- multiple_choice: { \"choices\": [{\"id\":\"A\",\"text\":\"...\"},...], \"correctChoiceId\":\"A\" }\n- true_false: { \"correct\": true }\n- numeric: { \"correct\": 0.75, \"tolerance\": 0.01 }\n\n請產出 8 題：四種 type 每種至少 2 題。points 1~5。difficulty 1~5。`;
+
       const user = `標題：${form.title}\n說明：${form.description || ''}`;
       const res = await chat({
         topic: 'teacher-homework',
         mode: 'generate',
         studentName: 'teacher',
         message: user,
-        system: prompt,
+        system,
+        debug: false
       });
-      const qs = res?.questions || res?.assignment || [];
+
+      const qs = res?.questions || [];
       setQuestions(Array.isArray(qs) ? qs : []);
     } catch {
       // ignore
@@ -101,14 +104,18 @@ export default function TeacherHomework() {
               </select>
             </label>
             <label style={{ display: 'grid', gap: 6 }}>
-              <div style={label}>截止日期</div>
-              <input value={form.dueDate} onChange={(e) => setForm(s => ({ ...s, dueDate: e.target.value }))} style={inputStyle} placeholder="YYYY-MM-DD" />
+              <div style={label}>截止時間（dueAt）</div>
+              <input value={form.dueAt} onChange={(e) => setForm(s => ({ ...s, dueAt: e.target.value }))} style={inputStyle} placeholder="2026-03-20T12:00:00Z" />
             </label>
           </div>
 
           <label style={{ display: 'grid', gap: 6 }}>
-            <div style={label}>配分</div>
-            <input type="number" value={form.points} onChange={(e) => setForm(s => ({ ...s, points: Number(e.target.value) }))} style={inputStyle} />
+            <div style={label}>狀態</div>
+            <select value={form.status} onChange={(e) => setForm(s => ({ ...s, status: e.target.value }))} style={selectStyle}>
+              <option value="draft">draft</option>
+              <option value="published">published</option>
+              <option value="archived">archived</option>
+            </select>
           </label>
 
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
@@ -116,12 +123,14 @@ export default function TeacherHomework() {
               {genLoading ? '產生中…' : 'AI 產生題目'}
             </button>
             <button type="button" style={btnPrimary} onClick={async () => {
+              const totalPoints = (questions || []).reduce((sum, q) => sum + Number(q?.points || 0), 0);
               const res = await createHomeworkAssignment({
                 classroomId: form.classroomId,
                 title: form.title,
                 description: form.description,
-                dueDate: form.dueDate,
-                points: form.points,
+                dueAt: form.dueAt,
+                status: form.status,
+                totalPoints,
                 questions,
               });
               if (res?.ok) {
@@ -187,7 +196,7 @@ export default function TeacherHomework() {
               <div key={a.id} style={{ padding: 12, borderRadius: 18, border: '1px solid rgba(17,24,39,0.10)', background: '#F9FAFB' }}>
                 <div style={{ fontWeight: 900 }}>{a.title || '（未命名作業）'}</div>
                 <div style={{ marginTop: 4, color: '#6B7280', fontWeight: 800, fontSize: 12 }}>
-                  classroom: {a.classroomId || '—'} · due: {a.dueDate || '—'} · questions: {(a.questions || []).length}
+                  classroom: {a.classroomId || '—'} · dueAt: {a.dueAt || '—'} · status: {a.status || '—'} · questions: {(a.questions || []).length} · total: {a.totalPoints ?? '—'}
                 </div>
               </div>
             ))}
