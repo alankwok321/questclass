@@ -19,13 +19,24 @@ async function withAuth(payload = {}) {
     const idToken = await getIdToken();
     if (!idToken) return payload;
 
-    // Default to actor uid (server will use actor.uid if studentUid omitted).
     // If caller provided studentUid explicitly, keep it.
+    // Otherwise, allow admin/teacher to target a student via local setting (aiStudentUid).
+    // If still empty, omit studentUid and let server default to actor.uid.
     const uid = window.__qc_user?.uid || null;
+    let settingsUid;
+    try {
+      const s = JSON.parse(localStorage.getItem('questclass_settings_v1') || '{}');
+      settingsUid = (s.aiStudentUid || '').trim() || null;
+    } catch {
+      settingsUid = null;
+    }
+
+    const studentUid = payload?.studentUid ?? settingsUid ?? undefined;
+
     return {
       ...payload,
       idToken,
-      studentUid: payload?.studentUid ?? uid ?? undefined,
+      ...(studentUid ? { studentUid } : {}),
     };
   } catch {
     return payload;
