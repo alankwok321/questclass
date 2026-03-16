@@ -1,6 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useToast } from '../components/Toast.jsx';
 import ApiSettingsCard from '../components/ApiSettingsCard.jsx';
+import { loadSettings } from '../services/settings.js';
+import { upsertAiConfig } from '../services/api.js';
+import { getIdToken } from '../services/firebase.js';
 
 function isAdmin(user) {
   return String(user?.role || '').toLowerCase() === 'admin';
@@ -10,6 +13,7 @@ export default function AdminPage({ user }) {
   const toast = useToast();
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState('');
+  const [remoteSaving, setRemoteSaving] = useState(false);
 
   const [users, setUsers] = useState([]);
 
@@ -74,6 +78,38 @@ export default function AdminPage({ user }) {
       await refresh();
     } catch (e) {
       toast.show(e.message || '更新失敗');
+    }
+  };
+
+  const onSaveApiKeyForUser = async () => {
+    setRemoteSaving(true);
+    try {
+      if (!selectedUid) {
+        toast.show('請先選擇使用者');
+        return;
+      }
+      const idToken = await getIdToken();
+      if (!idToken) {
+        toast.show('請先登入 Firebase');
+        return;
+      }
+      const s = loadSettings();
+      if (!String(s.apiKey || '').trim()) {
+        toast.show('請先在上方 API 設定填入 API Key');
+        return;
+      }
+      await upsertAiConfig({
+        idToken,
+        studentUid: selectedUid,
+        apiKey: s.apiKey || '',
+        apiBaseUrl: s.apiBaseUrl || '',
+        model: s.apiModel || ''
+      });
+      toast.show('已儲存 API Key 到 Firebase（此使用者）');
+    } catch (e) {
+      toast.show(e.message || '儲存失敗');
+    } finally {
+      setRemoteSaving(false);
     }
   };
 
@@ -177,7 +213,10 @@ export default function AdminPage({ user }) {
                   <input value={adminNote} onChange={(e) => setAdminNote(e.target.value)} style={inputStyle} placeholder="notes..." />
                 </label>
 
-                <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+                <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+                  <button type="button" onClick={onSaveApiKeyForUser} disabled={remoteSaving} style={btnGhost}>
+                    {remoteSaving ? '儲存中…' : '把上方 API Key 存到此使用者'}
+                  </button>
                   <button type="button" onClick={onUpdateAccount} style={btnPrimary}>儲存</button>
                 </div>
               </div>
