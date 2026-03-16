@@ -264,8 +264,8 @@ app.post('/api/admin/seed', async (req, res) => {
   }
 });
 
-// Serve legacy static pages & assets
-app.use(express.static(publicDir));
+// Serve legacy static assets (but DO NOT auto-serve public/index.html on /)
+app.use(express.static(publicDir, { index: false }));
 
 // Serve new React web app build at /app and for SPA routes (teacher/student/admin/chat/analytics)
 const webDistDir = path.join(__dirname, 'web', 'dist');
