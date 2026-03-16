@@ -81,7 +81,14 @@ export default function TeacherHomework() {
       const system = `你是一個老師助教。請產出「作業題目」JSON，輸出必須是純 JSON，不要 markdown。\n\n規格：{\n  \"questions\": [\n    {\n      \"id\": \"q1\",\n      \"type\": \"short_text|multiple_choice|true_false|numeric\",\n      \"prompt\": \"題目文字\",\n      \"points\": 1,\n      \"answerKey\": { 依 type 決定 },\n      \"meta\": { \"tags\": [..], \"difficulty\": 1 }\n    }\n  ]\n}\n\nanswerKey 規則：\n- short_text: { \"reference\": \"...\", \"keywords\": [..] }\n- multiple_choice: { \"choices\": [{\"id\":\"A\",\"text\":\"...\"},...], \"correctChoiceId\":\"A\" }\n- true_false: { \"correct\": true }\n- numeric: { \"correct\": 0.75, \"tolerance\": 0.01 }\n\n請產出 8 題：四種 type 每種至少 2 題。points 1~5。difficulty 1~5。`;
 
       const user = `標題：${form.title}\n說明：${form.description || ''}`;
+      const idToken = await window.QuestClassFirebase?.getIdToken?.();
+      if (!idToken) {
+        alert('請先登入（無法取得 idToken）');
+        return;
+      }
+
       const res = await chat({
+        idToken,
         topic: 'teacher-homework',
         mode: 'generate',
         studentName: 'teacher',
