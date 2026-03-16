@@ -298,6 +298,57 @@ app.post('/api/chat', async (req, res) => {
   }
 
   if (!cfg.apiKey) {
+    // Optional debug (no secrets): set {debug:true} in request body.
+    if (req.body?.debug) {
+      try {
+        const hasIdToken = Boolean(req.body?.idToken);
+        const hasBodyApiKey = Boolean(String(req.body?.apiKey || '').trim());
+        let actor = null;
+        let targetUid = null;
+        let cfgDoc = null;
+
+        if (hasIdToken) {
+          actor = await verifyUserFromToken(req.body.idToken);
+          if (actor) {
+            targetUid = String(req.body.studentUid || '').trim() || actor.uid;
+            const { db } = getFirebaseAdmin();
+            const snap = await db.collection('aiProviderConfigs').doc(targetUid).get();
+            if (snap.exists) {
+              const d = snap.data() || {};
+              const secret = d.secret || null;
+              cfgDoc = {
+                exists: true,
+                hasProvider: Boolean(d.provider),
+                hasSecret: Boolean(secret),
+                secretKeys: secret ? Object.keys(secret) : [],
+                providerKeys: d.provider ? Object.keys(d.provider) : [],
+                updatedBy: d.updatedBy || null,
+              };
+            } else {
+              cfgDoc = { exists: false };
+            }
+          }
+        }
+
+        return res.status(400).json({
+          error: 'AI chat is not configured. Ask admin/teacher to set student AI key or add one in settings.',
+          debug: {
+            hasIdToken,
+            hasBodyApiKey,
+            bodyKeys: Object.keys(req.body || {}),
+            actor,
+            targetUid,
+            cfgDoc,
+          }
+        });
+      } catch (e) {
+        return res.status(400).json({
+          error: 'AI chat is not configured. Ask admin/teacher to set student AI key or add one in settings.',
+          debug: { debugError: e?.message || String(e) }
+        });
+      }
+    }
+
     return res.status(400).json({
       error: 'AI chat is not configured. Ask admin/teacher to set student AI key or add one in settings.'
     });
