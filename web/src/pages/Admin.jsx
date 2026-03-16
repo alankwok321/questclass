@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useToast } from '../components/Toast.jsx';
-import ApiSettingsCard from '../components/ApiSettingsCard.jsx';
-import { loadSettings } from '../services/settings.js';
+import { clearSettings, loadSettings, saveSettings } from '../services/settings.js';
 import { upsertAiConfig } from '../services/api.js';
 import { getIdToken } from '../services/firebase.js';
 
@@ -14,6 +13,16 @@ export default function AdminPage({ user }) {
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState('');
   const [remoteSaving, setRemoteSaving] = useState(false);
+
+  const initialSettings = useMemo(() => {
+    const s = loadSettings();
+    return {
+      apiBaseUrl: s.apiBaseUrl || 'https://openrouter.ai/api/v1',
+      apiModel: s.apiModel || 'openai/gpt-4.1-mini',
+      apiKey: s.apiKey || ''
+    };
+  }, []);
+  const [apiForm, setApiForm] = useState(initialSettings);
 
   const [users, setUsers] = useState([]);
 
@@ -64,53 +73,54 @@ export default function AdminPage({ user }) {
     setAdminNote(selectedUser.adminNote || '');
   }, [selectedUser]);
 
-  const onUpdateAccount = async () => {
+  const onSaveAll = async () => {
+    setRemoteSaving(true);
     try {
       const fb = window.QuestClassFirebase;
       if (!selectedUid) return toast.show('請先選擇使用者');
+
+      // 1) Save local API settings (for this browser)
+      saveSettings({
+        apiBaseUrl: String(apiForm.apiBaseUrl || '').trim(),
+        apiModel: String(apiForm.apiModel || '').trim(),
+        apiKey: String(apiForm.apiKey || '').trim(),
+      });
+
+      // 2) Save account settings (Firestore)
       const res = await fb.adminUpdateUserAccount?.(selectedUid, {
         role: accountRole,
         accountStatus,
         adminNote
       });
       if (!res?.ok) throw new Error(res?.error || 'update failed');
-      toast.show('已更新');
-      await refresh();
-    } catch (e) {
-      toast.show(e.message || '更新失敗');
-    }
-  };
 
-  const onSaveApiKeyForUser = async () => {
-    setRemoteSaving(true);
-    try {
-      if (!selectedUid) {
-        toast.show('請先選擇使用者');
-        return;
-      }
+      // 3) Save per-user AI config (Firestore)
       const idToken = await getIdToken();
-      if (!idToken) {
-        toast.show('請先登入 Firebase');
-        return;
+      if (!idToken) throw new Error('請先登入 Firebase');
+
+      if (String(apiForm.apiKey || '').trim()) {
+        await upsertAiConfig({
+          idToken,
+          uid: selectedUid,
+          apiKey: apiForm.apiKey || '',
+          apiBaseUrl: apiForm.apiBaseUrl || '',
+          model: apiForm.apiModel || ''
+        });
       }
-      const s = loadSettings();
-      if (!String(s.apiKey || '').trim()) {
-        toast.show('請先在上方 API 設定填入 API Key');
-        return;
-      }
-      await upsertAiConfig({
-        idToken,
-        uid: selectedUid,
-        apiKey: s.apiKey || '',
-        apiBaseUrl: s.apiBaseUrl || '',
-        model: s.apiModel || ''
-      });
-      toast.show('已儲存 API Key 到 Firebase（此使用者）');
+
+      toast.show('已儲存');
+      await refresh();
     } catch (e) {
       toast.show(e.message || '儲存失敗');
     } finally {
       setRemoteSaving(false);
     }
+  };
+
+  const onClearLocalApi = () => {
+    clearSettings();
+    setApiForm({ apiBaseUrl: 'https://openrouter.ai/api/v1', apiModel: 'openai/gpt-4.1-mini', apiKey: '' });
+    toast.show('已清除本機 API 設定');
   };
 
 
@@ -176,10 +186,6 @@ export default function AdminPage({ user }) {
 
         <div style={{ display: 'grid', gap: 14 }}>
           <div className="card">
-            <div style={{ fontWeight: 900, marginBottom: 12 }}>帳號 / API 設定</div>
-            <ApiSettingsCard title="API 設定（本機）" />
-
-            <div style={{ height: 12 }} />
             <div style={{ fontWeight: 900, marginBottom: 12 }}>帳號設定</div>
             {!selectedUser ? (
               <div style={{ color: '#6B7280', fontWeight: 700 }}>尚未選擇使用者</div>
@@ -215,11 +221,29 @@ export default function AdminPage({ user }) {
                   <input value={adminNote} onChange={(e) => setAdminNote(e.target.value)} style={inputStyle} placeholder="notes..." />
                 </label>
 
-                <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
-                  <button type="button" onClick={onSaveApiKeyForUser} disabled={remoteSaving} style={btnGhost}>
-                    {remoteSaving ? '儲存中…' : '把上方 API Key 存到此使用者'}
+                <div style={{ height: 6 }} />
+                <div style={{ fontWeight: 900, marginBottom: 6 }}>API 設定（本機 / 可同步到此使用者）</div>
+
+                <label style={{ display: 'grid', gap: 6 }}>
+                  <div style={label}>API Base URL</div>
+                  <input value={apiForm.apiBaseUrl} onChange={(e) => setApiForm(s => ({ ...s, apiBaseUrl: e.target.value }))} style={inputStyle} placeholder="https://openrouter.ai/api/v1" />
+                </label>
+
+                <label style={{ display: 'grid', gap: 6 }}>
+                  <div style={label}>Model</div>
+                  <input value={apiForm.apiModel} onChange={(e) => setApiForm(s => ({ ...s, apiModel: e.target.value }))} style={inputStyle} placeholder="openai/gpt-4.1-mini" />
+                </label>
+
+                <label style={{ display: 'grid', gap: 6 }}>
+                  <div style={label}>API Key</div>
+                  <input value={apiForm.apiKey} onChange={(e) => setApiForm(s => ({ ...s, apiKey: e.target.value }))} style={inputStyle} placeholder="sk-..." type="password" />
+                </label>
+
+                <div style={{ display: 'flex', gap: 10, justifyContent: 'space-between', flexWrap: 'wrap' }}>
+                  <button type="button" onClick={onClearLocalApi} style={btnGhost}>清除本機 API</button>
+                  <button type="button" onClick={onSaveAll} disabled={remoteSaving} style={btnPrimary}>
+                    {remoteSaving ? '儲存中…' : '儲存'}
                   </button>
-                  <button type="button" onClick={onUpdateAccount} style={btnPrimary}>儲存</button>
                 </div>
               </div>
             )}
