@@ -9,8 +9,7 @@ import {
   MessageSquare,
   Bell,
   Search,
-  LogIn,
-  LogOut,
+
 } from 'lucide-react';
 
 import './style.css';
@@ -97,14 +96,35 @@ function Shell({ children }) {
         </nav>
 
         <div className="sidebarFooter">
-          <div className="profileCard">
-            <div className="avatar">{(user?.name || '陳').slice(0, 1)}</div>
-            <div style={{ minWidth: 0 }}>
-              <div style={{ fontWeight: 800, fontSize: 14 }}>{user?.name || '未登入'}</div>
-              <div style={{ color: '#6B7280', fontWeight: 700, fontSize: 12, marginTop: 2 }}>
-                {user?.role ? `角色：${user.role}` : (fbReady ? '可使用 Google 登入' : 'Firebase 未設定')}
+          <div className="profileCard" style={{ justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', gap: 12, alignItems: 'center', minWidth: 0 }}>
+              <div className="avatar">{(user?.name || '陳').slice(0, 1)}</div>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontWeight: 800, fontSize: 14 }}>{user?.name || '未登入'}</div>
+                <div style={{ color: '#6B7280', fontWeight: 700, fontSize: 12, marginTop: 2 }}>
+                  {user?.role ? `角色：${user.role}` : (fbReady ? '點右側登入' : 'Firebase 未設定')}
+                </div>
               </div>
             </div>
+
+            <button
+              type="button"
+              onClick={user ? onLogout : onLogin}
+              disabled={!fbReady}
+              title={user ? 'Logout' : 'Login'}
+              style={{
+                border: '1px solid rgba(17,24,39,0.10)',
+                background: '#F2F2F7',
+                borderRadius: 999,
+                padding: '8px 12px',
+                fontWeight: 900,
+                color: user ? '#111827' : '#007AFF',
+                cursor: fbReady ? 'pointer' : 'not-allowed',
+                whiteSpace: 'nowrap'
+              }}
+            >
+              {user ? 'Logout' : 'Login'}
+            </button>
           </div>
         </div>
       </aside>
@@ -118,27 +138,6 @@ function Shell({ children }) {
               <input className="search" placeholder="搜尋..." />
             </div>
 
-            <button
-              type="button"
-              onClick={user ? onLogout : onLogin}
-              style={{
-                border: 0,
-                background: '#F2F2F7',
-                borderRadius: 999,
-                height: 38,
-                padding: '0 12px',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 8,
-                color: '#111827',
-                fontWeight: 900,
-                cursor: 'pointer'
-              }}
-              title={user ? 'Logout' : 'Login'}
-            >
-              {user ? <LogOut size={18} /> : <LogIn size={18} />}
-              <span style={{ fontSize: 12 }}>{user ? 'Logout' : 'Login'}</span>
-            </button>
 
             <button
               type="button"
