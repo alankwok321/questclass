@@ -54,6 +54,10 @@ export async function lessonLoop(payload) {
   return postJson('/api/teacher/lesson-loop', body);
 }
 
+export async function getAiConfig(payload) {
+  return postJson('/api/ai-config/get', payload);
+}
+
 export async function upsertAiConfig(payload) {
   return postJson('/api/ai-config/upsert', payload);
 }

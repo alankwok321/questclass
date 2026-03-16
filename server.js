@@ -190,6 +190,36 @@ app.get('/api/runtime-config', (req, res) => {
   });
 });
 
+app.post('/api/ai-config/get', async (req, res) => {
+  try {
+    const { idToken, uid } = req.body || {};
+    const actor = await verifyUserFromToken(idToken);
+    if (!actor) return res.status(401).json({ error: 'Unauthorized' });
+
+    const targetUid = String(uid || '').trim() || actor.uid;
+    if (!canManageStudent(actor, targetUid)) return res.status(403).json({ error: 'Insufficient role to manage this user config' });
+
+    const { db } = getFirebaseAdmin();
+    const snap = await db.collection('aiProviderConfigs').doc(targetUid).get();
+    if (!snap.exists) return res.json({ ok: true, uid: targetUid, provider: null, hasKey: false });
+    const data = snap.data() || {};
+
+    return res.json({
+      ok: true,
+      uid: targetUid,
+      provider: {
+        apiBaseUrl: String(data?.provider?.apiBaseUrl || '').trim(),
+        model: String(data?.provider?.model || '').trim(),
+      },
+      hasKey: Boolean(data?.secret?.ciphertext),
+      updatedBy: data.updatedBy || null,
+      updatedAt: data.updatedAt || null,
+    });
+  } catch (error) {
+    return res.status(500).json({ error: error?.message || 'get ai config failed' });
+  }
+});
+
 app.post('/api/ai-config/upsert', async (req, res) => {
   try {
     const { idToken, uid, apiKey, apiBaseUrl, model } = req.body || {};

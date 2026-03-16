@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useToast } from '../components/Toast.jsx';
 import { loadSettings } from '../services/settings.js';
-import { upsertAiConfig } from '../services/api.js';
+import { getAiConfig, upsertAiConfig } from '../services/api.js';
 import { getIdToken } from '../services/firebase.js';
 
 function isAdmin(user) {
@@ -71,6 +71,25 @@ export default function AdminPage({ user }) {
     setAccountRole(selectedUser.role || '');
     setAccountStatus(selectedUser.accountStatus || 'active');
     setAdminNote(selectedUser.adminNote || '');
+
+    // Load per-user AI config from Firestore when selection changes
+    (async () => {
+      try {
+        const idToken = await getIdToken();
+        if (!idToken) return;
+        const res = await getAiConfig({ idToken, uid: selectedUser.uid });
+        if (!res?.ok) return;
+        setApiForm(s => ({
+          ...s,
+          apiBaseUrl: res.provider?.apiBaseUrl || s.apiBaseUrl,
+          apiModel: res.provider?.model || s.apiModel,
+          // never prefill real apiKey
+          apiKey: ''
+        }));
+      } catch {
+        // ignore
+      }
+    })();
   }, [selectedUser]);
 
   const onSaveAll = async () => {
@@ -224,8 +243,8 @@ export default function AdminPage({ user }) {
                 </label>
 
                 <label style={{ display: 'grid', gap: 6 }}>
-                  <div style={label}>API Key</div>
-                  <input value={apiForm.apiKey} onChange={(e) => setApiForm(s => ({ ...s, apiKey: e.target.value }))} style={inputStyle} placeholder="sk-..." type="password" />
+                  <div style={label}>API Key（不會回填顯示）</div>
+                  <input value={apiForm.apiKey} onChange={(e) => setApiForm(s => ({ ...s, apiKey: e.target.value }))} style={inputStyle} placeholder="留空=不更新 key" type="password" />
                 </label>
 
                 <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
