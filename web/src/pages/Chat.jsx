@@ -26,6 +26,19 @@ export default function ChatPage() {
     const idTokenAvailable = Boolean(window.QuestClassFirebase?.getIdToken);
     const actorUid = window.__qc_user?.uid || null;
 
+    const apiPayload = {
+      message: text,
+      topic,
+      mode,
+      studentName,
+      // force local fallback into the request (even if build cache is weird)
+      apiKey: settings.apiKey,
+      apiBaseUrl: settings.apiBaseUrl,
+      model: settings.apiModel,
+      // Also send idToken if available
+      idToken: idTokenAvailable ? await window.QuestClassFirebase.getIdToken() : null,
+    };
+
     const reqPreview = {
       endpoint: '/api/chat',
       topic,
@@ -38,17 +51,22 @@ export default function ChatPage() {
         hasApiKeyLocal: Boolean(String(settings.apiKey || '').trim()),
         aiStudentUid: settings.aiStudentUid || ''
       },
+      payload: {
+        hasApiKey: Boolean(String(apiPayload.apiKey || '').trim()),
+        apiBaseUrl: apiPayload.apiBaseUrl || '',
+        model: apiPayload.model || '',
+        hasIdToken: Boolean(apiPayload.idToken)
+      },
       firebase: {
         enabled: Boolean(window.QuestClassFirebase),
         idTokenAvailable
       }
     };
-
     setDebug({ lastReq: reqPreview, lastRes: null, lastErr: null });
 
     setLoading(true);
     try {
-      const data = await chat({ message: text, topic, mode, studentName });
+      const data = await chat(apiPayload);
       setItems((prev) => [...prev, { role: 'assistant', text: data.reply || '' }]);
       setDebug((d) => ({ ...d, lastRes: { ok: true, keys: Object.keys(data || {}), sample: { mode: data?.mode, replyLen: (data?.reply || '').length } } }));
     } catch (e) {
