@@ -89,6 +89,17 @@ export default function ChatPage() {
               <div><span style={k}>actorUid</span> {String(window.__qc_user?.uid || '—')}</div>
               <div><span style={k}>settings.aiStudentUid</span> {String(loadSettings().aiStudentUid || '—')}</div>
               <div><span style={k}>firebase bridge</span> {window.QuestClassFirebase ? 'OK' : 'missing'} · getIdToken: {window.QuestClassFirebase?.getIdToken ? 'OK' : 'missing'}</div>
+              <div><span style={k}>localStorage.questclass_settings_v1</span></div>
+              <pre style={pre}>{(() => {
+                try {
+                  const s = loadSettings() || {};
+                  const safe = { ...s };
+                  if (safe.apiKey) safe.apiKey = '***';
+                  return JSON.stringify(safe, null, 2);
+                } catch {
+                  return '—';
+                }
+              })()}</pre>
               <div><span style={k}>lastReq</span></div>
               <pre style={pre}>{debug.lastReq ? JSON.stringify(debug.lastReq, null, 2) : '—'}</pre>
               <div><span style={k}>lastRes</span></div>
