@@ -419,11 +419,16 @@ app.post('/api/chat', async (req, res) => {
   // If caller wants JSON, try to parse and return it.
   if (String(req.body?.format || '').toLowerCase() === 'json') {
     try {
-      const match = String(result.text || '').match(/\{[\s\S]*\}/);
-      const json = match ? JSON.parse(match[0]) : JSON.parse(result.text);
+      const text = String(result.text || '').trim();
+      const match = text.match(/\{[\s\S]*\}/);
+      const json = match ? JSON.parse(match[0]) : JSON.parse(text);
       return res.json({ mode: 'live', ...json });
-    } catch {
-      // fallthrough
+    } catch (e) {
+      return res.status(422).json({
+        error: 'JSON_PARSE_FAILED',
+        detail: e?.message || 'parse failed',
+        raw: String(result.text || '').slice(0, 2000)
+      });
     }
   }
 

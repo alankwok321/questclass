@@ -90,10 +90,19 @@ export default function TeacherHomework() {
         format: 'json'
       });
 
+      if (res?.error) {
+        alert(`${res.error}${res.detail ? `: ${res.detail}` : ''}`);
+        return;
+      }
+
       const qs = res?.questions || [];
-      setQuestions(Array.isArray(qs) ? qs : []);
-    } catch {
-      // ignore
+      if (!Array.isArray(qs) || !qs.length) {
+        alert('AI 沒有回傳 questions（請看 Network Response）');
+        return;
+      }
+      setQuestions(qs);
+    } catch (e) {
+      alert(e?.message || 'AI 產生失敗');
     } finally {
       setGenLoading(false);
     }
