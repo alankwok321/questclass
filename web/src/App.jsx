@@ -9,8 +9,10 @@ import {
   MessageSquare,
   Bell,
   Search,
-
 } from 'lucide-react';
+
+import TeacherHomework from './pages/TeacherHomework.jsx';
+import StudentHomework from './pages/StudentHomework.jsx';
 
 import './style.css';
 import Teacher from './pages/Teacher.jsx';
@@ -62,6 +64,8 @@ function Shell({ user, setUser, fbReady, setFbReady, children }) {
   ];
 
   const extraItems = [
+    { to: '/teacher-homework', label: '出作業', icon: BookOpen },
+    { to: '/student-homework', label: '我的作業', icon: FileText },
     { to: '/teacher', label: '教師工具', icon: LayoutDashboard },
     { to: '/chat', label: 'AI 聊天', icon: MessageSquare },
     { to: '/admin', label: '系統管理', icon: FileText },
@@ -242,6 +246,10 @@ function AppRoutes({ user }) {
       <Route path="/progress" element={<PlaceholderTab title="進度追蹤" />} />
       <Route path="/reports" element={<PlaceholderTab title="學習報告" />} />
       <Route path="/parents" element={<PlaceholderTab title="家長通知" />} />
+
+      {/* Homework */}
+      <Route path="/teacher-homework" element={<TeacherHomework />} />
+      <Route path="/student-homework" element={<StudentHomework />} />
 
       {/* Existing core tools */}
       <Route path="/teacher" element={<Teacher />} />
