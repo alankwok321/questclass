@@ -380,7 +380,7 @@ app.get('*', (req, res) => {
 
     // New React SPA routes (serve web/dist/index.html if present)
   if (fs.existsSync(path.join(webDistDir, 'index.html'))) {
-    const p = req.path.replace(/\/$/, '');
+    const p = req.path === '/' ? '/' : req.path.replace(/\/$/, '');
     if (spaRoutes.has(p) || p === '/app' || p.startsWith('/app/')) {
       let html = fs.readFileSync(path.join(webDistDir, 'index.html'), 'utf8');
       // Make Vite-built asset URLs work under /teacher|/student|... by forcing absolute /web/assets/ paths.
