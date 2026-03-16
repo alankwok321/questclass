@@ -81,9 +81,9 @@ export default function AdminPage({ user }) {
         if (!res?.ok) return;
         setApiForm(s => ({
           ...s,
-          apiBaseUrl: res.provider?.apiBaseUrl || s.apiBaseUrl,
-          apiModel: res.provider?.model || s.apiModel,
-          // never prefill real apiKey
+          // do not prefill apiBaseUrl/model/key from server
+          apiBaseUrl: '',
+          apiModel: '',
           apiKey: ''
         }));
       } catch {
@@ -230,7 +230,7 @@ export default function AdminPage({ user }) {
                 </label>
 
                 <div style={{ height: 6 }} />
-                <div style={{ fontWeight: 900, marginBottom: 6 }}>API 設定（僅存到此使用者 / Firebase，加密）</div>
+                <div style={{ fontWeight: 900, marginBottom: 6 }}>API 設定</div>
 
                 <label style={{ display: 'grid', gap: 6 }}>
                   <div style={label}>API Base URL</div>
