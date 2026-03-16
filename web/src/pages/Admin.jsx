@@ -134,6 +134,27 @@ export default function AdminPage({ user }) {
     }
   };
 
+  const onRunMigration = async () => {
+    setRemoteSaving(true);
+    try {
+      const idToken = await getIdToken();
+      if (!idToken) throw new Error('請先登入 Firebase');
+      const res = await fetch('/api/admin/migrate-users-only', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idToken, mode: 'merge' })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || 'migrate failed');
+      toast.show(`Migration 完成：merged=${data.merged || 0}, skipped=${data.skipped || 0}`);
+      await refresh();
+    } catch (e) {
+      toast.show(e.message || 'Migration 失敗');
+    } finally {
+      setRemoteSaving(false);
+    }
+  };
+
 
   if (!user) {
     return (
@@ -255,7 +276,10 @@ export default function AdminPage({ user }) {
                   <input value={apiForm.apiKey} onChange={(e) => setApiForm(s => ({ ...s, apiKey: e.target.value }))} style={inputStyle} placeholder="留空=不更新 key" type="password" />
                 </label>
 
-                <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', gap: 10, justifyContent: 'space-between', flexWrap: 'wrap' }}>
+                  <button type="button" onClick={onRunMigration} disabled={remoteSaving} style={btnGhost}>
+                    {remoteSaving ? '執行中…' : 'Run migration'}
+                  </button>
                   <button type="button" onClick={onSaveAll} disabled={remoteSaving} style={btnPrimary}>
                     {remoteSaving ? '儲存中…' : '儲存'}
                   </button>
