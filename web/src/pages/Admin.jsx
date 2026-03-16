@@ -175,9 +175,11 @@ export default function AdminPage({ user }) {
         </div>
 
         <div style={{ display: 'grid', gap: 14 }}>
-          <ApiSettingsCard title="API 設定（本機）" />
-
           <div className="card">
+            <div style={{ fontWeight: 900, marginBottom: 12 }}>帳號 / API 設定</div>
+            <ApiSettingsCard title="API 設定（本機）" />
+
+            <div style={{ height: 12 }} />
             <div style={{ fontWeight: 900, marginBottom: 12 }}>帳號設定</div>
             {!selectedUser ? (
               <div style={{ color: '#6B7280', fontWeight: 700 }}>尚未選擇使用者</div>
