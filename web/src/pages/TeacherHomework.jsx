@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { listClassrooms, createHomeworkAssignment } from '../services/firebase.js';
+import { listClassrooms, createHomeworkAssignment, listHomeworkAssignments } from '../services/firebase.js';
 import { chat } from '../services/api.js';
 
 export default function TeacherHomework() {
@@ -15,8 +15,20 @@ export default function TeacherHomework() {
   const [loadingClasses, setLoadingClasses] = useState(false);
   const [genLoading, setGenLoading] = useState(false);
   const [questions, setQuestions] = useState([]);
+  const [listLoading, setListLoading] = useState(false);
+  const [items, setItems] = useState([]);
 
   const canGenerate = useMemo(() => Boolean(String(form.title || '').trim()), [form.title]);
+
+  async function refreshList(classroomId = null) {
+    setListLoading(true);
+    try {
+      const res = await listHomeworkAssignments(classroomId || null, 50);
+      if (res?.ok) setItems(res.items || []);
+    } finally {
+      setListLoading(false);
+    }
+  }
 
   useEffect(() => {
     let mounted = true;
@@ -29,6 +41,9 @@ export default function TeacherHomework() {
       } finally {
         if (mounted) setLoadingClasses(false);
       }
+
+      if (!mounted) return;
+      await refreshList(null);
     })();
     return () => { mounted = false; };
   }, []);
@@ -111,6 +126,7 @@ export default function TeacherHomework() {
               });
               if (res?.ok) {
                 alert('已儲存作業：' + res.assignmentId);
+                await refreshList(form.classroomId || null);
               } else {
                 alert(res?.error || '儲存失敗');
               }
@@ -135,6 +151,49 @@ export default function TeacherHomework() {
           </div>
         ) : (
           <div style={{ color: '#6B7280', fontWeight: 700 }}>尚未產生題目</div>
+        )}
+      </div>
+
+      <div className="card">
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 10 }}>
+          <div style={{ fontWeight: 900 }}>作業清單</div>
+          <button type="button" style={btnGhost} onClick={() => refreshList(form.classroomId || null)} disabled={listLoading}>
+            {listLoading ? '更新中…' : '重新整理'}
+          </button>
+        </div>
+
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 10, flexWrap: 'wrap' }}>
+          <div style={{ fontWeight: 900, fontSize: 12, color: '#6B7280' }}>篩選班級：</div>
+          <select
+            value={form.classroomId}
+            onChange={async (e) => {
+              const v = e.target.value;
+              setForm(s => ({ ...s, classroomId: v }));
+              await refreshList(v || null);
+            }}
+            style={selectStyle}
+            disabled={loadingClasses}
+          >
+            <option value="">全部</option>
+            {classrooms.map((c) => (
+              <option key={c.id} value={c.id}>{c.name || c.id}</option>
+            ))}
+          </select>
+        </div>
+
+        {items.length ? (
+          <div style={{ display: 'grid', gap: 10 }}>
+            {items.map((a) => (
+              <div key={a.id} style={{ padding: 12, borderRadius: 18, border: '1px solid rgba(17,24,39,0.10)', background: '#F9FAFB' }}>
+                <div style={{ fontWeight: 900 }}>{a.title || '（未命名作業）'}</div>
+                <div style={{ marginTop: 4, color: '#6B7280', fontWeight: 800, fontSize: 12 }}>
+                  classroom: {a.classroomId || '—'} · due: {a.dueDate || '—'} · questions: {(a.questions || []).length}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div style={{ color: '#6B7280', fontWeight: 700 }}>{listLoading ? '載入中…' : '目前沒有作業'}</div>
         )}
       </div>
     </div>

@@ -533,6 +533,30 @@ window.QuestClassFirebase = {
     }
   },
 
+  async listHomeworkAssignments(classroomId = null, limit = 50) {
+    const check = await this._requireSignedIn();
+    if (!check.ok) return { ok: false, error: check.error, items: [] };
+    const { db, sdk } = check.ready;
+    const me = check.me || {};
+    if (!['teacher', 'admin'].includes(String(me.role || '').toLowerCase())) {
+      return { ok: false, error: 'Teacher/admin only', items: [] };
+    }
+
+    try {
+      const col = sdk.collection(db, 'homeworkAssignments');
+      const clean = String(classroomId || '').trim();
+      let q = sdk.query(col, sdk.orderBy('createdAt', 'desc'), sdk.limit(limit));
+      if (clean) {
+        q = sdk.query(col, sdk.where('classroomId', '==', clean), sdk.orderBy('createdAt', 'desc'), sdk.limit(limit));
+      }
+      const snap = await sdk.getDocs(q);
+      const items = snap.docs.map((doc) => this._docData(doc)).filter(Boolean);
+      return { ok: true, items };
+    } catch (error) {
+      return { ok: false, error: error?.message || 'Homework list failed', items: [] };
+    }
+  },
+
   async listStudentsForClassroom(classroomId) {
     const check = await this._requireSignedIn();
     if (!check.ok) return { ok: false, error: check.error, students: [] };
