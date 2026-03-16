@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { chat } from '../services/api.js';
 import { useToast } from '../components/Toast.jsx';
+import { loadSettings } from '../services/settings.js';
 
 export default function ChatPage() {
   const toast = useToast();
@@ -10,6 +11,8 @@ export default function ChatPage() {
   const [message, setMessage] = useState('');
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [debugOpen, setDebugOpen] = useState(true);
+  const [debug, setDebug] = useState({ lastReq: null, lastRes: null, lastErr: null });
 
   const canSend = useMemo(() => message.trim().length > 0 && !loading, [message, loading]);
 
@@ -19,12 +22,38 @@ export default function ChatPage() {
     setMessage('');
     setItems((prev) => [...prev, { role: 'user', text }]);
 
+    const settings = loadSettings();
+    const idTokenAvailable = Boolean(window.QuestClassFirebase?.getIdToken);
+    const actorUid = window.__qc_user?.uid || null;
+
+    const reqPreview = {
+      endpoint: '/api/chat',
+      topic,
+      mode,
+      studentName,
+      actorUid,
+      settings: {
+        apiBaseUrl: settings.apiBaseUrl || '',
+        apiModel: settings.apiModel || '',
+        hasApiKeyLocal: Boolean(String(settings.apiKey || '').trim()),
+        aiStudentUid: settings.aiStudentUid || ''
+      },
+      firebase: {
+        enabled: Boolean(window.QuestClassFirebase),
+        idTokenAvailable
+      }
+    };
+
+    setDebug({ lastReq: reqPreview, lastRes: null, lastErr: null });
+
     setLoading(true);
     try {
       const data = await chat({ message: text, topic, mode, studentName });
       setItems((prev) => [...prev, { role: 'assistant', text: data.reply || '' }]);
+      setDebug((d) => ({ ...d, lastRes: { ok: true, keys: Object.keys(data || {}), sample: { mode: data?.mode, replyLen: (data?.reply || '').length } } }));
     } catch (e) {
       setItems((prev) => [...prev, { role: 'error', text: e.message || 'chat failed' }]);
+      setDebug((d) => ({ ...d, lastErr: { message: e?.message || String(e), stack: e?.stack || '' } }));
       toast.show('Chat 失敗');
     } finally {
       setLoading(false);
@@ -42,6 +71,34 @@ export default function ChatPage() {
       </div>
 
       <div className="card" style={{ minHeight: 360, display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+          <div style={{ fontWeight: 900 }}>對話</div>
+          <button
+            type="button"
+            onClick={() => setDebugOpen(v => !v)}
+            style={{ border: 0, background: 'transparent', color: '#007AFF', fontWeight: 900, cursor: 'pointer' }}
+          >
+            {debugOpen ? '隱藏 Debug' : '顯示 Debug'}
+          </button>
+        </div>
+
+        {debugOpen ? (
+          <div style={{ padding: 12, borderRadius: 18, border: '1px solid rgba(17,24,39,0.10)', background: '#F9FAFB', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace', fontSize: 12, lineHeight: 1.5, color: '#111827' }}>
+            <div style={{ fontWeight: 900, marginBottom: 6 }}>Debug board</div>
+            <div style={{ display: 'grid', gap: 6 }}>
+              <div><span style={k}>actorUid</span> {String(window.__qc_user?.uid || '—')}</div>
+              <div><span style={k}>settings.aiStudentUid</span> {String(loadSettings().aiStudentUid || '—')}</div>
+              <div><span style={k}>firebase bridge</span> {window.QuestClassFirebase ? 'OK' : 'missing'} · getIdToken: {window.QuestClassFirebase?.getIdToken ? 'OK' : 'missing'}</div>
+              <div><span style={k}>lastReq</span></div>
+              <pre style={pre}>{debug.lastReq ? JSON.stringify(debug.lastReq, null, 2) : '—'}</pre>
+              <div><span style={k}>lastRes</span></div>
+              <pre style={pre}>{debug.lastRes ? JSON.stringify(debug.lastRes, null, 2) : '—'}</pre>
+              <div><span style={k}>lastErr</span></div>
+              <pre style={pre}>{debug.lastErr ? JSON.stringify(debug.lastErr, null, 2) : '—'}</pre>
+            </div>
+          </div>
+        ) : null}
+
         <div style={{ flex: 1, minHeight: 0, overflow: 'auto', display: 'grid', gap: 10 }}>
           {items.length === 0 ? (
             <div style={{ color: '#6B7280', fontWeight: 700 }}>
@@ -117,6 +174,9 @@ function Field({ label, value, onChange }) {
     </label>
   );
 }
+
+const k = { display: 'inline-block', minWidth: 160, fontWeight: 900, color: '#6B7280' };
+const pre = { margin: 0, padding: 10, borderRadius: 14, border: '1px solid rgba(17,24,39,0.10)', background: 'white', overflow: 'auto' };
 
 function Bubble({ role, text }) {
   const isUser = role === 'user';
