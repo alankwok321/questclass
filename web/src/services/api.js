@@ -10,31 +10,32 @@ export async function postJson(url, body) {
 }
 
 async function withAuth(payload = {}) {
-  // If firebase bridge is available, attach idToken so server can resolve per-user provider config.
+  // Attach idToken so server can resolve per-user provider config (aiProviderConfigs/{uid}).
+  // Also: if local settings has apiKey/baseUrl/model, attach them as a fallback.
   try {
+    const settingsRaw = localStorage.getItem('questclass_settings_v1') || '{}';
+    let settings = {};
+    try { settings = JSON.parse(settingsRaw) || {}; } catch { settings = {}; }
+
     const getIdToken = window.QuestClassFirebase?.getIdToken;
-    if (!getIdToken) return payload;
-    const existing = payload?.idToken;
-    if (existing) return payload;
-    const idToken = await getIdToken();
-    if (!idToken) return payload;
+    const idToken = payload?.idToken || (getIdToken ? await getIdToken() : null);
 
-    // If caller provided studentUid explicitly, keep it.
-    // Otherwise, allow admin/teacher to target a student via local setting (aiStudentUid).
-    // If still empty, omit studentUid and let server default to actor.uid.
-    const uid = window.__qc_user?.uid || null;
-    let settingsUid;
-    try {
-      const s = JSON.parse(localStorage.getItem('questclass_settings_v1') || '{}');
-      settingsUid = (s.aiStudentUid || '').trim() || null;
-    } catch {
-      settingsUid = null;
-    }
+    // Default: use logged-in user (actor) config on server.
+    // If caller explicitly sets studentUid, keep it (admin/teacher acting for student).
+    const studentUid = payload?.studentUid;
 
-    const studentUid = payload?.studentUid ?? settingsUid ?? undefined;
+    const withLocalFallback = {
+      ...payload,
+      // Only attach these if caller didn't already set them.
+      ...(payload?.apiKey ? {} : (settings.apiKey ? { apiKey: String(settings.apiKey).trim() } : {})),
+      ...(payload?.apiBaseUrl ? {} : (settings.apiBaseUrl ? { apiBaseUrl: String(settings.apiBaseUrl).trim() } : {})),
+      ...(payload?.model ? {} : (settings.apiModel ? { model: String(settings.apiModel).trim() } : {})),
+    };
+
+    if (!idToken) return withLocalFallback;
 
     return {
-      ...payload,
+      ...withLocalFallback,
       idToken,
       ...(studentUid ? { studentUid } : {}),
     };
