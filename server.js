@@ -294,6 +294,60 @@ app.post('/api/admin/seed', async (req, res) => {
   }
 });
 
+app.post('/api/admin/migrate-users-only', async (req, res) => {
+  try {
+    const { idToken, mode = 'merge' } = req.body || {};
+    const actor = await verifyUserFromToken(idToken);
+    if (!actor) return res.status(401).json({ error: 'Unauthorized' });
+    if (String(actor.role || '').toLowerCase() !== 'admin') return res.status(403).json({ error: 'Admin only' });
+
+    const { db } = getFirebaseAdmin();
+    const studentsSnap = await db.collection('students').get();
+
+    let merged = 0;
+    let skipped = 0;
+
+    const pick = (obj, keys) => {
+      const out = {};
+      for (const k of keys) if (obj && obj[k] !== undefined) out[k] = obj[k];
+      return out;
+    };
+
+    for (const doc of studentsSnap.docs) {
+      const s = doc.data() || {};
+      const uid = String(s.userUid || '').trim();
+      if (!uid) { skipped++; continue; }
+
+      let summary = {};
+      try {
+        const sumSnap = await db.collection('progressSummaries').doc(doc.id).get();
+        summary = sumSnap.exists ? (sumSnap.data() || {}) : {};
+      } catch {
+        summary = {};
+      }
+
+      const studentProfile = {
+        ...pick(s, ['gradeLevel','status','currentLevel','xp','nextLevelXp','streak','mastery','weaknessLabel','weaknessScore','focusSkills']),
+        ...pick(summary, ['focusAreas','recentQuestTitles']),
+        migratedFrom: { studentId: doc.id, at: new Date().toISOString() }
+      };
+
+      await db.collection('users').doc(uid).set({
+        role: 'student',
+        classroomIds: Array.isArray(s.classroomIds) ? s.classroomIds : [],
+        studentProfile,
+        updatedAt: FieldValue.serverTimestamp(),
+      }, { merge: mode !== 'overwrite' });
+
+      merged++;
+    }
+
+    return res.json({ ok: true, merged, skipped, ts: new Date().toISOString() });
+  } catch (error) {
+    return res.status(500).json({ error: error?.message || 'migrate failed' });
+  }
+});
+
 // Serve legacy static assets (but DO NOT auto-serve public/index.html on /)
 app.use(express.static(publicDir, { index: false }));
 

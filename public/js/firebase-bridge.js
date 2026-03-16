@@ -325,26 +325,9 @@ window.QuestClassFirebase = {
     }
   },
 
+  // Deprecated (we now use users/{uid} only)
   async listAllStudents() {
-    const adminCheck = await this._requireAdmin();
-    if (!adminCheck.ok) return { ok: false, error: adminCheck.error, students: [] };
-    const { db, sdk } = adminCheck.ready;
-    try {
-      const snap = await sdk.getDocs(sdk.collection(db, 'students'));
-      const students = await Promise.all(snap.docs.map(async (doc) => {
-        const student = { id: doc.id, ...this._plainValue(doc.data()) };
-        try {
-          const summarySnap = await sdk.getDoc(sdk.doc(db, 'progressSummaries', doc.id));
-          const summary = this._docData(summarySnap);
-          return { ...student, summary: summary || null };
-        } catch {
-          return { ...student, summary: null };
-        }
-      }));
-      return { ok: true, students };
-    } catch (error) {
-      return { ok: false, error: error?.message || 'Student list failed', students: [] };
-    }
+    return { ok: false, error: 'Deprecated: use users collection', students: [] };
   },
 
   _generateStudentId(input = {}) {
@@ -356,119 +339,19 @@ window.QuestClassFirebase = {
     return `stu-${base}-${stamp}`;
   },
 
-  async adminUpsertStudent(studentId, input = {}) {
-    const adminCheck = await this._requireAdmin();
-    if (!adminCheck.ok) return { ok: false, error: adminCheck.error };
-    const { db, sdk } = adminCheck.ready;
-    const id = String(studentId || input.studentId || '').trim() || this._generateStudentId(input);
-
-    const classroomIds = String(input.classroomIds || '')
-      .split(',')
-      .map((v) => v.trim())
-      .filter(Boolean);
-    const focusSkills = String(input.focusSkills || '')
-      .split(',')
-      .map((v) => v.trim())
-      .filter(Boolean);
-    const focusAreas = String(input.focusAreas || '')
-      .split(',')
-      .map((v) => v.trim())
-      .filter(Boolean);
-    const recentQuestTitles = String(input.recentQuestTitles || '')
-      .split(',')
-      .map((v) => v.trim())
-      .filter(Boolean);
-
-    const studentPayload = {
-      userUid: String(input.userUid || '').trim(),
-      name: String(input.name || '').trim(),
-      gradeLevel: String(input.gradeLevel || '').trim(),
-      classroomIds,
-      primaryTeacherUid: String(input.primaryTeacherUid || '').trim(),
-      status: String(input.status || 'active').trim(),
-      currentLevel: Number(input.currentLevel || 0),
-      xp: Number(input.xp || 0),
-      nextLevelXp: Number(input.nextLevelXp || 0),
-      streak: Number(input.streak || 0),
-      mastery: Number(input.mastery || 0),
-      weaknessLabel: String(input.weaknessLabel || '').trim(),
-      weaknessScore: String(input.weaknessScore || '').trim(),
-      focusSkills,
-      updatedAt: sdk.serverTimestamp()
-    };
-
-    const summaryPayload = {
-      studentId: id,
-      userUid: String(input.userUid || '').trim(),
-      classroomId: classroomIds[0] || '',
-      mastery: Number(input.mastery || 0),
-      level: Number(input.currentLevel || 0),
-      xp: Number(input.xp || 0),
-      nextLevelXp: Number(input.nextLevelXp || 0),
-      streak: Number(input.streak || 0),
-      weaknessLabel: String(input.weaknessLabel || '').trim(),
-      weaknessScore: String(input.weaknessScore || '').trim(),
-      focusAreas,
-      recentQuestTitles,
-      updatedAt: sdk.serverTimestamp()
-    };
-
-    try {
-      await sdk.setDoc(sdk.doc(db, 'students', id), studentPayload, { merge: true });
-      await sdk.setDoc(sdk.doc(db, 'progressSummaries', id), summaryPayload, { merge: true });
-      for (const classroomId of classroomIds) {
-        await sdk.setDoc(sdk.doc(db, 'classrooms', classroomId), {
-          studentIds: sdk.arrayUnion(id),
-          ...(studentPayload.userUid ? { studentUids: sdk.arrayUnion(studentPayload.userUid) } : {}),
-          updatedAt: sdk.serverTimestamp()
-        }, { merge: true });
-      }
-      return { ok: true, studentId: id };
-    } catch (error) {
-      return { ok: false, error: error?.message || 'Student upsert failed' };
-    }
+  // Deprecated (we now use users/{uid} only)
+  async adminUpsertStudent() {
+    return { ok: false, error: 'Deprecated: use users collection' };
   },
 
-  async adminDeleteStudent(studentId, userUid = '') {
-    const adminCheck = await this._requireAdmin();
-    if (!adminCheck.ok) return { ok: false, error: adminCheck.error };
-    const { db, sdk } = adminCheck.ready;
-    const id = String(studentId || '').trim();
-    if (!id) return { ok: false, error: 'studentId required' };
-    try {
-      const studentSnap = await sdk.getDoc(sdk.doc(db, 'students', id));
-      const student = this._docData(studentSnap) || {};
-      const classroomIds = Array.isArray(student.classroomIds) ? student.classroomIds : [];
-      for (const classroomId of classroomIds) {
-        await sdk.setDoc(sdk.doc(db, 'classrooms', classroomId), {
-          studentIds: sdk.arrayRemove(id),
-          ...(userUid || student.userUid ? { studentUids: sdk.arrayRemove(userUid || student.userUid) } : {}),
-          updatedAt: sdk.serverTimestamp()
-        }, { merge: true });
-      }
-      await sdk.deleteDoc(sdk.doc(db, 'students', id));
-      await sdk.deleteDoc(sdk.doc(db, 'progressSummaries', id));
-      return { ok: true };
-    } catch (error) {
-      return { ok: false, error: error?.message || 'Student delete failed' };
-    }
+  // Deprecated (we now use users/{uid} only)
+  async adminDeleteStudent() {
+    return { ok: false, error: 'Deprecated: use users collection' };
   },
 
-  async adminBindUserStudent(uid, studentId) {
-    const adminCheck = await this._requireAdmin();
-    if (!adminCheck.ok) return { ok: false, error: adminCheck.error };
-    const { db, sdk } = adminCheck.ready;
-    const cleanUid = String(uid || '').trim();
-    const cleanStudentId = String(studentId || '').trim();
-    if (!cleanUid || !cleanStudentId) return { ok: false, error: 'uid and studentId required' };
-    try {
-      await sdk.setDoc(sdk.doc(db, 'users', cleanUid), { studentId: cleanStudentId, role: 'student', updatedAt: sdk.serverTimestamp() }, { merge: true });
-      await sdk.setDoc(sdk.doc(db, 'students', cleanStudentId), { userUid: cleanUid, updatedAt: sdk.serverTimestamp() }, { merge: true });
-      await sdk.setDoc(sdk.doc(db, 'progressSummaries', cleanStudentId), { userUid: cleanUid, updatedAt: sdk.serverTimestamp() }, { merge: true });
-      return { ok: true };
-    } catch (error) {
-      return { ok: false, error: error?.message || 'Bind user/student failed' };
-    }
+  // Deprecated (we now use users/{uid} only)
+  async adminBindUserStudent() {
+    return { ok: false, error: 'Deprecated: use users collection' };
   },
 
   async listClassrooms() {
@@ -483,7 +366,11 @@ window.QuestClassFirebase = {
       } else if (me.role === 'teacher') {
         snap = await sdk.getDocs(sdk.query(sdk.collection(db, 'classrooms'), sdk.where('teacherUids', 'array-contains', check.authUser.uid)));
       } else {
-        snap = await sdk.getDocs(sdk.query(sdk.collection(db, 'classrooms'), sdk.where('studentUids', 'array-contains', check.authUser.uid)));
+        const ids = Array.isArray(me.classroomIds) ? me.classroomIds : [];
+        if (!ids.length) return { ok: true, classrooms: [] };
+        // Firestore 'in' supports up to 10 items
+        const slice = ids.slice(0, 10);
+        snap = await sdk.getDocs(sdk.query(sdk.collection(db, 'classrooms'), sdk.where(sdk.documentId(), 'in', slice)));
       }
       const classrooms = snap.docs.map((doc) => this._docData(doc)).filter(Boolean);
       return { ok: true, classrooms };
@@ -572,142 +459,46 @@ window.QuestClassFirebase = {
       const classroomSnap = await sdk.getDoc(sdk.doc(db, 'classrooms', classroomId));
       const classroom = this._docData(classroomSnap);
       if (!classroom) return { ok: false, error: 'Classroom not found', students: [] };
-      const studentIds = Array.isArray(classroom.studentIds) ? classroom.studentIds : [];
-      const students = await Promise.all(studentIds.map(async (studentId) => {
-        const [studentSnap, summarySnap] = await Promise.all([
-          sdk.getDoc(sdk.doc(db, 'students', studentId)),
-          sdk.getDoc(sdk.doc(db, 'progressSummaries', studentId))
-        ]);
-        const student = this._docData(studentSnap);
-        const summary = this._docData(summarySnap);
-        return student ? { ...student, summary: summary || null } : null;
-      }));
-      return { ok: true, classroom, students: students.filter(Boolean) };
+
+      // New: single source of truth = users/{uid} with classroomIds + studentProfile
+      const snap = await sdk.getDocs(
+        sdk.query(
+          sdk.collection(db, 'users'),
+          sdk.where('role', '==', 'student'),
+          sdk.where('classroomIds', 'array-contains', classroomId),
+          sdk.limit(100)
+        )
+      );
+
+      const students = snap.docs.map((doc) => {
+        const u = this._docData(doc);
+        if (!u) return null;
+        const profile = u.studentProfile || {};
+        return {
+          id: u.uid || doc.id,
+          uid: u.uid || doc.id,
+          name: u.name || '',
+          classroomIds: u.classroomIds || [],
+          studentProfile: profile,
+        };
+      }).filter(Boolean);
+
+      return { ok: true, classroom, students };
     } catch (error) {
       return { ok: false, error: error?.message || 'Student list failed', students: [] };
     }
   },
 
-  async getStudentDashboard(studentId = null) {
+  async getStudentDashboard() {
     const check = await this._requireSignedIn();
     if (!check.ok) return { ok: false, error: check.error };
     const { db, sdk } = check.ready;
     try {
-      let targetStudentId = studentId;
+      const me = check.me || {};
+      const classroomIds = Array.isArray(me.classroomIds) ? me.classroomIds : [];
 
-      if (!targetStudentId) {
-        const me = check.me || {};
-        const explicitStudentId = typeof me.studentId === 'string' ? me.studentId.trim() : '';
-        if (explicitStudentId) {
-          targetStudentId = explicitStudentId;
-        }
-      }
-
-      if (!targetStudentId) {
-        const uidFallbackMap = {
-          'i8e1iU4gjIVx5xHHSaYtFwjzGiv1': 'ada'
-        };
-        targetStudentId = uidFallbackMap[check.authUser.uid] || null;
-      }
-
-      if (!targetStudentId) {
-        const classroomIds = Array.isArray(check.me?.classroomIds) ? check.me.classroomIds : [];
-        for (const classroomId of classroomIds) {
-          try {
-            const roomSnap = await sdk.getDoc(sdk.doc(db, 'classrooms', classroomId));
-            const room = this._docData(roomSnap);
-            const studentIds = Array.isArray(room?.studentIds) ? room.studentIds : [];
-            for (const id of studentIds) {
-              const studentSnap = await sdk.getDoc(sdk.doc(db, 'students', id));
-              const student = this._docData(studentSnap);
-              if (student?.userUid === check.authUser.uid) {
-                targetStudentId = id;
-                break;
-              }
-            }
-            if (targetStudentId) break;
-          } catch {
-            // ignore and continue
-          }
-        }
-      }
-
-      if (!targetStudentId) {
-        const fallbackIds = ['ada', 'mia', 'leo', 'noah', 'daniel-student'];
-        for (const id of fallbackIds) {
-          try {
-            const studentSnap = await sdk.getDoc(sdk.doc(db, 'students', id));
-            const student = this._docData(studentSnap);
-            if (student?.userUid === check.authUser.uid) {
-              targetStudentId = id;
-              break;
-            }
-          } catch {
-            // ignore and continue
-          }
-        }
-      }
-
-      if (!targetStudentId) return { ok: false, error: '找不到 student 檔案' };
-
-      let student = null;
-      try {
-        const studentSnap = await sdk.getDoc(sdk.doc(db, 'students', targetStudentId));
-        student = this._docData(studentSnap);
-      } catch (error) {
-        const hardFallbackByUid = {
-          'i8e1iU4gjIVx5xHHSaYtFwjzGiv1': {
-            student: {
-              id: 'ada',
-              userUid: 'i8e1iU4gjIVx5xHHSaYtFwjzGiv1',
-              name: 'Ada',
-              gradeLevel: 'Grade 5',
-              classroomIds: ['cls-5a'],
-              currentLevel: 7,
-              xp: 1280,
-              nextLevelXp: 1800,
-              streak: 12,
-              mastery: 78,
-              weaknessLabel: '分數比較 / 文字題',
-              weaknessScore: '分數 2/5'
-            },
-            summary: {
-              studentId: 'ada',
-              userUid: 'i8e1iU4gjIVx5xHHSaYtFwjzGiv1',
-              classroomId: 'cls-5a',
-              mastery: 78,
-              level: 7,
-              xp: 1280,
-              nextLevelXp: 1800,
-              streak: 12,
-              weaknessLabel: '分數比較 / 文字題',
-              weaknessScore: '分數 2/5'
-            },
-            classrooms: [{ id: 'cls-5a', name: '5A 數學實驗班', grade: 'Grade 5', subject: 'Mathematics' }],
-            submissions: [
-              { id: 'sub-ada-001', assignmentTitle: '比較 3/4 與 2/3', topic: 'fractions', status: 'reviewed' },
-              { id: 'sub-ada-002', assignmentTitle: '把生活題翻成數學式', topic: 'word-problem-modeling', status: 'reviewed' }
-            ]
-          }
-        };
-        const hardFallback = hardFallbackByUid[check.authUser.uid];
-        if (hardFallback) {
-          return { ok: true, ...hardFallback };
-        }
-        return { ok: false, error: error?.message || 'Student document read failed' };
-      }
-      if (!student) return { ok: false, error: '找不到 student 檔案' };
-
-      let summary = null;
-      try {
-        const summarySnap = await sdk.getDoc(sdk.doc(db, 'progressSummaries', targetStudentId));
-        summary = this._docData(summarySnap);
-      } catch {
-        summary = null;
-      }
-
-      const classrooms = (student.classroomIds || []).length
-        ? (await Promise.all((student.classroomIds || []).map(async (classroomId) => {
+      const classrooms = classroomIds.length
+        ? (await Promise.all(classroomIds.map(async (classroomId) => {
             try {
               const roomSnap = await sdk.getDoc(sdk.doc(db, 'classrooms', classroomId));
               return this._docData(roomSnap);
@@ -719,16 +510,29 @@ window.QuestClassFirebase = {
 
       let submissions = [];
       try {
-        const submissionsSnap = await sdk.getDocs(sdk.query(sdk.collection(db, 'submissions'), sdk.where('studentUid', '==', check.authUser.uid), sdk.limit(8)));
+        const submissionsSnap = await sdk.getDocs(
+          sdk.query(
+            sdk.collection(db, 'submissions'),
+            sdk.where('studentUid', '==', check.authUser.uid),
+            sdk.limit(12)
+          )
+        );
         submissions = submissionsSnap.docs.map((doc) => this._docData(doc)).filter(Boolean);
       } catch {
         submissions = [];
       }
 
+      const student = {
+        uid: me.uid || check.authUser.uid,
+        name: me.name || '',
+        classroomIds,
+        studentProfile: me.studentProfile || {},
+      };
+
       return {
         ok: true,
         student,
-        summary,
+        summary: me.studentProfile || null,
         classrooms,
         submissions
       };
@@ -751,8 +555,8 @@ window.QuestClassFirebase = {
     const submissionsSnap = await sdk.getDocs(sdk.query(sdk.collection(db, 'submissions'), sdk.where('classroomId', '==', targetClassroomId), sdk.limit(25)));
     const submissions = submissionsSnap.docs.map((doc) => this._docData(doc)).filter(Boolean);
     const students = studentResult.students || [];
-    const avgMastery = students.length ? Math.round(students.reduce((sum, item) => sum + Number(item.summary?.mastery || item.mastery || 0), 0) / students.length) : 0;
-    const focusCount = students.filter((item) => Number(item.summary?.mastery || item.mastery || 0) < 75).length;
+    const avgMastery = students.length ? Math.round(students.reduce((sum, item) => sum + Number(item.studentProfile?.mastery || 0), 0) / students.length) : 0;
+    const focusCount = students.filter((item) => Number(item.studentProfile?.mastery || 0) < 75).length;
     const completionRate = Number(studentResult.classroom?.completionRate || 0);
     const metrics = [
       { label: '班級完成率', value: `${completionRate}%` },
