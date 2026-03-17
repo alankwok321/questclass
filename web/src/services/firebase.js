@@ -36,3 +36,11 @@ export async function createHomeworkAssignment(payload) {
 export async function listHomeworkAssignments(classroomId = null, limit = 50) {
   return await window.QuestClassFirebase?.listHomeworkAssignments?.(classroomId, limit);
 }
+
+export async function listMyHomework(limit = 50) {
+  return await window.QuestClassFirebase?.listMyHomework?.(limit);
+}
+
+export async function submitHomework(payload) {
+  return await window.QuestClassFirebase?.submitHomework?.(payload);
+}

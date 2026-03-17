@@ -451,6 +451,75 @@ window.QuestClassFirebase = {
     }
   },
 
+  async listMyHomework(limit = 50) {
+    const check = await this._requireSignedIn();
+    if (!check.ok) return { ok: false, error: check.error, items: [] };
+    const { db, sdk } = check.ready;
+    const me = check.me || {};
+    const classroomIds = Array.isArray(me.classroomIds) ? me.classroomIds : [];
+    if (!classroomIds.length) return { ok: true, items: [] };
+
+    try {
+      const col = sdk.collection(db, 'homeworkAssignments');
+      const slice = classroomIds.slice(0, 10);
+      const q = sdk.query(
+        col,
+        sdk.where('classroomId', 'in', slice),
+        sdk.orderBy('createdAt', 'desc'),
+        sdk.limit(limit)
+      );
+      const snap = await sdk.getDocs(q);
+      const items = snap.docs.map((doc) => this._docData(doc)).filter(Boolean)
+        .filter((a) => String(a.status || 'published') === 'published');
+      return { ok: true, items };
+    } catch (error) {
+      return { ok: false, error: error?.message || 'My homework list failed', items: [] };
+    }
+  },
+
+  async submitHomework(payload = {}) {
+    const check = await this._requireSignedIn();
+    if (!check.ok) return { ok: false, error: check.error };
+    const { db, sdk } = check.ready;
+
+    const assignmentId = String(payload.assignmentId || '').trim();
+    if (!assignmentId) return { ok: false, error: 'assignmentId required' };
+
+    try {
+      const aSnap = await sdk.getDoc(sdk.doc(db, 'homeworkAssignments', assignmentId));
+      const a = this._docData(aSnap);
+      if (!a) return { ok: false, error: 'assignment not found' };
+
+      // Basic membership check using users.classroomIds
+      const me = check.me || {};
+      const classroomIds = Array.isArray(me.classroomIds) ? me.classroomIds : [];
+      if (!classroomIds.includes(a.classroomId)) {
+        return { ok: false, error: 'Not in classroom' };
+      }
+
+      const answers = Array.isArray(payload.answers) ? payload.answers : [];
+      const subId = `${assignmentId}_${check.authUser.uid}`;
+      const docRef = sdk.doc(db, 'submissions', subId);
+      const submission = {
+        id: subId,
+        assignmentId,
+        classroomId: a.classroomId,
+        studentUid: check.authUser.uid,
+        assignmentTitle: a.title || '',
+        topic: 'homework',
+        status: 'submitted',
+        answers,
+        submittedAt: sdk.serverTimestamp(),
+        updatedAt: sdk.serverTimestamp(),
+      };
+
+      await sdk.setDoc(docRef, submission, { merge: true });
+      return { ok: true, submissionId: subId };
+    } catch (error) {
+      return { ok: false, error: error?.message || 'Submit failed' };
+    }
+  },
+
   async listStudentsForClassroom(classroomId) {
     const check = await this._requireSignedIn();
     if (!check.ok) return { ok: false, error: check.error, students: [] };
