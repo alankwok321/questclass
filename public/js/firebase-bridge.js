@@ -517,6 +517,114 @@ window.QuestClassFirebase = {
     }
   },
 
+  async upsertQuestionBankItem(payload = {}) {
+    const check = await this._requireSignedIn();
+    if (!check.ok) return { ok: false, error: check.error };
+    const { db, sdk } = check.ready;
+    const me = check.me || {};
+    if (!['teacher', 'admin'].includes(String(me.role || '').toLowerCase())) {
+      return { ok: false, error: 'Teacher/admin only' };
+    }
+
+    const classroomId = String(payload.classroomId || '').trim();
+    if (!classroomId) return { ok: false, error: 'classroomId required' };
+
+    // Ensure teacher can only write to classrooms they belong to (unless admin)
+    if (String(me.role || '').toLowerCase() === 'teacher') {
+      try {
+        const classroomSnap = await sdk.getDoc(sdk.doc(db, 'classrooms', classroomId));
+        const classroom = this._docData(classroomSnap);
+        const teacherUids = Array.isArray(classroom?.teacherUids) ? classroom.teacherUids : [];
+        if (!teacherUids.includes(check.authUser.uid)) {
+          return { ok: false, error: 'Insufficient role for this classroom' };
+        }
+      } catch (e) {
+        return { ok: false, error: e?.message || 'Classroom permission check failed' };
+      }
+    }
+
+    const cleanId = String(payload.id || '').trim();
+    const isUpdate = Boolean(cleanId);
+
+    const docRef = isUpdate
+      ? sdk.doc(db, 'questionBank', cleanId)
+      : sdk.doc(sdk.collection(db, 'questionBank'));
+
+    const item = {
+      id: docRef.id,
+      classroomId,
+      type: String(payload.type || 'multiple_choice').trim(),
+      prompt: String(payload.prompt || '').trim(),
+      choices: Array.isArray(payload.choices) ? payload.choices : [],
+      correctChoiceIds: Array.isArray(payload.correctChoiceIds) ? payload.correctChoiceIds : [],
+      timeLimitSec: Number(payload.timeLimitSec || 30),
+      points: Number(payload.points || 1),
+      media: payload.media && typeof payload.media === 'object' ? payload.media : {},
+      tags: Array.isArray(payload.tags) ? payload.tags : [],
+      difficulty: Number(payload.difficulty || 1),
+      createdBy: isUpdate ? (payload.createdBy || check.authUser.uid) : check.authUser.uid,
+      createdAt: isUpdate ? (payload.createdAt || sdk.serverTimestamp()) : sdk.serverTimestamp(),
+      updatedAt: sdk.serverTimestamp(),
+    };
+
+    try {
+      await sdk.setDoc(docRef, item, { merge: true });
+      return { ok: true, questionId: docRef.id, updated: isUpdate };
+    } catch (error) {
+      return { ok: false, error: error?.message || (isUpdate ? 'Update question failed' : 'Create question failed') };
+    }
+  },
+
+  async getQuestionBankItemsByIds(ids = []) {
+    const check = await this._requireSignedIn();
+    if (!check.ok) return { ok: false, error: check.error, items: [] };
+    const { db, sdk } = check.ready;
+    const uniq = Array.from(new Set((ids || []).map((x) => String(x || '').trim()).filter(Boolean)));
+    if (!uniq.length) return { ok: true, items: [] };
+
+    try {
+      const out = [];
+      // Firestore IN limit is 10.
+      for (let i = 0; i < uniq.length; i += 10) {
+        const slice = uniq.slice(i, i + 10);
+        const q = sdk.query(
+          sdk.collection(db, 'questionBank'),
+          sdk.where('id', 'in', slice)
+        );
+        const snap = await sdk.getDocs(q);
+        snap.docs.forEach((d) => {
+          const obj = this._docData(d);
+          if (obj) out.push(obj);
+        });
+      }
+      return { ok: true, items: out };
+    } catch (error) {
+      return { ok: false, error: error?.message || 'Get questions failed', items: [] };
+    }
+  },
+
+  async listQuestionBank(classroomId = '', limit = 200) {
+    const check = await this._requireSignedIn();
+    if (!check.ok) return { ok: false, error: check.error, items: [] };
+    const { db, sdk } = check.ready;
+    const cid = String(classroomId || '').trim();
+    if (!cid) return { ok: true, items: [] };
+
+    try {
+      const q = sdk.query(
+        sdk.collection(db, 'questionBank'),
+        sdk.where('classroomId', '==', cid),
+        sdk.orderBy('updatedAt', 'desc'),
+        sdk.limit(limit)
+      );
+      const snap = await sdk.getDocs(q);
+      const items = snap.docs.map((d) => this._docData(d)).filter(Boolean);
+      return { ok: true, items };
+    } catch (error) {
+      return { ok: false, error: error?.message || 'List question bank failed', items: [] };
+    }
+  },
+
   async submitHomework(payload = {}) {
     const check = await this._requireSignedIn();
     if (!check.ok) return { ok: false, error: check.error };

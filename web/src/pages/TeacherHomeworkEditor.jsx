@@ -6,6 +6,9 @@ import {
   createHomeworkAssignment,
   listHomeworkAssignments,
   updateHomeworkAssignmentStatus,
+  upsertQuestionBankItem,
+  listQuestionBank,
+  getQuestionBankItemsByIds,
 } from '../services/firebase.js';
 
 export default function TeacherHomeworkEditor({ mode = 'new' }) {
@@ -27,11 +30,20 @@ export default function TeacherHomeworkEditor({ mode = 'new' }) {
     status: 'draft',
   });
 
+  // For now we keep both to allow a gradual migration:
+  // - questions: legacy embedded questions
+  // - questionRefs: Kahoot-style references into questionBank
   const [questions, setQuestions] = useState([]);
+  const [questionRefs, setQuestionRefs] = useState([]);
+  const [bankItems, setBankItems] = useState([]);
   const [aiLoading, setAiLoading] = useState(false);
 
   const canGenerate = useMemo(() => Boolean(String(form.title || '').trim()), [form.title]);
-  const totalPoints = useMemo(() => (questions || []).reduce((sum, q) => sum + Number(q?.points || 0), 0), [questions]);
+  const totalPoints = useMemo(() => {
+    const legacy = (questions || []).reduce((sum, q) => sum + Number(q?.points || 0), 0);
+    const refs = (questionRefs || []).reduce((sum, r) => sum + Number(r?.pointsOverride ?? r?.points ?? 0), 0);
+    return legacy + refs;
+  }, [questions, questionRefs]);
 
   useEffect(() => {
     let mounted = true;
@@ -70,6 +82,16 @@ export default function TeacherHomeworkEditor({ mode = 'new' }) {
           status: a.status || 'draft',
         });
         setQuestions(Array.isArray(a.questions) ? a.questions : []);
+
+        const refs = Array.isArray(a.questionRefs) ? a.questionRefs : [];
+        setQuestionRefs(refs);
+
+        // Hydrate question bank items for refs
+        const ids = refs.map((r) => r?.questionId).filter(Boolean);
+        if (ids.length) {
+          const bankRes = await getQuestionBankItemsByIds(ids);
+          if (bankRes?.ok) setBankItems(bankRes.items || []);
+        }
       } finally {
         if (mounted) setLoading(false);
       }
@@ -110,7 +132,42 @@ export default function TeacherHomeworkEditor({ mode = 'new' }) {
         alert('AI 沒有回傳 questions（請看 Network Response）');
         return;
       }
-      setQuestions(qs);
+
+      // Kahoot-style: store into questionBank, then reference from homework.
+      if (!String(form.classroomId || '').trim()) {
+        alert('請先選擇班級（Assign to），才能把題目存到題庫');
+        return;
+      }
+
+      const created = [];
+      for (let i = 0; i < qs.length; i += 1) {
+        const q = qs[i] || {};
+        const itemRes = await upsertQuestionBankItem({
+          classroomId: form.classroomId,
+          type: String(q.type || 'multiple_choice'),
+          prompt: String(q.prompt || ''),
+          choices: q.answerKey?.choices || q.choices || [],
+          correctChoiceIds: q.answerKey?.correctChoiceId ? [q.answerKey.correctChoiceId] : (q.correctChoiceIds || []),
+          timeLimitSec: Number(q.timeLimitSec || 30),
+          points: Number(q.points || 1),
+          tags: q.meta?.tags || q.tags || [],
+          difficulty: Number(q.meta?.difficulty || q.difficulty || 1),
+        });
+        if (itemRes?.ok) {
+          created.push({ questionId: itemRes.questionId, order: created.length, pointsOverride: Number(q.points || 1) });
+        }
+      }
+
+      if (!created.length) {
+        alert('題目寫入題庫失敗');
+        return;
+      }
+
+      setQuestionRefs(created);
+      setQuestions([]);
+
+      const bankRes = await getQuestionBankItemsByIds(created.map((r) => r.questionId));
+      if (bankRes?.ok) setBankItems(bankRes.items || []);
     } catch (e) {
       alert(e?.message || 'AI 產生失敗');
     } finally {
@@ -130,6 +187,7 @@ export default function TeacherHomeworkEditor({ mode = 'new' }) {
         status: 'draft',
         totalPoints,
         questions,
+        questionRefs,
       });
       if (!res?.ok) return alert(res?.error || '儲存失敗');
       alert('已儲存草稿：' + res.assignmentId);
@@ -154,6 +212,7 @@ export default function TeacherHomeworkEditor({ mode = 'new' }) {
           status: form.status,
           totalPoints,
           questions,
+          questionRefs,
         });
         if (!saveRes?.ok) return alert(saveRes?.error || '更新失敗');
         const pubRes = await updateHomeworkAssignmentStatus({ assignmentId: id, status: 'published' });
@@ -172,6 +231,7 @@ export default function TeacherHomeworkEditor({ mode = 'new' }) {
         status: 'published',
         totalPoints,
         questions,
+        questionRefs,
       });
       if (!res?.ok) return alert(res?.error || '指派失敗');
       alert('已指派（published）：' + res.assignmentId);
@@ -259,81 +319,121 @@ export default function TeacherHomeworkEditor({ mode = 'new' }) {
       {/* Questions */}
       <div className="card">
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
-          <div style={{ fontWeight: 900 }}>Questions（{questions.length}）</div>
-          <button type="button" style={btnGhost} onClick={onAiGenerate} disabled={!canGenerate || aiLoading}>
-            {aiLoading ? '產生中…' : 'AI 產生題目'}
+          <div style={{ fontWeight: 900 }}>Questions（題庫引用 {questionRefs.length}）</div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button type="button" style={btnGhost} onClick={async () => {
+              if (!form.classroomId) return alert('請先選擇班級');
+              const res = await listQuestionBank(form.classroomId, 200);
+              if (!res?.ok) return alert(res?.error || '載入題庫失敗');
+              setBankItems(res.items || []);
+              alert('已更新題庫（最新 200 題）');
+            }}>
+              重新載入題庫
+            </button>
+            <button type="button" style={btnGhost} onClick={onAiGenerate} disabled={!canGenerate || aiLoading}>
+              {aiLoading ? '產生中…' : 'AI 產生題目（存入題庫）'}
+            </button>
+          </div>
+        </div>
+
+        {questionRefs.length ? (
+          <div style={{ display: 'grid', gap: 10 }}>
+            {questionRefs
+              .slice()
+              .sort((a, b) => Number(a.order || 0) - Number(b.order || 0))
+              .map((r, idx) => {
+                const q = (bankItems || []).find((x) => x.id === r.questionId);
+                return (
+                  <div key={r.questionId || idx} style={qCard}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+                      <div style={{ fontWeight: 900 }}>
+                        {idx + 1}. ({q?.type || '—'}) {q?.prompt || '（題庫題目尚未載入）'}
+                      </div>
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <button type="button" style={btnGhostSm} onClick={() => {
+                          // move up
+                          const sorted = questionRefs.slice().sort((a, b) => Number(a.order || 0) - Number(b.order || 0));
+                          if (idx === 0) return;
+                          const a = sorted[idx - 1];
+                          const b = sorted[idx];
+                          const next = questionRefs.map((x) => {
+                            if (x.questionId === a.questionId) return { ...x, order: b.order };
+                            if (x.questionId === b.questionId) return { ...x, order: a.order };
+                            return x;
+                          });
+                          setQuestionRefs(next);
+                        }}>上移</button>
+                        <button type="button" style={btnGhostSm} onClick={() => {
+                          // move down
+                          const sorted = questionRefs.slice().sort((a, b) => Number(a.order || 0) - Number(b.order || 0));
+                          if (idx === sorted.length - 1) return;
+                          const a = sorted[idx];
+                          const b = sorted[idx + 1];
+                          const next = questionRefs.map((x) => {
+                            if (x.questionId === a.questionId) return { ...x, order: b.order };
+                            if (x.questionId === b.questionId) return { ...x, order: a.order };
+                            return x;
+                          });
+                          setQuestionRefs(next);
+                        }}>下移</button>
+                      </div>
+                    </div>
+
+                    <div style={{ marginTop: 6, color: '#6B7280', fontWeight: 800, fontSize: 12 }}>
+                      time: {q?.timeLimitSec ?? '—'}s · points: {r.pointsOverride ?? q?.points ?? '—'} · id: {r.questionId}
+                    </div>
+
+                    <div style={{ marginTop: 10, display: 'flex', justifyContent: 'flex-end', gap: 8, flexWrap: 'wrap' }}>
+                      <button type="button" style={btnGhostSm} onClick={() => {
+                        // quick edit pointsOverride
+                        const v = prompt('這題分數（留空代表用題庫預設）', String(r.pointsOverride ?? ''));
+                        if (v === null) return;
+                        const next = questionRefs.map((x) => x.questionId === r.questionId ? { ...x, pointsOverride: v === '' ? null : Number(v) } : x);
+                        setQuestionRefs(next);
+                      }}>
+                        分數…
+                      </button>
+                      <button type="button" style={btnDanger} onClick={() => {
+                        setQuestionRefs((arr) => arr.filter((x) => x.questionId !== r.questionId));
+                      }}>
+                        移除
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+          </div>
+        ) : (
+          <div style={{ color: '#6B7280', fontWeight: 700 }}>
+            尚未選擇題目。你可以按「AI 產生題目（存入題庫）」或先「重新載入題庫」再挑題。
+          </div>
+        )}
+
+        <div style={{ marginTop: 12, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <button type="button" style={btnGhost} onClick={async () => {
+            if (!form.classroomId) return alert('請先選擇班級');
+            const res = await listQuestionBank(form.classroomId, 200);
+            if (!res?.ok) return alert(res?.error || '載入題庫失敗');
+            setBankItems(res.items || []);
+
+            // very simple picker: pick first item not already in refs
+            const existing = new Set(questionRefs.map((r) => r.questionId));
+            const pick = (res.items || []).find((x) => !existing.has(x.id));
+            if (!pick) return alert('題庫沒有可新增的題（或已全部加入）');
+            setQuestionRefs((arr) => [...arr, { questionId: pick.id, order: arr.length, pointsOverride: pick.points }]);
+          }}>
+            ＋從題庫加一題（暫用）
           </button>
         </div>
 
         {questions.length ? (
-          <div style={{ display: 'grid', gap: 10 }}>
-            {questions.map((q, idx) => (
-              <div key={q.id || idx} style={qCard}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
-                  <div style={{ fontWeight: 900 }}>{idx + 1}. ({q.type}) {q.prompt}</div>
-                  <div style={{ display: 'flex', gap: 8 }}>
-                    <button type="button" style={btnGhostSm} onClick={() => onMoveQuestion(idx, -1)}>上移</button>
-                    <button type="button" style={btnGhostSm} onClick={() => onMoveQuestion(idx, 1)}>下移</button>
-                  </div>
-                </div>
-                <div style={{ marginTop: 8, display: 'grid', gap: 8 }}>
-                  <label style={{ display: 'grid', gap: 6 }}>
-                    <div style={labelStyle}>題目文字</div>
-                    <textarea
-                      value={q.prompt || ''}
-                      onChange={(e) => {
-                        const next = [...questions];
-                        next[idx] = { ...q, prompt: e.target.value };
-                        setQuestions(next);
-                      }}
-                      style={{ ...inputStyle, minHeight: 80, resize: 'vertical' }}
-                    />
-                  </label>
-
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 140px', gap: 10 }}>
-                    <label style={{ display: 'grid', gap: 6 }}>
-                      <div style={labelStyle}>Type</div>
-                      <input value={q.type || ''} readOnly style={{ ...inputStyle, opacity: 0.8 }} />
-                    </label>
-                    <label style={{ display: 'grid', gap: 6 }}>
-                      <div style={labelStyle}>Points</div>
-                      <input
-                        type="number"
-                        value={q.points ?? 1}
-                        onChange={(e) => {
-                          const next = [...questions];
-                          next[idx] = { ...q, points: e.target.value === '' ? 0 : Number(e.target.value) };
-                          setQuestions(next);
-                        }}
-                        style={inputStyle}
-                      />
-                    </label>
-                  </div>
-
-                  <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                    <button type="button" style={btnDanger} onClick={() => {
-                      const next = [...questions];
-                      next.splice(idx, 1);
-                      setQuestions(next);
-                    }}>
-                      刪除題目
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ))}
+          <div style={{ marginTop: 14, paddingTop: 14, borderTop: '1px solid rgba(17,24,39,0.10)' }}>
+            <div style={{ fontWeight: 900, marginBottom: 8 }}>Legacy embedded questions（相容舊資料）: {questions.length}</div>
+            <div style={{ color: '#6B7280', fontWeight: 800, fontSize: 12 }}>
+              你目前已選擇「Kahoot 題庫模式」，新題會存到 questionBank 並以 questionRefs 引用。
+            </div>
           </div>
-        ) : (
-          <div style={{ color: '#6B7280', fontWeight: 700 }}>{aiLoading ? '產生中…' : '尚未有題目，先按「AI 產生題目」或自行新增。'}</div>
-        )}
-
-        <div style={{ marginTop: 12 }}>
-          <button type="button" style={btnGhost} onClick={() => {
-            setQuestions((qs) => [...qs, { id: `q${qs.length + 1}`, type: 'short_text', prompt: '', points: 1, answerKey: { reference: '', keywords: [] }, meta: { tags: [], difficulty: 1 } }]);
-          }}>
-            ＋新增題目
-          </button>
-        </div>
+        ) : null}
       </div>
 
       {/* Preview */}

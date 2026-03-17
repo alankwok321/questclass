@@ -48,3 +48,15 @@ export async function submitHomework(payload) {
 export async function updateHomeworkAssignmentStatus(payload) {
   return await window.QuestClassFirebase?.updateHomeworkAssignmentStatus?.(payload);
 }
+
+export async function upsertQuestionBankItem(payload) {
+  return await window.QuestClassFirebase?.upsertQuestionBankItem?.(payload);
+}
+
+export async function listQuestionBank(classroomId, limit = 200) {
+  return await window.QuestClassFirebase?.listQuestionBank?.(classroomId, limit);
+}
+
+export async function getQuestionBankItemsByIds(ids) {
+  return await window.QuestClassFirebase?.getQuestionBankItemsByIds?.(ids);
+}
