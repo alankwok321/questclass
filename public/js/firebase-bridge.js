@@ -550,18 +550,36 @@ window.QuestClassFirebase = {
       ? sdk.doc(db, 'questionBank', cleanId)
       : sdk.doc(sdk.collection(db, 'questionBank'));
 
+    // UI-aligned schema (mockDatabase-like). We also keep backward-compatible aliases.
+    const type = String(payload.type || 'MULTIPLE_CHOICE').trim();
+    const question_text = String(payload.question_text || payload.prompt || '').trim();
+
     const item = {
       id: docRef.id,
       classroomId,
-      type: String(payload.type || 'multiple_choice').trim(),
-      prompt: String(payload.prompt || '').trim(),
-      choices: Array.isArray(payload.choices) ? payload.choices : [],
-      correctChoiceIds: Array.isArray(payload.correctChoiceIds) ? payload.correctChoiceIds : [],
-      timeLimitSec: Number(payload.timeLimitSec || 30),
+      type,
+      topic: String(payload.topic || '').trim(),
       points: Number(payload.points || 1),
+      timeLimitSec: Number(payload.timeLimitSec || 30),
       media: payload.media && typeof payload.media === 'object' ? payload.media : {},
       tags: Array.isArray(payload.tags) ? payload.tags : [],
       difficulty: Number(payload.difficulty || 1),
+
+      // content
+      question_text,
+      options: Array.isArray(payload.options) ? payload.options : (Array.isArray(payload.choices) ? payload.choices : []),
+      correct_answer: (typeof payload.correct_answer === 'boolean') ? payload.correct_answer : null,
+      blanks: Array.isArray(payload.blanks) ? payload.blanks : [],
+      pairs: Array.isArray(payload.pairs) ? payload.pairs : [],
+      ideal_answer: String(payload.ideal_answer || '').trim(),
+      grading_rubric: String(payload.grading_rubric || '').trim(),
+      max_word_count: Number(payload.max_word_count || 0),
+
+      // backward-compatible aliases
+      prompt: question_text,
+      choices: Array.isArray(payload.choices) ? payload.choices : [],
+      correctChoiceIds: Array.isArray(payload.correctChoiceIds) ? payload.correctChoiceIds : [],
+
       createdBy: isUpdate ? (payload.createdBy || check.authUser.uid) : check.authUser.uid,
       createdAt: isUpdate ? (payload.createdAt || sdk.serverTimestamp()) : sdk.serverTimestamp(),
       updatedAt: sdk.serverTimestamp(),

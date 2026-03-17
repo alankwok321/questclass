@@ -199,20 +199,36 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
-    // --- Question Bank (Kahoot-style) ---
+    // --- Question Bank (Kahoot-style, shape aligned to UI mockDatabase) ---
     function allowedQuestionBankKeys() {
       return [
+        // common
         'id',
         'classroomId',
         'type',
-        'prompt',
-        'choices',
-        'correctChoiceIds',
-        'timeLimitSec',
+        'topic',
         'points',
+        'timeLimitSec',
         'media',
         'tags',
         'difficulty',
+
+        // UI-aligned content fields
+        'question_text',
+        'options',
+        'correct_answer',
+        'blanks',
+        'pairs',
+        'ideal_answer',
+        'grading_rubric',
+        'max_word_count',
+
+        // backward-compatible aliases (older editor/bridge)
+        'prompt',
+        'choices',
+        'correctChoiceIds',
+
+        // audit
         'createdBy',
         'createdAt',
         'updatedAt'

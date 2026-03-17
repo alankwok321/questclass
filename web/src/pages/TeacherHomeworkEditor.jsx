@@ -142,16 +142,29 @@ export default function TeacherHomeworkEditor({ mode = 'new' }) {
       const created = [];
       for (let i = 0; i < qs.length; i += 1) {
         const q = qs[i] || {};
+        const type = String(q.type || 'MULTIPLE_CHOICE');
         const itemRes = await upsertQuestionBankItem({
           classroomId: form.classroomId,
-          type: String(q.type || 'multiple_choice'),
-          prompt: String(q.prompt || ''),
-          choices: q.answerKey?.choices || q.choices || [],
-          correctChoiceIds: q.answerKey?.correctChoiceId ? [q.answerKey.correctChoiceId] : (q.correctChoiceIds || []),
-          timeLimitSec: Number(q.timeLimitSec || 30),
+          type,
+          topic: String(q.topic || ''),
           points: Number(q.points || 1),
+          timeLimitSec: Number(q.timeLimitSec || 30),
+
+          // UI-aligned
+          question_text: String(q.prompt || q.question_text || ''),
+          options: q.answerKey?.choices || q.options || [],
+          correct_answer: (type === 'TRUE_FALSE') ? Boolean(q.answerKey?.correct ?? q.correct_answer) : undefined,
+          blanks: q.blanks || [],
+          pairs: q.pairs || [],
+          ideal_answer: q.ideal_answer || '',
+          grading_rubric: q.grading_rubric || '',
+          max_word_count: q.max_word_count || 0,
+
           tags: q.meta?.tags || q.tags || [],
           difficulty: Number(q.meta?.difficulty || q.difficulty || 1),
+
+          // keep also Kahoot-style alias fields for now
+          correctChoiceIds: q.answerKey?.correctChoiceId ? [q.answerKey.correctChoiceId] : (q.correctChoiceIds || []),
         });
         if (itemRes?.ok) {
           created.push({ questionId: itemRes.questionId, order: created.length, pointsOverride: Number(q.points || 1) });
