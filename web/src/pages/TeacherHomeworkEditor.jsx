@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { chat } from '../services/api.js';
+import QuestionTypeBadge from '../components/QuestionTypeBadge.jsx';
+import QuestionPreview from '../components/QuestionPreview.jsx';
 import {
   listClassrooms,
   createHomeworkAssignment,
@@ -36,6 +38,7 @@ export default function TeacherHomeworkEditor({ mode = 'new' }) {
   const [questions, setQuestions] = useState([]);
   const [questionRefs, setQuestionRefs] = useState([]);
   const [bankItems, setBankItems] = useState([]);
+  const [selectedQuestionId, setSelectedQuestionId] = useState(null);
   const [aiLoading, setAiLoading] = useState(false);
 
   const canGenerate = useMemo(() => Boolean(String(form.title || '').trim()), [form.title]);
@@ -44,6 +47,17 @@ export default function TeacherHomeworkEditor({ mode = 'new' }) {
     const refs = (questionRefs || []).reduce((sum, r) => sum + Number(r?.pointsOverride ?? r?.points ?? 0), 0);
     return legacy + refs;
   }, [questions, questionRefs]);
+
+  const selectedQuestion = useMemo(() => {
+    if (!selectedQuestionId) return null;
+    return (bankItems || []).find((x) => x.id === selectedQuestionId) || null;
+  }, [bankItems, selectedQuestionId]);
+
+  const selectedPoints = useMemo(() => {
+    if (!selectedQuestionId) return null;
+    const r = (questionRefs || []).find((x) => x.questionId === selectedQuestionId);
+    return r?.pointsOverride ?? selectedQuestion?.points ?? null;
+  }, [questionRefs, selectedQuestionId, selectedQuestion]);
 
   useEffect(() => {
     let mounted = true;
@@ -178,6 +192,7 @@ export default function TeacherHomeworkEditor({ mode = 'new' }) {
 
       setQuestionRefs(created);
       setQuestions([]);
+      if (created[0]?.questionId) setSelectedQuestionId(created[0].questionId);
 
       const bankRes = await getQuestionBankItemsByIds(created.map((r) => r.questionId));
       if (bankRes?.ok) setBankItems(bankRes.items || []);
@@ -349,94 +364,169 @@ export default function TeacherHomeworkEditor({ mode = 'new' }) {
           </div>
         </div>
 
-        {questionRefs.length ? (
-          <div style={{ display: 'grid', gap: 10 }}>
-            {questionRefs
-              .slice()
-              .sort((a, b) => Number(a.order || 0) - Number(b.order || 0))
-              .map((r, idx) => {
-                const q = (bankItems || []).find((x) => x.id === r.questionId);
-                return (
-                  <div key={r.questionId || idx} style={qCard}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
-                      <div style={{ fontWeight: 900 }}>
-                        {idx + 1}. ({q?.type || '—'}) {q?.prompt || '（題庫題目尚未載入）'}
-                      </div>
-                      <div style={{ display: 'flex', gap: 8 }}>
-                        <button type="button" style={btnGhostSm} onClick={() => {
-                          // move up
-                          const sorted = questionRefs.slice().sort((a, b) => Number(a.order || 0) - Number(b.order || 0));
-                          if (idx === 0) return;
-                          const a = sorted[idx - 1];
-                          const b = sorted[idx];
-                          const next = questionRefs.map((x) => {
-                            if (x.questionId === a.questionId) return { ...x, order: b.order };
-                            if (x.questionId === b.questionId) return { ...x, order: a.order };
-                            return x;
-                          });
-                          setQuestionRefs(next);
-                        }}>上移</button>
-                        <button type="button" style={btnGhostSm} onClick={() => {
-                          // move down
-                          const sorted = questionRefs.slice().sort((a, b) => Number(a.order || 0) - Number(b.order || 0));
-                          if (idx === sorted.length - 1) return;
-                          const a = sorted[idx];
-                          const b = sorted[idx + 1];
-                          const next = questionRefs.map((x) => {
-                            if (x.questionId === a.questionId) return { ...x, order: b.order };
-                            if (x.questionId === b.questionId) return { ...x, order: a.order };
-                            return x;
-                          });
-                          setQuestionRefs(next);
-                        }}>下移</button>
-                      </div>
-                    </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '360px 1fr', gap: 12, alignItems: 'start' }}>
+          {/* Left: question list (Kahoot-like) */}
+          <div style={{ border: '1px solid rgba(17,24,39,0.10)', borderRadius: 18, overflow: 'hidden', background: '#F9FAFB' }}>
+            <div style={{ padding: 12, borderBottom: '1px solid rgba(17,24,39,0.10)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <div style={{ fontWeight: 900 }}>題目清單</div>
+              <button type="button" style={btnGhostSm} onClick={async () => {
+                if (!form.classroomId) return alert('請先選擇班級');
+                const res = await listQuestionBank(form.classroomId, 200);
+                if (!res?.ok) return alert(res?.error || '載入題庫失敗');
+                setBankItems(res.items || []);
+                alert('已更新題庫');
+              }}>
+                更新題庫
+              </button>
+            </div>
 
-                    <div style={{ marginTop: 6, color: '#6B7280', fontWeight: 800, fontSize: 12 }}>
-                      time: {q?.timeLimitSec ?? '—'}s · points: {r.pointsOverride ?? q?.points ?? '—'} · id: {r.questionId}
-                    </div>
-
-                    <div style={{ marginTop: 10, display: 'flex', justifyContent: 'flex-end', gap: 8, flexWrap: 'wrap' }}>
-                      <button type="button" style={btnGhostSm} onClick={() => {
-                        // quick edit pointsOverride
-                        const v = prompt('這題分數（留空代表用題庫預設）', String(r.pointsOverride ?? ''));
-                        if (v === null) return;
-                        const next = questionRefs.map((x) => x.questionId === r.questionId ? { ...x, pointsOverride: v === '' ? null : Number(v) } : x);
-                        setQuestionRefs(next);
-                      }}>
-                        分數…
+            {questionRefs.length ? (
+              <div style={{ maxHeight: 520, overflow: 'auto' }}>
+                {questionRefs
+                  .slice()
+                  .sort((a, b) => Number(a.order || 0) - Number(b.order || 0))
+                  .map((r, idx) => {
+                    const q = (bankItems || []).find((x) => x.id === r.questionId);
+                    const active = selectedQuestionId === r.questionId;
+                    return (
+                      <button
+                        key={r.questionId || idx}
+                        type="button"
+                        onClick={() => setSelectedQuestionId(r.questionId)}
+                        style={{
+                          width: '100%',
+                          textAlign: 'left',
+                          border: 0,
+                          borderLeft: active ? '4px solid #0B5FFF' : '4px solid transparent',
+                          background: active ? 'rgba(0,122,255,0.08)' : 'transparent',
+                          padding: 12,
+                          display: 'grid',
+                          gap: 6,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                          <div style={{ fontWeight: 900, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {idx + 1}. {q?.question_text || q?.prompt || '（未載入）'}
+                          </div>
+                          <div style={{ fontWeight: 900, fontSize: 12, color: '#6B7280' }}>{r.pointsOverride ?? q?.points ?? '—'}分</div>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+                          <QuestionTypeBadge type={q?.type} />
+                          <div style={{ fontWeight: 900, fontSize: 12, color: '#6B7280' }}>{q?.topic || '—'}</div>
+                        </div>
                       </button>
-                      <button type="button" style={btnDanger} onClick={() => {
-                        setQuestionRefs((arr) => arr.filter((x) => x.questionId !== r.questionId));
-                      }}>
-                        移除
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-          </div>
-        ) : (
-          <div style={{ color: '#6B7280', fontWeight: 700 }}>
-            尚未選擇題目。你可以按「AI 產生題目（存入題庫）」或先「重新載入題庫」再挑題。
-          </div>
-        )}
+                    );
+                  })}
+              </div>
+            ) : (
+              <div style={{ padding: 12, color: '#6B7280', fontWeight: 700 }}>
+                尚未加入題目。
+              </div>
+            )}
 
-        <div style={{ marginTop: 12, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <button type="button" style={btnGhost} onClick={async () => {
-            if (!form.classroomId) return alert('請先選擇班級');
-            const res = await listQuestionBank(form.classroomId, 200);
-            if (!res?.ok) return alert(res?.error || '載入題庫失敗');
-            setBankItems(res.items || []);
+            <div style={{ padding: 12, borderTop: '1px solid rgba(17,24,39,0.10)', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <button type="button" style={btnGhostSm} onClick={async () => {
+                if (!form.classroomId) return alert('請先選擇班級');
+                const res = await listQuestionBank(form.classroomId, 200);
+                if (!res?.ok) return alert(res?.error || '載入題庫失敗');
+                setBankItems(res.items || []);
 
-            // very simple picker: pick first item not already in refs
-            const existing = new Set(questionRefs.map((r) => r.questionId));
-            const pick = (res.items || []).find((x) => !existing.has(x.id));
-            if (!pick) return alert('題庫沒有可新增的題（或已全部加入）');
-            setQuestionRefs((arr) => [...arr, { questionId: pick.id, order: arr.length, pointsOverride: pick.points }]);
-          }}>
-            ＋從題庫加一題（暫用）
-          </button>
+                const existing = new Set(questionRefs.map((x) => x.questionId));
+                const pick = (res.items || []).find((x) => !existing.has(x.id));
+                if (!pick) return alert('題庫沒有可新增的題（或已全部加入）');
+
+                setQuestionRefs((arr) => [...arr, { questionId: pick.id, order: arr.length, pointsOverride: pick.points }]);
+                setSelectedQuestionId(pick.id);
+              }}>
+                ＋從題庫加入
+              </button>
+
+              {selectedQuestionId ? (
+                <button type="button" style={btnGhostSm} onClick={() => {
+                  const sorted = questionRefs.slice().sort((a, b) => Number(a.order || 0) - Number(b.order || 0));
+                  const idx = sorted.findIndex((x) => x.questionId === selectedQuestionId);
+                  if (idx <= 0) return;
+                  const a = sorted[idx - 1];
+                  const b = sorted[idx];
+                  setQuestionRefs((arr) => arr.map((x) => {
+                    if (x.questionId === a.questionId) return { ...x, order: b.order };
+                    if (x.questionId === b.questionId) return { ...x, order: a.order };
+                    return x;
+                  }));
+                }}>
+                  上移
+                </button>
+              ) : null}
+
+              {selectedQuestionId ? (
+                <button type="button" style={btnGhostSm} onClick={() => {
+                  const sorted = questionRefs.slice().sort((a, b) => Number(a.order || 0) - Number(b.order || 0));
+                  const idx = sorted.findIndex((x) => x.questionId === selectedQuestionId);
+                  if (idx < 0 || idx >= sorted.length - 1) return;
+                  const a = sorted[idx];
+                  const b = sorted[idx + 1];
+                  setQuestionRefs((arr) => arr.map((x) => {
+                    if (x.questionId === a.questionId) return { ...x, order: b.order };
+                    if (x.questionId === b.questionId) return { ...x, order: a.order };
+                    return x;
+                  }));
+                }}>
+                  下移
+                </button>
+              ) : null}
+
+              {selectedQuestionId ? (
+                <button type="button" style={btnGhostSm} onClick={() => {
+                  const r = questionRefs.find((x) => x.questionId === selectedQuestionId);
+                  if (!r) return;
+                  const v = prompt('這題分數（留空代表用題庫預設）', String(r.pointsOverride ?? ''));
+                  if (v === null) return;
+                  setQuestionRefs((arr) => arr.map((x) => x.questionId === selectedQuestionId ? { ...x, pointsOverride: v === '' ? null : Number(v) } : x));
+                }}>
+                  分數…
+                </button>
+              ) : null}
+
+              {selectedQuestionId ? (
+                <button type="button" style={btnDanger} onClick={() => {
+                  setQuestionRefs((arr) => arr.filter((x) => x.questionId !== selectedQuestionId));
+                  setSelectedQuestionId(null);
+                }}>
+                  移除
+                </button>
+              ) : null}
+            </div>
+          </div>
+
+          {/* Right: teacher preview */}
+          <div style={{ border: '1px solid rgba(17,24,39,0.10)', borderRadius: 18, background: 'white', padding: 14 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+              <div>
+                <div style={{ fontWeight: 900 }}>教師預覽 / 正確答案</div>
+                <div style={{ marginTop: 6, color: '#6B7280', fontWeight: 800, fontSize: 12 }}>
+                  題型預覽（不做四彩卡），讓你快速檢查資料是否正確。
+                </div>
+              </div>
+              {selectedQuestionId ? (
+                <div style={{ color: '#6B7280', fontWeight: 900, fontSize: 12 }}>id: {selectedQuestionId}</div>
+              ) : null}
+            </div>
+
+            <div style={{ marginTop: 12 }}>
+              <div style={{ fontWeight: 900, fontSize: 18 }}>
+                {selectedQuestion?.question_text || selectedQuestion?.prompt || '（從左側選擇題目）'}
+              </div>
+              <div style={{ marginTop: 8, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                <QuestionTypeBadge type={selectedQuestion?.type} />
+                <span style={{ color: '#6B7280', fontWeight: 900, fontSize: 12 }}>topic: {selectedQuestion?.topic || '—'}</span>
+                <span style={{ color: '#6B7280', fontWeight: 900, fontSize: 12 }}>points: {selectedPoints ?? '—'}</span>
+                <span style={{ color: '#6B7280', fontWeight: 900, fontSize: 12 }}>time: {selectedQuestion?.timeLimitSec ?? '—'}s</span>
+              </div>
+
+              <QuestionPreview q={selectedQuestion} />
+            </div>
+          </div>
         </div>
 
         {questions.length ? (
