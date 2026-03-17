@@ -5,10 +5,7 @@
   ],
   "functions": {
     "server.js": {
-      "includeFiles": [
-        "web/dist/**",
-        "public/**"
-      ]
+      "includeFiles": "{web/dist/**,public/**}"
     }
   },
   "routes": [
