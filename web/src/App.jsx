@@ -70,6 +70,7 @@ function Shell({ user, setUser, fbReady, setFbReady, children }) {
 
   const extraItems = [
     { to: '/teacher-homework', label: '出作業', icon: BookOpen },
+    { to: '/teacher-question-bank', label: '題庫', icon: BookOpen },
     { to: '/student-homework', label: '我的作業', icon: FileText },
     { to: '/teacher', label: '教師工具', icon: LayoutDashboard },
     { to: '/chat', label: 'AI 聊天', icon: MessageSquare },
