@@ -1,7 +1,17 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { listClassrooms, listQuestionBank } from '../services/firebase.js';
+import { listClassrooms, listQuestionBank, upsertQuestionBankItem } from '../services/firebase.js';
+import { chat } from '../services/api.js';
 import QuestionTypeBadge from '../components/QuestionTypeBadge.jsx';
 import QuestionPreview from '../components/QuestionPreview.jsx';
+
+const SUPPORTED_TYPES = [
+  'TRUE_FALSE',
+  'MULTIPLE_CHOICE',
+  'FILL_IN_BLANK',
+  'MATCHING',
+  'SHORT_ANSWER',
+  'LONG_ANSWER',
+];
 
 export default function TeacherQuestionBank() {
   const [classrooms, setClassrooms] = useState([]);
@@ -16,6 +26,7 @@ export default function TeacherQuestionBank() {
   const [type, setType] = useState('');
 
   const [selectedId, setSelectedId] = useState(null);
+  const [aiLoading, setAiLoading] = useState(false);
 
   const selected = useMemo(() => (items || []).find((x) => x.id === selectedId) || null, [items, selectedId]);
 
@@ -36,6 +47,7 @@ export default function TeacherQuestionBank() {
       }
     })();
     return () => { mounted = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function refresh() {
@@ -56,6 +68,7 @@ export default function TeacherQuestionBank() {
 
   useEffect(() => {
     refresh();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [classroomId]);
 
   const filtered = useMemo(() => {
@@ -73,6 +86,81 @@ export default function TeacherQuestionBank() {
       return true;
     });
   }, [items, q, topic, type]);
+
+  const onAiGenerate = async () => {
+    if (!classroomId) return alert('請先選擇班級');
+
+    setAiLoading(true);
+    try {
+      const idToken = await window.QuestClassFirebase?.getIdToken?.();
+      if (!idToken) {
+        alert('請先登入（無法取得 idToken）');
+        return;
+      }
+
+      const system = `你是一個老師助教。請產出「題庫題目」JSON，輸出必須是純 JSON，不要 markdown。\n\n你只能使用以下題型（必須完全符合字串）：\n- TRUE_FALSE\n- MULTIPLE_CHOICE\n- FILL_IN_BLANK\n- MATCHING\n- SHORT_ANSWER\n- LONG_ANSWER\n\n輸出規格：{\n  \"questions\": [ ... ]\n}\n\n每題欄位請使用這些（依 type 選填）：\n- topic, points, question_text\n- TRUE_FALSE: correct_answer\n- MULTIPLE_CHOICE: options[{id,text,is_correct}]\n- FILL_IN_BLANK: blanks[{position,accepted[]}] 且 question_text 包含 [____]\n- MATCHING: pairs[{prompt,match}]\n- SHORT_ANSWER: ideal_answer, max_word_count\n- LONG_ANSWER: grading_rubric, max_word_count\n\n請產出 6 題：每種題型各 1 題，topic 請跟 classroom 內容相符。`;
+
+      const user = `請為班級 ${classroomId} 產生 6 題範例題庫題目。`;
+
+      const res = await chat({
+        idToken,
+        topic: 'question-bank',
+        mode: 'generate',
+        studentName: 'teacher',
+        message: user,
+        system,
+        format: 'json'
+      });
+
+      if (res?.error) {
+        alert(`${res.error}${res.detail ? `: ${res.detail}` : ''}`);
+        return;
+      }
+
+      const qs = res?.questions || [];
+      if (!Array.isArray(qs) || !qs.length) {
+        alert('AI 沒有回傳 questions');
+        return;
+      }
+
+      // Validate + upsert into questionBank
+      const created = [];
+      for (const raw of qs) {
+        const t = String(raw?.type || '').toUpperCase();
+        if (!SUPPORTED_TYPES.includes(t)) continue;
+
+        const payload = {
+          classroomId,
+          type: t,
+          topic: String(raw.topic || ''),
+          points: Number(raw.points || 1),
+          question_text: String(raw.question_text || ''),
+          correct_answer: typeof raw.correct_answer === 'boolean' ? raw.correct_answer : undefined,
+          options: Array.isArray(raw.options) ? raw.options : undefined,
+          blanks: Array.isArray(raw.blanks) ? raw.blanks : undefined,
+          pairs: Array.isArray(raw.pairs) ? raw.pairs : undefined,
+          ideal_answer: raw.ideal_answer,
+          grading_rubric: raw.grading_rubric,
+          max_word_count: raw.max_word_count,
+        };
+
+        const up = await upsertQuestionBankItem(payload);
+        if (up?.ok) created.push(up.questionId);
+      }
+
+      if (!created.length) {
+        alert('AI 題目寫入題庫失敗（或題型不支援）');
+        return;
+      }
+
+      await refresh();
+      alert(`已新增 ${created.length} 題到題庫`);
+    } catch (e) {
+      alert(e?.message || 'AI 產生失敗');
+    } finally {
+      setAiLoading(false);
+    }
+  };
 
   return (
     <div style={{ display: 'grid', gap: 16 }}>
@@ -94,6 +182,9 @@ export default function TeacherQuestionBank() {
             </select>
             <button type="button" style={btnGhost} onClick={refresh} disabled={loading || !classroomId}>
               {loading ? '更新中…' : '更新題庫'}
+            </button>
+            <button type="button" style={btnPrimary} onClick={onAiGenerate} disabled={aiLoading || !classroomId}>
+              {aiLoading ? 'AI 產生中…' : 'AI 產生題目'}
             </button>
           </div>
         </div>
@@ -213,6 +304,16 @@ const btnGhost = {
   border: '1px solid rgba(17,24,39,0.10)',
   background: '#F2F2F7',
   color: '#111827',
+  padding: '10px 14px',
+  borderRadius: 999,
+  fontWeight: 900,
+  cursor: 'pointer',
+};
+
+const btnPrimary = {
+  border: 0,
+  background: '#007AFF',
+  color: 'white',
   padding: '10px 14px',
   borderRadius: 999,
   fontWeight: 900,
