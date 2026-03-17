@@ -13,6 +13,18 @@ const SUPPORTED_TYPES = [
   'LONG_ANSWER',
 ];
 
+function typeLabel(t) {
+  const m = {
+    TRUE_FALSE: '是非題',
+    MULTIPLE_CHOICE: '選擇題',
+    FILL_IN_BLANK: '填空題',
+    MATCHING: '配對題',
+    SHORT_ANSWER: '簡答題',
+    LONG_ANSWER: '申論題',
+  };
+  return m[String(t || '').toUpperCase()] || String(t || '—');
+}
+
 export default function TeacherQuestionBank() {
   const [classrooms, setClassrooms] = useState([]);
   const [loadingClasses, setLoadingClasses] = useState(false);
@@ -28,7 +40,22 @@ export default function TeacherQuestionBank() {
   const [selectedId, setSelectedId] = useState(null);
   const [aiLoading, setAiLoading] = useState(false);
 
-  const selected = useMemo(() => (items || []).find((x) => x.id === selectedId) || null, [items, selectedId]);
+  // AI generate options + selection list
+  const [showAiPanel, setShowAiPanel] = useState(false);
+  const [aiCount, setAiCount] = useState(6);
+  const [aiTopic, setAiTopic] = useState('');
+  const [aiTypes, setAiTypes] = useState(SUPPORTED_TYPES);
+  const [aiCandidates, setAiCandidates] = useState([]);
+  const [aiSelected, setAiSelected] = useState({});
+
+  const selected = useMemo(() => {
+    if (showAiPanel) {
+      const idx = selectedId === null ? null : Number(selectedId);
+      if (Number.isFinite(idx) && idx >= 0) return aiCandidates[idx] || null;
+      return null;
+    }
+    return (items || []).find((x) => x.id === selectedId) || null;
+  }, [items, selectedId, showAiPanel, aiCandidates]);
 
   useEffect(() => {
     let mounted = true;
@@ -89,6 +116,9 @@ export default function TeacherQuestionBank() {
 
   const onAiGenerate = async () => {
     if (!classroomId) return alert('請先選擇班級');
+    if (!aiTypes.length) return alert('請至少選一種題型');
+
+    const count = Math.max(1, Math.min(30, Number(aiCount || 6)));
 
     setAiLoading(true);
     try {
@@ -98,9 +128,15 @@ export default function TeacherQuestionBank() {
         return;
       }
 
-      const system = `你是一個老師助教。請產出「題庫題目」JSON，輸出必須是純 JSON，不要 markdown。\n\n你只能使用以下題型（必須完全符合字串）：\n- TRUE_FALSE\n- MULTIPLE_CHOICE\n- FILL_IN_BLANK\n- MATCHING\n- SHORT_ANSWER\n- LONG_ANSWER\n\n輸出規格：{\n  \"questions\": [ ... ]\n}\n\n每題欄位請使用這些（依 type 選填）：\n- topic, points, question_text\n- TRUE_FALSE: correct_answer\n- MULTIPLE_CHOICE: options[{id,text,is_correct}]\n- FILL_IN_BLANK: blanks[{position,accepted[]}] 且 question_text 包含 [____]\n- MATCHING: pairs[{prompt,match}]\n- SHORT_ANSWER: ideal_answer, max_word_count\n- LONG_ANSWER: grading_rubric, max_word_count\n\n請產出 6 題：每種題型各 1 題，topic 請跟 classroom 內容相符。`;
+      const allowedTypes = aiTypes.map((t) => String(t).toUpperCase()).filter((t) => SUPPORTED_TYPES.includes(t));
+      if (!allowedTypes.length) {
+        alert('你選的題型都不支援');
+        return;
+      }
 
-      const user = `請為班級 ${classroomId} 產生 6 題範例題庫題目。`;
+      const system = `你是一個老師助教。請產出「題庫題目」JSON，輸出必須是純 JSON，不要 markdown。\n\n你只能使用以下題型（必須完全符合字串）：\n${allowedTypes.map((t) => `- ${t}`).join('\n')}\n\n輸出規格：{\n  \"questions\": [\n    {\n      \"id\": \"q1\",\n      \"type\": \"${allowedTypes.join('|')}\",\n      \"topic\": \"主題\",\n      \"points\": 1,\n      \"question_text\": \"題目文字（可包含 [____]）\",\n      // TRUE_FALSE\n      \"correct_answer\": true|false,\n      // MULTIPLE_CHOICE\n      \"options\": [{\"id\":\"A\",\"text\":\"...\",\"is_correct\":false}, ...],\n      // FILL_IN_BLANK\n      \"blanks\": [{\"position\":1,\"accepted\":[\"Au\",\"au\"]}, ...],\n      // MATCHING\n      \"pairs\": [{\"prompt\":\"...\",\"match\":\"...\"}, ...],\n      // SHORT_ANSWER\n      \"ideal_answer\": \"...\",\n      \"max_word_count\": 20,\n      // LONG_ANSWER\n      \"grading_rubric\": \"...\",\n      \"max_word_count\": 500\n    }\n  ]\n}`;
+
+      const user = `班級: ${classroomId}\n請產生 ${count} 題題庫題目。\ntopic/主題偏好：${aiTopic ? aiTopic : '（不限）'}\n請確保題型只使用允許清單，且每題都符合其欄位規格。`;
 
       const res = await chat({
         idToken,
@@ -123,38 +159,38 @@ export default function TeacherQuestionBank() {
         return;
       }
 
-      // Validate + upsert into questionBank
-      const created = [];
-      for (const raw of qs) {
-        const t = String(raw?.type || '').toUpperCase();
-        if (!SUPPORTED_TYPES.includes(t)) continue;
+      const candidates = qs
+        .map((raw) => {
+          const t = String(raw?.type || '').toUpperCase();
+          if (!SUPPORTED_TYPES.includes(t)) return null;
+          if (!allowedTypes.includes(t)) return null;
+          return {
+            type: t,
+            topic: String(raw.topic || aiTopic || ''),
+            points: Number(raw.points || 1),
+            question_text: String(raw.question_text || ''),
+            correct_answer: typeof raw.correct_answer === 'boolean' ? raw.correct_answer : undefined,
+            options: Array.isArray(raw.options) ? raw.options : undefined,
+            blanks: Array.isArray(raw.blanks) ? raw.blanks : undefined,
+            pairs: Array.isArray(raw.pairs) ? raw.pairs : undefined,
+            ideal_answer: raw.ideal_answer,
+            grading_rubric: raw.grading_rubric,
+            max_word_count: raw.max_word_count,
+          };
+        })
+        .filter(Boolean);
 
-        const payload = {
-          classroomId,
-          type: t,
-          topic: String(raw.topic || ''),
-          points: Number(raw.points || 1),
-          question_text: String(raw.question_text || ''),
-          correct_answer: typeof raw.correct_answer === 'boolean' ? raw.correct_answer : undefined,
-          options: Array.isArray(raw.options) ? raw.options : undefined,
-          blanks: Array.isArray(raw.blanks) ? raw.blanks : undefined,
-          pairs: Array.isArray(raw.pairs) ? raw.pairs : undefined,
-          ideal_answer: raw.ideal_answer,
-          grading_rubric: raw.grading_rubric,
-          max_word_count: raw.max_word_count,
-        };
-
-        const up = await upsertQuestionBankItem(payload);
-        if (up?.ok) created.push(up.questionId);
-      }
-
-      if (!created.length) {
-        alert('AI 題目寫入題庫失敗（或題型不支援）');
+      if (!candidates.length) {
+        alert('AI 回傳的題目都不符合支援題型/格式');
         return;
       }
 
-      await refresh();
-      alert(`已新增 ${created.length} 題到題庫`);
+      setAiCandidates(candidates);
+      // default select all
+      const sel = {};
+      candidates.forEach((_, idx) => { sel[idx] = true; });
+      setAiSelected(sel);
+      setShowAiPanel(true);
     } catch (e) {
       alert(e?.message || 'AI 產生失敗');
     } finally {
@@ -184,7 +220,7 @@ export default function TeacherQuestionBank() {
               {loading ? '更新中…' : '更新題庫'}
             </button>
             <button type="button" style={btnPrimary} onClick={onAiGenerate} disabled={aiLoading || !classroomId}>
-              {aiLoading ? 'AI 產生中…' : 'AI 產生題目'}
+              {aiLoading ? 'AI 產生中…' : 'AI 產生題目…'}
             </button>
           </div>
         </div>
@@ -204,6 +240,147 @@ export default function TeacherQuestionBank() {
         </div>
       </div>
 
+      {showAiPanel ? (
+        <div className="card">
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+            <div>
+              <div style={{ fontWeight: 900 }}>AI 產生題目（請勾選要加入題庫的題）</div>
+              <div style={{ marginTop: 6, color: '#6B7280', fontWeight: 800, fontSize: 12 }}>
+                班級：{classroomId} · topic：{aiTopic || '（不限）'} · 題型：{aiTypes.map(typeLabel).join('、')}
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+              <button type="button" style={btnGhost} onClick={() => setShowAiPanel(false)}>返回題庫</button>
+              <button type="button" style={btnGhost} onClick={() => {
+                const sel = {};
+                aiCandidates.forEach((_, idx) => { sel[idx] = true; });
+                setAiSelected(sel);
+              }}>全選</button>
+              <button type="button" style={btnGhost} onClick={() => setAiSelected({})}>全不選</button>
+              <button
+                type="button"
+                style={btnPrimary}
+                onClick={async () => {
+                  const chosen = aiCandidates.filter((_, idx) => aiSelected[idx]);
+                  if (!chosen.length) return alert('請至少選一題');
+
+                  const created = [];
+                  for (const payload of chosen) {
+                    const up = await upsertQuestionBankItem({ classroomId, ...payload });
+                    if (up?.ok) created.push(up.questionId);
+                  }
+                  await refresh();
+                  setShowAiPanel(false);
+                  setAiCandidates([]);
+                  setAiSelected({});
+                  alert(`已新增 ${created.length} 題到題庫`);
+                }}
+              >
+                加入題庫
+              </button>
+            </div>
+          </div>
+
+          <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: '1fr 220px 220px', gap: 10 }}>
+            <label style={{ display: 'grid', gap: 6 }}>
+              <div style={{ fontWeight: 900, fontSize: 12, color: '#6B7280' }}>數量（1~30）</div>
+              <input type="number" value={aiCount} onChange={(e) => setAiCount(e.target.value)} style={inputStyle} />
+            </label>
+            <label style={{ display: 'grid', gap: 6 }}>
+              <div style={{ fontWeight: 900, fontSize: 12, color: '#6B7280' }}>Topic（可留空）</div>
+              <input value={aiTopic} onChange={(e) => setAiTopic(e.target.value)} style={inputStyle} placeholder="例如：分數加減" />
+            </label>
+            <div style={{ display: 'grid', gap: 6 }}>
+              <div style={{ fontWeight: 900, fontSize: 12, color: '#6B7280' }}>題型</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+                {SUPPORTED_TYPES.map((t) => {
+                  const checked = aiTypes.includes(t);
+                  return (
+                    <label key={t} style={{ display: 'flex', gap: 8, alignItems: 'center', fontWeight: 900, fontSize: 12, color: '#111827' }}>
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => {
+                          setAiTypes((arr) => checked ? arr.filter((x) => x !== t) : [...arr, t]);
+                        }}
+                      />
+                      {typeLabel(t)}
+                    </label>
+                  );
+                })}
+              </div>
+              <button type="button" style={{ ...btnGhost, padding: '8px 12px', borderRadius: 14 }} onClick={onAiGenerate} disabled={aiLoading}>
+                {aiLoading ? '重新產生中…' : '重新產生'}
+              </button>
+            </div>
+          </div>
+
+          <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: '420px 1fr', gap: 16, alignItems: 'start' }}>
+            <div style={{ border: '1px solid rgba(17,24,39,0.10)', borderRadius: 20, overflow: 'hidden', background: '#F9FAFB' }}>
+              <div style={{ padding: 14, borderBottom: '1px solid rgba(17,24,39,0.10)', fontWeight: 900 }}>
+                產生結果（{aiCandidates.length}）
+              </div>
+              <div style={{ maxHeight: 620, overflow: 'auto' }}>
+                {aiCandidates.map((it, idx) => {
+                  const active = String(idx) === String(selectedId);
+                  const checked = Boolean(aiSelected[idx]);
+                  return (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => setSelectedId(String(idx))}
+                      style={{
+                        width: '100%',
+                        textAlign: 'left',
+                        border: 0,
+                        borderLeft: active ? '4px solid #0B5FFF' : '4px solid transparent',
+                        background: active ? 'rgba(0,122,255,0.08)' : 'transparent',
+                        padding: 12,
+                        cursor: 'pointer',
+                        display: 'grid',
+                        gap: 6,
+                        borderBottom: '1px solid rgba(17,24,39,0.06)',
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+                        <div style={{ display: 'flex', gap: 10, alignItems: 'center', minWidth: 0 }}>
+                          <input type="checkbox" checked={checked} onChange={() => setAiSelected((s) => ({ ...s, [idx]: !checked }))} />
+                          <div style={{ fontWeight: 900, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {it.question_text || '（無題幹）'}
+                          </div>
+                        </div>
+                        <div style={{ color: '#6B7280', fontWeight: 900, fontSize: 12 }}>{it.points ?? '—'}分</div>
+                      </div>
+                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <QuestionTypeBadge type={it.type} />
+                        <span style={{ color: '#6B7280', fontWeight: 900, fontSize: 12 }}>{it.topic || '—'}</span>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="card" style={{ minHeight: 300 }}>
+              <div style={{ fontWeight: 900, fontSize: 14 }}>預覽（教師視角）</div>
+              <div style={{ marginTop: 6, color: '#6B7280', fontWeight: 800, fontSize: 12 }}>
+                {selectedId !== null ? `#${selectedId}` : '從左側選擇題目'}
+              </div>
+              <div style={{ marginTop: 12 }}>
+                {selectedId !== null ? (
+                  <>
+                    <div style={{ fontWeight: 900, fontSize: 18 }}>{aiCandidates[Number(selectedId)]?.question_text || '（未選取）'}</div>
+                    <div style={{ marginTop: 8, color: '#6B7280', fontWeight: 900, fontSize: 12 }}>topic: {aiCandidates[Number(selectedId)]?.topic || '—'}</div>
+                    <QuestionPreview q={aiCandidates[Number(selectedId)]} />
+                  </>
+                ) : null}
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {!showAiPanel ? (
       <div style={{ display: 'grid', gridTemplateColumns: '420px 1fr', gap: 16, alignItems: 'start' }}>
         {/* List */}
         <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
@@ -276,6 +453,7 @@ export default function TeacherQuestionBank() {
           </div>
         </div>
       </div>
+      ) : null}
     </div>
   );
 }
