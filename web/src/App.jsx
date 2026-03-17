@@ -12,6 +12,10 @@ import {
 } from 'lucide-react';
 
 import TeacherHomework from './pages/TeacherHomework.jsx';
+import TeacherHomeworkLayout from './pages/TeacherHomeworkLayout.jsx';
+import TeacherHomeworkList from './pages/TeacherHomeworkList.jsx';
+import TeacherHomeworkDetail from './pages/TeacherHomeworkDetail.jsx';
+import TeacherHomeworkEditor from './pages/TeacherHomeworkEditor.jsx';
 import StudentHomework from './pages/StudentHomework.jsx';
 
 import './style.css';
@@ -247,9 +251,22 @@ function AppRoutes({ user }) {
       <Route path="/reports" element={<PlaceholderTab title="學習報告" />} />
       <Route path="/parents" element={<PlaceholderTab title="家長通知" />} />
 
-      {/* Homework */}
-      <Route path="/teacher-homework" element={<TeacherHomework />} />
+      {/* Homework (Teams-style teacher UI) */}
+      <Route path="/teacher-homework" element={<TeacherHomeworkLayout />}>
+        <Route index element={<TeacherHomeworkList status="published" />} />
+        <Route path="drafts" element={<TeacherHomeworkList status="draft" />} />
+        <Route path="assigned" element={<TeacherHomeworkList status="published" />} />
+        <Route path="archived" element={<TeacherHomeworkList status="archived" />} />
+        <Route path="new" element={<TeacherHomeworkEditor mode="new" />} />
+        <Route path=":id" element={<TeacherHomeworkDetail />} />
+        <Route path=":id/edit" element={<TeacherHomeworkEditor mode="edit" />} />
+      </Route>
+
+      {/* Student homework */}
       <Route path="/student-homework" element={<StudentHomework />} />
+
+      {/* Legacy teacher-homework page (kept for now; can delete later) */}
+      <Route path="/teacher-homework-legacy" element={<TeacherHomework />} />
 
       {/* Existing core tools */}
       <Route path="/teacher" element={<Teacher />} />
