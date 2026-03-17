@@ -364,7 +364,21 @@ window.QuestClassFirebase = {
       if (me.role === 'admin') {
         snap = await sdk.getDocs(sdk.collection(db, 'classrooms'));
       } else if (me.role === 'teacher') {
-        snap = await sdk.getDocs(sdk.query(sdk.collection(db, 'classrooms'), sdk.where('teacherUids', 'array-contains', check.authUser.uid)));
+        // Back-compat: some classrooms use teacherUid (string) instead of teacherUids (array)
+        const col = sdk.collection(db, 'classrooms');
+        const byTeacherUids = await sdk.getDocs(
+          sdk.query(col, sdk.where('teacherUids', 'array-contains', check.authUser.uid))
+        );
+        const byTeacherUid = await sdk.getDocs(
+          sdk.query(col, sdk.where('teacherUid', '==', check.authUser.uid))
+        );
+
+        const merged = new Map();
+        byTeacherUids.docs.forEach((d) => merged.set(d.id, d));
+        byTeacherUid.docs.forEach((d) => merged.set(d.id, d));
+
+        // Create a faux snapshot-like object
+        snap = { docs: Array.from(merged.values()) };
       } else {
         const ids = Array.isArray(me.classroomIds) ? me.classroomIds : [];
         if (!ids.length) return { ok: true, classrooms: [] };
@@ -372,7 +386,7 @@ window.QuestClassFirebase = {
         const slice = ids.slice(0, 10);
         snap = await sdk.getDocs(sdk.query(sdk.collection(db, 'classrooms'), sdk.where(sdk.documentId(), 'in', slice)));
       }
-      const classrooms = snap.docs.map((doc) => this._docData(doc)).filter(Boolean);
+      const classrooms = (snap.docs || []).map((doc) => this._docData(doc)).filter(Boolean);
       return { ok: true, classrooms };
     } catch (error) {
       return { ok: false, error: error?.message || 'Classroom list failed', classrooms: [] };
