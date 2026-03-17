@@ -525,6 +525,7 @@ app.post('/api/teacher/lesson-loop', async (req, res) => {
 const legacyPageMap = {};
 
 const spaRoutes = new Set(['/', '/dashboard', '/teacher', '/student', '/admin', '/chat', '/analytics', '/teacher-homework', '/student-homework']);
+const spaRoutePrefixes = ['/teacher-homework', '/student-homework'];
 
 app.get('*', (req, res) => {
   if (req.path.startsWith('/api/')) return res.status(404).json({ error: 'Not found' });
@@ -532,7 +533,12 @@ app.get('*', (req, res) => {
     // New React SPA routes (serve web/dist/index.html if present)
   if (fs.existsSync(path.join(webDistDir, 'index.html'))) {
     const p = req.path === '/' ? '/' : req.path.replace(/\/$/, '');
-    if (spaRoutes.has(p) || p === '/app' || p.startsWith('/app/')) {
+    const isSpa = spaRoutes.has(p)
+      || p === '/app'
+      || p.startsWith('/app/')
+      || spaRoutePrefixes.some((prefix) => p === prefix || p.startsWith(prefix + '/'));
+
+    if (isSpa) {
       let html = fs.readFileSync(path.join(webDistDir, 'index.html'), 'utf8');
       // Make Vite-built asset URLs work under /teacher|/student|... by forcing absolute /web/assets/ paths.
       html = html.replaceAll('/assets/', '/web/assets/');
