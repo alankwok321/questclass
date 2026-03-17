@@ -380,6 +380,10 @@ window.QuestClassFirebase = {
   },
 
   async createHomeworkAssignment(payload = {}) {
+    // NOTE: Back-compat: this method now supports BOTH create and update.
+    // - If payload.id is provided, we upsert that document.
+    // - Otherwise, we create a new document with an auto id.
+
     const check = await this._requireSignedIn();
     if (!check.ok) return { ok: false, error: check.error };
     const { db, sdk } = check.ready;
@@ -387,6 +391,7 @@ window.QuestClassFirebase = {
     if (!['teacher', 'admin'].includes(String(me.role || '').toLowerCase())) {
       return { ok: false, error: 'Teacher/admin only' };
     }
+
     const classroomId = String(payload.classroomId || '').trim();
     if (!classroomId) return { ok: false, error: 'classroomId required' };
 
@@ -404,7 +409,13 @@ window.QuestClassFirebase = {
       }
     }
 
-    const docRef = sdk.doc(sdk.collection(db, 'homeworkAssignments'));
+    const cleanId = String(payload.id || '').trim();
+    const isUpdate = Boolean(cleanId);
+
+    const docRef = isUpdate
+      ? sdk.doc(db, 'homeworkAssignments', cleanId)
+      : sdk.doc(sdk.collection(db, 'homeworkAssignments'));
+
     const assignment = {
       id: docRef.id,
       classroomId,
@@ -414,16 +425,18 @@ window.QuestClassFirebase = {
       status: String(payload.status || 'published').trim(),
       totalPoints: Number(payload.totalPoints || 0),
       questions: Array.isArray(payload.questions) ? payload.questions : [],
-      createdBy: check.authUser.uid,
-      createdAt: sdk.serverTimestamp(),
+
+      // On update, preserve createdBy/createdAt if they already exist.
+      createdBy: isUpdate ? (payload.createdBy || check.authUser.uid) : check.authUser.uid,
+      createdAt: isUpdate ? (payload.createdAt || sdk.serverTimestamp()) : sdk.serverTimestamp(),
       updatedAt: sdk.serverTimestamp(),
     };
 
     try {
       await sdk.setDoc(docRef, assignment, { merge: true });
-      return { ok: true, assignmentId: docRef.id };
+      return { ok: true, assignmentId: docRef.id, updated: isUpdate };
     } catch (error) {
-      return { ok: false, error: error?.message || 'Create homework failed' };
+      return { ok: false, error: error?.message || (isUpdate ? 'Update homework failed' : 'Create homework failed') };
     }
   },
 
@@ -474,6 +487,33 @@ window.QuestClassFirebase = {
       return { ok: true, items };
     } catch (error) {
       return { ok: false, error: error?.message || 'My homework list failed', items: [] };
+    }
+  },
+
+  async updateHomeworkAssignmentStatus(payload = {}) {
+    const check = await this._requireSignedIn();
+    if (!check.ok) return { ok: false, error: check.error };
+    const { db, sdk } = check.ready;
+    const me = check.me || {};
+    if (!['teacher', 'admin'].includes(String(me.role || '').toLowerCase())) {
+      return { ok: false, error: 'Teacher/admin only' };
+    }
+
+    const assignmentId = String(payload.assignmentId || '').trim();
+    if (!assignmentId) return { ok: false, error: 'assignmentId required' };
+
+    const status = String(payload.status || '').trim();
+    if (!['draft', 'published', 'archived'].includes(status)) {
+      return { ok: false, error: 'invalid status' };
+    }
+
+    try {
+      const ref = sdk.doc(db, 'homeworkAssignments', assignmentId);
+      // We keep this minimal to avoid accidentally overwriting other fields.
+      await sdk.setDoc(ref, { status, updatedAt: sdk.serverTimestamp() }, { merge: true });
+      return { ok: true, assignmentId, status };
+    } catch (error) {
+      return { ok: false, error: error?.message || 'Update status failed' };
     }
   },
 

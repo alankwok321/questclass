@@ -1,6 +1,17 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { listClassrooms, createHomeworkAssignment, listHomeworkAssignments } from '../services/firebase.js';
+import { listClassrooms, createHomeworkAssignment, listHomeworkAssignments, updateHomeworkAssignmentStatus } from '../services/firebase.js';
 import { chat, getAiConfig } from '../services/api.js';
+
+function toEditFormFromAssignment(a) {
+  if (!a) return { title: '', description: '', dueAt: '', classroomId: '', status: 'published' };
+  return {
+    title: String(a.title || ''),
+    description: String(a.description || ''),
+    dueAt: String(a.dueAt || ''),
+    classroomId: String(a.classroomId || ''),
+    status: String(a.status || 'published'),
+  };
+}
 
 export default function TeacherHomework() {
   const [form, setForm] = useState({
@@ -17,6 +28,10 @@ export default function TeacherHomework() {
   const [questions, setQuestions] = useState([]);
   const [listLoading, setListLoading] = useState(false);
   const [items, setItems] = useState([]);
+
+  // Editing existing homework
+  const [editingId, setEditingId] = useState(null);
+  const isEditing = Boolean(editingId);
 
   const [debugOpen, setDebugOpen] = useState(true);
   const [debug, setDebug] = useState({ running: false, result: null, error: null });
@@ -192,6 +207,7 @@ export default function TeacherHomework() {
             <button type="button" style={btnPrimary} onClick={async () => {
               const totalPoints = (questions || []).reduce((sum, q) => sum + Number(q?.points || 0), 0);
               const res = await createHomeworkAssignment({
+                id: editingId || undefined,
                 classroomId: form.classroomId,
                 title: form.title,
                 description: form.description,
@@ -201,14 +217,24 @@ export default function TeacherHomework() {
                 questions,
               });
               if (res?.ok) {
-                alert('已儲存作業：' + res.assignmentId);
+                alert((isEditing ? '已更新作業：' : '已儲存作業：') + res.assignmentId);
                 await refreshList(form.classroomId || null);
               } else {
-                alert(res?.error || '儲存失敗');
+                alert(res?.error || (isEditing ? '更新失敗' : '儲存失敗'));
               }
             }}>
-              儲存作業
+              {isEditing ? '更新作業' : '儲存作業'}
             </button>
+
+            {isEditing ? (
+              <button type="button" style={btnGhost} onClick={() => {
+                setEditingId(null);
+                setForm({ title: '', description: '', dueAt: '', classroomId: form.classroomId || '', status: 'published' });
+                setQuestions([]);
+              }}>
+                取消編輯
+              </button>
+            ) : null}
           </div>
         </div>
       </div>
@@ -260,10 +286,35 @@ export default function TeacherHomework() {
         {items.length ? (
           <div style={{ display: 'grid', gap: 10 }}>
             {items.map((a) => (
-              <div key={a.id} style={{ padding: 12, borderRadius: 18, border: '1px solid rgba(17,24,39,0.10)', background: '#F9FAFB' }}>
-                <div style={{ fontWeight: 900 }}>{a.title || '（未命名作業）'}</div>
-                <div style={{ marginTop: 4, color: '#6B7280', fontWeight: 800, fontSize: 12 }}>
-                  classroom: {a.classroomId || '—'} · dueAt: {a.dueAt || '—'} · status: {a.status || '—'} · questions: {(a.questions || []).length} · total: {a.totalPoints ?? '—'}
+              <div key={a.id} style={{ padding: 12, borderRadius: 18, border: '1px solid rgba(17,24,39,0.10)', background: '#F9FAFB', display: 'grid', gap: 8 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+                  <div style={{ fontWeight: 900 }}>{a.title || '（未命名作業）'}</div>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    <button type="button" style={btnGhost} onClick={() => {
+                      setEditingId(a.id);
+                      setForm(toEditFormFromAssignment(a));
+                      setQuestions(Array.isArray(a.questions) ? a.questions : []);
+                      window.scrollTo({ top: 0, behavior: 'smooth' });
+                    }}>
+                      編輯
+                    </button>
+                    <button type="button" style={btnGhost} onClick={async () => {
+                      // Quick action: archive (status-only)
+                      const res = await updateHomeworkAssignmentStatus({ assignmentId: a.id, status: 'archived' });
+                      if (res?.ok) {
+                        alert('已下架（archived）：' + a.id);
+                        await refreshList(form.classroomId || null);
+                      } else {
+                        alert(res?.error || '下架失敗');
+                      }
+                    }}>
+                      下架
+                    </button>
+                  </div>
+                </div>
+
+                <div style={{ color: '#6B7280', fontWeight: 800, fontSize: 12 }}>
+                  id: {a.id || '—'} · classroom: {a.classroomId || '—'} · dueAt: {a.dueAt || '—'} · status: {a.status || '—'} · questions: {(a.questions || []).length} · total: {a.totalPoints ?? '—'}
                 </div>
               </div>
             ))}

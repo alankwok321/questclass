@@ -44,3 +44,7 @@ export async function listMyHomework(limit = 50) {
 export async function submitHomework(payload) {
   return await window.QuestClassFirebase?.submitHomework?.(payload);
 }
+
+export async function updateHomeworkAssignmentStatus(payload) {
+  return await window.QuestClassFirebase?.updateHomeworkAssignmentStatus?.(payload);
+}
