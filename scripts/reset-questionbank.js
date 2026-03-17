@@ -103,17 +103,12 @@ const SAMPLE_QUESTIONS = [
   },
 ];
 
-function parseEnvOrDie() {
-  // With GOOGLE_APPLICATION_CREDENTIALS set, initializeApp() works without args.
-  const credPath = process.env.GOOGLE_APPLICATION_CREDENTIALS;
-  if (!credPath) {
-    throw new Error('Missing GOOGLE_APPLICATION_CREDENTIALS env var (path to service account JSON).');
-  }
-}
-
 async function init() {
-  parseEnvOrDie();
-  admin.initializeApp();
+  // We support either:
+  // - GOOGLE_APPLICATION_CREDENTIALS (service account JSON), OR
+  // - gcloud ADC (application_default_credentials.json)
+  // In both cases, initializeApp() can be called without args.
+  admin.initializeApp({ projectId: process.env.GCLOUD_PROJECT || process.env.GOOGLE_CLOUD_PROJECT || 'questclass-8462a' });
   return admin.firestore();
 }
 
@@ -159,9 +154,9 @@ async function insertSamples(db) {
   let created = 0;
   const batch = db.batch();
 
-  // IMPORTANT: Because user asked for "all classrooms", but sample questions need classroomId,
-  // we insert them with classroomId = 'global'. If you want per-classroom samples, rerun with
-  // edits to assign correct classroomIds.
+  // Insert samples into a global classroom bucket.
+  // NOTE: With current Firestore rules, users must have "global" in users/{uid}.classroomIds
+  // to be able to read these questions.
   const classroomId = 'global';
 
   SAMPLE_QUESTIONS.forEach((q) => {
