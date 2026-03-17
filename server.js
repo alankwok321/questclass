@@ -525,7 +525,7 @@ app.post('/api/teacher/lesson-loop', async (req, res) => {
 const legacyPageMap = {};
 
 const spaRoutes = new Set(['/', '/dashboard', '/teacher', '/student', '/admin', '/chat', '/analytics', '/teacher-homework', '/student-homework']);
-const spaRoutePrefixes = ['/teacher-homework', '/student-homework'];
+const spaRoutePrefixes = ['/teacher-homework', '/student-homework', '/teacher-question-bank'];
 
 app.get('*', (req, res) => {
   if (req.path.startsWith('/api/')) return res.status(404).json({ error: 'Not found' });
