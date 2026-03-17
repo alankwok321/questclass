@@ -36,7 +36,9 @@ const argv = process.argv.slice(2);
 const isDry = argv.includes('--dry');
 const isYes = argv.includes('--yes');
 const limitArg = argv.find((a) => a.startsWith('--limit='));
+const classroomArg = argv.find((a) => a.startsWith('--classroomId='));
 const BATCH_LIMIT = limitArg ? Number(limitArg.split('=')[1]) : 200;
+const TARGET_CLASSROOM_ID = classroomArg ? String(classroomArg.split('=')[1] || '').trim() : 'global';
 
 const SAMPLE_QUESTIONS = [
   {
@@ -154,10 +156,10 @@ async function insertSamples(db) {
   let created = 0;
   const batch = db.batch();
 
-  // Insert samples into a global classroom bucket.
-  // NOTE: With current Firestore rules, users must have "global" in users/{uid}.classroomIds
+  // Insert samples into the target classroom bucket.
+  // NOTE: With current Firestore rules, users must have this classroomId in users/{uid}.classroomIds
   // to be able to read these questions.
-  const classroomId = 'global';
+  const classroomId = TARGET_CLASSROOM_ID;
 
   SAMPLE_QUESTIONS.forEach((q) => {
     const ref = db.collection('questionBank').doc();
@@ -207,7 +209,7 @@ async function main() {
   const deleted = await deleteAllDocs(db, 'questionBank');
   console.log(`Deleted ${deleted}`);
 
-  console.log('Inserting sample questions (classroomId="global")...');
+  console.log(`Inserting sample questions (classroomId="${TARGET_CLASSROOM_ID}")...`);
   const created = await insertSamples(db);
   console.log(`Inserted ${created}`);
 
