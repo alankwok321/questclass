@@ -359,35 +359,24 @@ window.QuestClassFirebase = {
     if (!check.ok) return { ok: false, error: check.error, classrooms: [] };
     const { db, sdk } = check.ready;
     const me = check.me || {};
+
+    // Teacher/student dropdown should be driven by users/{uid}.classroomIds (source of truth).
+    // Admin can see all classrooms if the collection exists; otherwise fall back to user.classroomIds.
     try {
-      let snap;
-      if (me.role === 'admin') {
-        snap = await sdk.getDocs(sdk.collection(db, 'classrooms'));
-      } else if (me.role === 'teacher') {
-        // Back-compat: some classrooms use teacherUid (string) instead of teacherUids (array)
-        const col = sdk.collection(db, 'classrooms');
-        const byTeacherUids = await sdk.getDocs(
-          sdk.query(col, sdk.where('teacherUids', 'array-contains', check.authUser.uid))
-        );
-        const byTeacherUid = await sdk.getDocs(
-          sdk.query(col, sdk.where('teacherUid', '==', check.authUser.uid))
-        );
+      if (String(me.role || '').toLowerCase() === 'admin') {
+        const snap = await sdk.getDocs(sdk.collection(db, 'classrooms'));
+        const classrooms = snap.docs.map((doc) => this._docData(doc)).filter(Boolean);
+        if (classrooms.length) return { ok: true, classrooms };
 
-        const merged = new Map();
-        byTeacherUids.docs.forEach((d) => merged.set(d.id, d));
-        byTeacherUid.docs.forEach((d) => merged.set(d.id, d));
-
-        // Create a faux snapshot-like object
-        snap = { docs: Array.from(merged.values()) };
-      } else {
+        // Fallback when classrooms collection is empty / not used.
         const ids = Array.isArray(me.classroomIds) ? me.classroomIds : [];
-        if (!ids.length) return { ok: true, classrooms: [] };
-        // Firestore 'in' supports up to 10 items
-        const slice = ids.slice(0, 10);
-        snap = await sdk.getDocs(sdk.query(sdk.collection(db, 'classrooms'), sdk.where(sdk.documentId(), 'in', slice)));
+        return { ok: true, classrooms: ids.map((id) => ({ id: String(id), name: String(id) })) };
       }
-      const classrooms = (snap.docs || []).map((doc) => this._docData(doc)).filter(Boolean);
-      return { ok: true, classrooms };
+
+      const ids = Array.isArray(me.classroomIds) ? me.classroomIds : [];
+      if (!ids.length) return { ok: true, classrooms: [] };
+      // Return simple objects; editor/list pages only need id/name.
+      return { ok: true, classrooms: ids.map((id) => ({ id: String(id), name: String(id) })) };
     } catch (error) {
       return { ok: false, error: error?.message || 'Classroom list failed', classrooms: [] };
     }
