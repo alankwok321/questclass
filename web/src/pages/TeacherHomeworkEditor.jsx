@@ -364,19 +364,18 @@ export default function TeacherHomeworkEditor({ mode = 'new' }) {
           </div>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '360px 1fr', gap: 12, alignItems: 'start' }}>
-          {/* Left: question list (Kahoot-like) */}
-          <div style={{ border: '1px solid rgba(17,24,39,0.10)', borderRadius: 18, overflow: 'hidden', background: '#F9FAFB' }}>
-            <div style={{ padding: 12, borderBottom: '1px solid rgba(17,24,39,0.10)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-              <div style={{ fontWeight: 900 }}>題目清單</div>
-              <button type="button" style={btnGhostSm} onClick={async () => {
+        <div style={{ display: 'grid', gridTemplateColumns: '380px 1fr', gap: 16, alignItems: 'start' }}>
+          {/* Left: question list */}
+          <div style={{ border: '1px solid rgba(17,24,39,0.10)', borderRadius: 20, overflow: 'hidden', background: '#F9FAFB' }}>
+            <div style={{ padding: 14, borderBottom: '1px solid rgba(17,24,39,0.10)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+              <div style={{ fontWeight: 900, fontSize: 14 }}>題目清單</div>
+              <button type="button" style={{ ...btnGhostSm, padding: '8px 12px' }} onClick={async () => {
                 if (!form.classroomId) return alert('請先選擇班級');
                 const res = await listQuestionBank(form.classroomId, 200);
                 if (!res?.ok) return alert(res?.error || '載入題庫失敗');
                 setBankItems(res.items || []);
-                alert('已更新題庫');
               }}>
-                更新題庫
+                更新
               </button>
             </div>
 
@@ -500,11 +499,11 @@ export default function TeacherHomeworkEditor({ mode = 'new' }) {
           </div>
 
           {/* Right: teacher preview */}
-          <div style={{ border: '1px solid rgba(17,24,39,0.10)', borderRadius: 18, background: 'white', padding: 14 }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+          <div style={{ border: '1px solid rgba(17,24,39,0.10)', borderRadius: 20, background: 'white', padding: 18 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
               <div>
-                <div style={{ fontWeight: 900 }}>教師預覽 / 正確答案</div>
-                <div style={{ marginTop: 6, color: '#6B7280', fontWeight: 800, fontSize: 12 }}>
+                <div style={{ fontWeight: 900, fontSize: 14 }}>教師預覽 / 正確答案</div>
+                <div style={{ marginTop: 8, color: '#6B7280', fontWeight: 800, fontSize: 12, lineHeight: 1.6 }}>
                   題型預覽（不做四彩卡），讓你快速檢查資料是否正確。
                 </div>
               </div>
@@ -521,7 +520,6 @@ export default function TeacherHomeworkEditor({ mode = 'new' }) {
                 <QuestionTypeBadge type={selectedQuestion?.type} />
                 <span style={{ color: '#6B7280', fontWeight: 900, fontSize: 12 }}>topic: {selectedQuestion?.topic || '—'}</span>
                 <span style={{ color: '#6B7280', fontWeight: 900, fontSize: 12 }}>points: {selectedPoints ?? '—'}</span>
-                <span style={{ color: '#6B7280', fontWeight: 900, fontSize: 12 }}>time: {selectedQuestion?.timeLimitSec ?? '—'}s</span>
               </div>
 
               <QuestionPreview q={selectedQuestion} />

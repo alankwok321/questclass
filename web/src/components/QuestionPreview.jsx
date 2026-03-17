@@ -2,7 +2,7 @@ import React from 'react';
 import { CheckCircle2 } from './QuestionTypeBadge.jsx';
 
 export default function QuestionPreview({ q }) {
-  if (!q) return <div style={{ color: '#6B7280', fontWeight: 700 }}>未選擇題目</div>;
+  if (!q) return <div style={{ color: '#6B7280', fontWeight: 700, padding: '12px 0' }}>未選擇題目</div>;
 
   const type = String(q.type || '').toUpperCase();
 
