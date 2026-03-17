@@ -16,6 +16,7 @@ import TeacherHomeworkLayout from './pages/TeacherHomeworkLayout.jsx';
 import TeacherHomeworkList from './pages/TeacherHomeworkList.jsx';
 import TeacherHomeworkDetail from './pages/TeacherHomeworkDetail.jsx';
 import TeacherHomeworkEditor from './pages/TeacherHomeworkEditor.jsx';
+import TeacherQuestionBank from './pages/TeacherQuestionBank.jsx';
 import StudentHomework from './pages/StudentHomework.jsx';
 
 import './style.css';
@@ -262,6 +263,9 @@ function AppRoutes({ user }) {
         <Route path=":id" element={<TeacherHomeworkDetail />} />
         <Route path=":id/edit" element={<TeacherHomeworkEditor mode="edit" />} />
       </Route>
+
+      {/* Teacher question bank */}
+      <Route path="/teacher-question-bank" element={<TeacherQuestionBank />} />
 
       {/* Student homework */}
       <Route path="/student-homework" element={<StudentHomework />} />
