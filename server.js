@@ -547,8 +547,9 @@ app.get('*', (req, res) => {
     return res.type('html').send(fs.readFileSync(filePath, 'utf8'));
   }
 
-  // Redirect unknown routes back to main page
-  return res.redirect('/');
+  // Unknown routes: return 404 (do NOT redirect to /; it can cause infinite redirect loops on deployments
+  // where the SPA build output is not present in the serverless bundle).
+  return res.status(404).type('text').send('Not found');
 });
 
 if (!process.env.VERCEL) {
