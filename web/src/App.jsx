@@ -253,10 +253,11 @@ function AppRoutes({ user }) {
 
       {/* Homework (Teams-style teacher UI) */}
       <Route path="/teacher-homework" element={<TeacherHomeworkLayout />}>
-        <Route index element={<TeacherHomeworkList status="published" />} />
-        <Route path="drafts" element={<TeacherHomeworkList status="draft" />} />
-        <Route path="assigned" element={<TeacherHomeworkList status="published" />} />
-        <Route path="archived" element={<TeacherHomeworkList status="archived" />} />
+        {/* Default to Assigned */}
+        <Route index element={<TeacherHomeworkDetail />} />
+        <Route path="drafts" element={<TeacherHomeworkDetail />} />
+        <Route path="assigned" element={<TeacherHomeworkDetail />} />
+        <Route path="archived" element={<TeacherHomeworkDetail />} />
         <Route path="new" element={<TeacherHomeworkEditor mode="new" />} />
         <Route path=":id" element={<TeacherHomeworkDetail />} />
         <Route path=":id/edit" element={<TeacherHomeworkEditor mode="edit" />} />

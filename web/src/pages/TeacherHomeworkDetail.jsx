@@ -8,6 +8,10 @@ export default function TeacherHomeworkDetail() {
   const [loading, setLoading] = useState(false);
   const [item, setItem] = useState(null);
 
+  // If opened at /teacher-homework/(assigned|drafts|archived) without selecting an item,
+  // show a friendly placeholder instead of "找不到作業".
+  const hasId = Boolean(String(id || '').trim());
+
   async function load() {
     setLoading(true);
     try {
@@ -25,10 +29,24 @@ export default function TeacherHomeworkDetail() {
   }
 
   useEffect(() => {
+    if (!hasId) return;
     load();
   }, [id]);
 
   const questions = useMemo(() => Array.isArray(item?.questions) ? item.questions : [], [item]);
+
+  if (!hasId) {
+    return (
+      <div className="card" style={{ height: 420, display: 'grid', placeItems: 'center' }}>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ fontWeight: 900, fontSize: 16 }}>從左側清單選擇一份作業</div>
+          <div style={{ marginTop: 8, color: '#6B7280', fontWeight: 800, fontSize: 12 }}>
+            你也可以按「＋新增作業」建立新作業。
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="card">
