@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { chat } from '../services/api.js';
+import Modal from '../components/Modal.jsx';
 import QuestionTypeBadge from '../components/QuestionTypeBadge.jsx';
 import QuestionPreview from '../components/QuestionPreview.jsx';
 import {
@@ -40,6 +41,13 @@ export default function TeacherHomeworkEditor({ mode = 'new' }) {
   const [bankItems, setBankItems] = useState([]);
   const [selectedQuestionId, setSelectedQuestionId] = useState(null);
   const [aiLoading, setAiLoading] = useState(false);
+  const [showAiPanel, setShowAiPanel] = useState(false);
+
+  // HK level controls for AI generation
+  const [aiCount, setAiCount] = useState(6);
+  const [aiTopic, setAiTopic] = useState('');
+  const [aiTargetLevel, setAiTargetLevel] = useState('S3'); // default = Form 3
+
   const [questionsTab, setQuestionsTab] = useState('assignment'); // assignment | bank
   const [bankQuery, setBankQuery] = useState('');
   const [bankType, setBankType] = useState('');
@@ -121,9 +129,11 @@ export default function TeacherHomeworkEditor({ mode = 'new' }) {
     if (!canGenerate) return;
     setAiLoading(true);
     try {
-      const system = `你是一個老師助教。請產出「題庫題目」JSON，輸出必須是純 JSON，不要 markdown。\n\n你只能使用以下題型（必須完全符合字串）：\n- TRUE_FALSE\n- MULTIPLE_CHOICE\n- FILL_IN_BLANK\n- MATCHING\n- SHORT_ANSWER\n- LONG_ANSWER\n\n輸出規格：{\n  \"questions\": [\n    {\n      \"id\": \"q1\",\n      \"type\": \"TRUE_FALSE|MULTIPLE_CHOICE|FILL_IN_BLANK|MATCHING|SHORT_ANSWER|LONG_ANSWER\",\n      \"topic\": \"主題\",\n      \"points\": 1,\n      \"question_text\": \"題目文字（可包含 [____]）\",\n      // TRUE_FALSE\n      \"correct_answer\": true|false,\n      // MULTIPLE_CHOICE\n      \"options\": [{\"id\":\"A\",\"text\":\"...\",\"is_correct\":false}, ...],\n      // FILL_IN_BLANK\n      \"blanks\": [{\"position\":1,\"accepted\":[\"Au\",\"au\"]}, ...],\n      // MATCHING\n      \"pairs\": [{\"prompt\":\"...\",\"match\":\"...\"}, ...],\n      // SHORT_ANSWER\n      \"ideal_answer\": \"...\",\n      \"max_word_count\": 20,\n      // LONG_ANSWER\n      \"grading_rubric\": \"...\",\n      \"max_word_count\": 500\n    }\n  ]\n}\n\n請產出 6 題：每種題型各 1 題。points 1~5。topic 請根據需求填寫。`;
+      const count = Math.max(1, Math.min(30, Number(aiCount || 6)));
 
-      const user = `標題：${form.title}\n說明：${form.description || ''}`;
+      const system = `你是一個老師助教。請產出「題庫題目」JSON，輸出必須是純 JSON，不要 markdown。\n\n你只能使用以下題型（必須完全符合字串）：\n- TRUE_FALSE\n- MULTIPLE_CHOICE\n- FILL_IN_BLANK\n- MATCHING\n- SHORT_ANSWER\n- LONG_ANSWER\n\n重要：請依照香港學制（HK）調整難度、詞彙、題幹長度、情境與常見錯誤點。\n- target_level: ${aiTargetLevel}\n\n輸出規格：{\n  \"questions\": [\n    {\n      \"id\": \"q1\",\n      \"type\": \"TRUE_FALSE|MULTIPLE_CHOICE|FILL_IN_BLANK|MATCHING|SHORT_ANSWER|LONG_ANSWER\",\n      \"topic\": \"主題\",\n      \"points\": 1,\n      \"question_text\": \"題目文字（可包含 [____]）\",\n      // TRUE_FALSE\n      \"correct_answer\": true|false,\n      // MULTIPLE_CHOICE\n      \"options\": [{\"id\":\"A\",\"text\":\"...\",\"is_correct\":false}, ...],\n      // FILL_IN_BLANK\n      \"blanks\": [{\"position\":1,\"accepted\":[\"Au\",\"au\"]}, ...],\n      // MATCHING\n      \"pairs\": [{\"prompt\":\"...\",\"match\":\"...\"}, ...],\n      // SHORT_ANSWER\n      \"ideal_answer\": \"...\",\n      \"max_word_count\": 20,\n      // LONG_ANSWER\n      \"grading_rubric\": \"...\",\n      \"max_word_count\": 500\n    }\n  ]\n}\n\n請產出 ${count} 題。points 1~5。topic 請根據需求填寫。`;
+
+      const user = `標題：${form.title}\n說明：${form.description || ''}\nHK 年級/程度：${aiTargetLevel || '（未指定）'}\n題目主題偏好：${aiTopic ? aiTopic : '（不限）'}\n題目數量：${count}`;
       const idToken = await window.QuestClassFirebase?.getIdToken?.();
       if (!idToken) {
         alert('請先登入（無法取得 idToken）');
@@ -156,6 +166,7 @@ export default function TeacherHomeworkEditor({ mode = 'new' }) {
         alert('請先選擇班級（Assign to），才能把題目存到題庫');
         return;
       }
+      setShowAiPanel(false);
 
       const created = [];
       for (let i = 0; i < qs.length; i += 1) {
@@ -167,6 +178,8 @@ export default function TeacherHomeworkEditor({ mode = 'new' }) {
           topic: String(q.topic || ''),
           points: Number(q.points || 1),
           timeLimitSec: Number(q.timeLimitSec || 30),
+
+          target_level: aiTargetLevel,
 
           // UI-aligned
           question_text: String(q.prompt || q.question_text || ''),
@@ -348,6 +361,57 @@ export default function TeacherHomeworkEditor({ mode = 'new' }) {
         </div>
       </div>
 
+      <Modal
+        open={showAiPanel}
+        title="AI 產生題目（存入題庫）"
+        onClose={() => setShowAiPanel(false)}
+        footer={
+          <>
+            <button type="button" style={btnGhost} onClick={() => setShowAiPanel(false)}>取消</button>
+            <button type="button" style={btnPrimary} onClick={onAiGenerate} disabled={aiLoading || !canGenerate}>
+              {aiLoading ? '產生中…' : '產生並存入題庫'}
+            </button>
+          </>
+        }
+      >
+        <div style={{ display: 'grid', gap: 12 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr', gap: 12 }}>
+            <label style={{ display: 'grid', gap: 6 }}>
+              <div style={labelStyle}>數量（1~30）</div>
+              <input type="number" value={aiCount} onChange={(e) => setAiCount(e.target.value)} style={inputStyle} />
+            </label>
+            <label style={{ display: 'grid', gap: 6 }}>
+              <div style={labelStyle}>Topic（可留空）</div>
+              <input value={aiTopic} onChange={(e) => setAiTopic(e.target.value)} style={inputStyle} placeholder="例如：分數加減" />
+            </label>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr', gap: 12 }}>
+            <label style={{ display: 'grid', gap: 6 }}>
+              <div style={labelStyle}>HK 年級/程度（只用 target_level；預設：S3）</div>
+              <select value={aiTargetLevel} onChange={(e) => setAiTargetLevel(e.target.value)} style={selectStyle}>
+                <option value="P1">P1（小一）</option>
+                <option value="P2">P2（小二）</option>
+                <option value="P3">P3（小三）</option>
+                <option value="P4">P4（小四）</option>
+                <option value="P5">P5（小五）</option>
+                <option value="P6">P6（小六）</option>
+                <option value="S1">S1（中一 / Form 1）</option>
+                <option value="S2">S2（中二 / Form 2）</option>
+                <option value="S3">S3（中三 / Form 3，預設）</option>
+                <option value="S4">S4（中四 / Form 4）</option>
+                <option value="S5">S5（中五 / Form 5）</option>
+                <option value="S6">S6（中六 / Form 6）</option>
+              </select>
+            </label>
+
+            <div style={{ color: '#6B7280', fontWeight: 800, fontSize: 12, lineHeight: 1.6, paddingTop: 22 }}>
+              產題只會傳 <strong>target_level</strong> 給 AI（例如 S3）。不再使用 target_forms。
+            </div>
+          </div>
+        </div>
+      </Modal>
+
       {/* Questions */}
       <div className="card">
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
@@ -381,8 +445,15 @@ export default function TeacherHomeworkEditor({ mode = 'new' }) {
             }}>
               更新題庫
             </button>
-            <button type="button" style={btnGhost} onClick={onAiGenerate} disabled={!canGenerate || aiLoading}>
-              {aiLoading ? '產生中…' : 'AI 產生題目（存入題庫）'}
+            <button
+              type="button"
+              style={btnGhost}
+              onClick={() => {
+                setShowAiPanel(true);
+              }}
+              disabled={!canGenerate || aiLoading}
+            >
+              {aiLoading ? '產生中…' : 'AI 產生題目（存入題庫）…'}
             </button>
           </div>
         </div>
@@ -632,6 +703,8 @@ export default function TeacherHomeworkEditor({ mode = 'new' }) {
 }
 
 const labelStyle = { fontWeight: 900, fontSize: 12, color: '#6B7280' };
+
+
 
 const inputStyle = {
   width: '100%',

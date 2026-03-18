@@ -568,6 +568,9 @@ window.QuestClassFirebase = {
       tags: Array.isArray(payload.tags) ? payload.tags : [],
       difficulty: Number(payload.difficulty || 1),
 
+      // targeting
+      target_level: String(payload.target_level || '').trim(),
+
       // content
       question_text,
       options: Array.isArray(payload.options) ? payload.options : (Array.isArray(payload.choices) ? payload.choices : []),

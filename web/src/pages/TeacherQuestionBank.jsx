@@ -37,6 +37,7 @@ export default function TeacherQuestionBank() {
   const [q, setQ] = useState('');
   const [topic, setTopic] = useState('');
   const [type, setType] = useState('');
+  const [targetLevel, setTargetLevel] = useState('');
 
   const [selectedId, setSelectedId] = useState(null);
 
@@ -46,6 +47,9 @@ export default function TeacherQuestionBank() {
   const [aiStep, setAiStep] = useState(1); // 1=configure, 2=select
   const [aiCount, setAiCount] = useState(6);
   const [aiTopic, setAiTopic] = useState('');
+  // HK level controls
+  const [aiTargetLevel, setAiTargetLevel] = useState('S3'); // default = Form 3
+
   const [aiTypes, setAiTypes] = useState(SUPPORTED_TYPES);
   const [aiCandidates, setAiCandidates] = useState([]);
   const [aiSelected, setAiSelected] = useState({});
@@ -98,6 +102,7 @@ export default function TeacherQuestionBank() {
     const qq = String(q || '').trim().toLowerCase();
     const tt = String(topic || '').trim().toLowerCase();
     const ty = String(type || '').trim().toUpperCase();
+    const tl = String(targetLevel || '').trim().toUpperCase();
 
     return (items || []).filter((it) => {
       const text = String(it.question_text || it.prompt || '').toLowerCase();
@@ -106,9 +111,11 @@ export default function TeacherQuestionBank() {
       if (tt && !tpc.includes(tt)) return false;
       const ity = String(it.type || '').toUpperCase();
       if (ty && ity !== ty) return false;
+      const itl = String(it.target_level || '').trim().toUpperCase();
+      if (tl && itl !== tl) return false;
       return true;
     });
-  }, [items, q, topic, type]);
+  }, [items, q, topic, type, targetLevel]);
 
   const onAiGenerate = async () => {
     if (!classroomId) return alert('請先選擇班級');
@@ -130,9 +137,9 @@ export default function TeacherQuestionBank() {
         return;
       }
 
-      const system = `你是一個老師助教。請產出「題庫題目」JSON，輸出必須是純 JSON，不要 markdown。\n\n你只能使用以下題型（必須完全符合字串）：\n${allowedTypes.map((t) => `- ${t}`).join('\n')}\n\n輸出規格：{\n  \"questions\": [\n    {\n      \"id\": \"q1\",\n      \"type\": \"${allowedTypes.join('|')}\",\n      \"topic\": \"主題\",\n      \"points\": 1,\n      \"question_text\": \"題目文字（可包含 [____]）\",\n      // TRUE_FALSE\n      \"correct_answer\": true|false,\n      // MULTIPLE_CHOICE\n      \"options\": [{\"id\":\"A\",\"text\":\"...\",\"is_correct\":false}, ...],\n      // FILL_IN_BLANK\n      \"blanks\": [{\"position\":1,\"accepted\":[\"Au\",\"au\"]}, ...],\n      // MATCHING\n      \"pairs\": [{\"prompt\":\"...\",\"match\":\"...\"}, ...],\n      // SHORT_ANSWER\n      \"ideal_answer\": \"...\",\n      \"max_word_count\": 20,\n      // LONG_ANSWER\n      \"grading_rubric\": \"...\",\n      \"max_word_count\": 500\n    }\n  ]\n}`;
+      const system = `你是一個老師助教。請產出「題庫題目」JSON，輸出必須是純 JSON，不要 markdown。\n\n你只能使用以下題型（必須完全符合字串）：\n${allowedTypes.map((t) => `- ${t}`).join('\n')}\n\n重要：請依照香港學制（HK）調整難度、詞彙、題幹長度、情境與常見錯誤點。\n- target_level: ${aiTargetLevel}\n\n輸出規格：{\n  \"questions\": [\n    {\n      \"id\": \"q1\",\n      \"type\": \"${allowedTypes.join('|')}\",\n      \"topic\": \"主題\",\n      \"points\": 1,\n      \"question_text\": \"題目文字（可包含 [____]）\",\n      // TRUE_FALSE\n      \"correct_answer\": true|false,\n      // MULTIPLE_CHOICE\n      \"options\": [{\"id\":\"A\",\"text\":\"...\",\"is_correct\":false}, ...],\n      // FILL_IN_BLANK\n      \"blanks\": [{\"position\":1,\"accepted\":[\"Au\",\"au\"]}, ...],\n      // MATCHING\n      \"pairs\": [{\"prompt\":\"...\",\"match\":\"...\"}, ...],\n      // SHORT_ANSWER\n      \"ideal_answer\": \"...\",\n      \"max_word_count\": 20,\n      // LONG_ANSWER\n      \"grading_rubric\": \"...\",\n      \"max_word_count\": 500\n    }\n  ]\n}`;
 
-      const user = `班級: ${classroomId}\n請產生 ${count} 題題庫題目。\ntopic/主題偏好：${aiTopic ? aiTopic : '（不限）'}\n請確保題型只使用允許清單，且每題都符合其欄位規格。`;
+      const user = `班級: ${classroomId}\n請產生 ${count} 題題庫題目。\nHK 年級/程度：${aiTargetLevel || '（未指定）'}\ntopic/主題偏好：${aiTopic ? aiTopic : '（不限）'}\n請確保題型只使用允許清單，且每題都符合其欄位規格。`;
 
       const res = await chat({
         idToken,
@@ -164,6 +171,7 @@ export default function TeacherQuestionBank() {
             type: t,
             topic: String(raw.topic || aiTopic || ''),
             points: Number(raw.points || 1),
+            target_level: aiTargetLevel,
             question_text: String(raw.question_text || ''),
             correct_answer: typeof raw.correct_answer === 'boolean' ? raw.correct_answer : undefined,
             options: Array.isArray(raw.options) ? raw.options : undefined,
@@ -234,7 +242,7 @@ export default function TeacherQuestionBank() {
           </button>
         </div>
 
-        <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: '1fr 200px 200px', gap: 10 }}>
+        <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 10 }}>
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="搜尋題幹…" style={inputStyle} />
           <input value={topic} onChange={(e) => setTopic(e.target.value)} placeholder="topic filter" style={inputStyle} />
           <select value={type} onChange={(e) => setType(e.target.value)} style={selectStyle}>
@@ -245,6 +253,21 @@ export default function TeacherQuestionBank() {
             <option value="MATCHING">配對題</option>
             <option value="SHORT_ANSWER">簡答題</option>
             <option value="LONG_ANSWER">申論題</option>
+          </select>
+          <select value={targetLevel} onChange={(e) => setTargetLevel(e.target.value)} style={selectStyle}>
+            <option value="">全部年級</option>
+            <option value="P1">P1</option>
+            <option value="P2">P2</option>
+            <option value="P3">P3</option>
+            <option value="P4">P4</option>
+            <option value="P5">P5</option>
+            <option value="P6">P6</option>
+            <option value="S1">S1</option>
+            <option value="S2">S2</option>
+            <option value="S3">S3</option>
+            <option value="S4">S4</option>
+            <option value="S5">S5</option>
+            <option value="S6">S6</option>
           </select>
         </div>
       </div>
@@ -304,6 +327,30 @@ export default function TeacherQuestionBank() {
                 <div style={labelStyle}>Topic（可留空）</div>
                 <input value={aiTopic} onChange={(e) => setAiTopic(e.target.value)} style={inputStyle} placeholder="例如：分數加減" />
               </label>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr', gap: 12 }}>
+              <label style={{ display: 'grid', gap: 6 }}>
+                <div style={labelStyle}>HK 年級/程度（只用 target_level；預設：S3）</div>
+                <select value={aiTargetLevel} onChange={(e) => setAiTargetLevel(e.target.value)} style={selectStyle}>
+                  <option value="P1">P1（小一）</option>
+                  <option value="P2">P2（小二）</option>
+                  <option value="P3">P3（小三）</option>
+                  <option value="P4">P4（小四）</option>
+                  <option value="P5">P5（小五）</option>
+                  <option value="P6">P6（小六）</option>
+                  <option value="S1">S1（中一 / Form 1）</option>
+                  <option value="S2">S2（中二 / Form 2）</option>
+                  <option value="S3">S3（中三 / Form 3，預設）</option>
+                  <option value="S4">S4（中四 / Form 4）</option>
+                  <option value="S5">S5（中五 / Form 5）</option>
+                  <option value="S6">S6（中六 / Form 6）</option>
+                </select>
+              </label>
+
+              <div style={{ color: '#6B7280', fontWeight: 800, fontSize: 12, lineHeight: 1.6, paddingTop: 22 }}>
+                產題只會傳 <strong>target_level</strong> 給 AI（例如 S3）。不再使用 target_forms。
+              </div>
             </div>
 
             <div style={{ display: 'grid', gap: 8 }}>
@@ -473,7 +520,6 @@ export default function TeacherQuestionBank() {
 
 const labelStyle = { fontWeight: 900, fontSize: 12, color: '#6B7280' };
 
-const checkRow = { display: 'flex', gap: 8, alignItems: 'center', fontWeight: 900, fontSize: 12, color: '#111827', padding: 10, borderRadius: 14, border: '1px solid rgba(17,24,39,0.10)', background: '#F9FAFB' };
 
 const inputStyle = {
   width: '100%',
