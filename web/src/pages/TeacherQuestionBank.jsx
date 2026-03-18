@@ -301,15 +301,27 @@ export default function TeacherQuestionBank() {
                 if (!chosen.length) return alert('請至少選一題');
 
                 const created = [];
+                const errors = [];
                 for (const payload of chosen) {
                   const up = await upsertQuestionBankItem({ classroomId, ...payload });
                   if (up?.ok) created.push(up.questionId);
+                  else errors.push(up?.error || 'unknown error');
                 }
+
                 await refresh();
                 setShowAiPanel(false);
                 setAiStep(1);
                 setAiCandidates([]);
                 setAiSelected({});
+
+                if (created.length === 0 && errors.length) {
+                  alert(`新增失敗（0/${chosen.length}）。第一個錯誤：${errors[0]}`);
+                  return;
+                }
+                if (errors.length) {
+                  alert(`已新增 ${created.length} 題到題庫（失敗 ${errors.length} 題）。第一個錯誤：${errors[0]}`);
+                  return;
+                }
                 alert(`已新增 ${created.length} 題到題庫`);
               }}>加入題庫</button>
             </>
