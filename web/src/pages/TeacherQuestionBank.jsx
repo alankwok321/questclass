@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { listClassrooms, listQuestionBank, upsertQuestionBankItem } from '../services/firebase.js';
 import { chat } from '../services/api.js';
+import Modal from '../components/Modal.jsx';
 import QuestionTypeBadge from '../components/QuestionTypeBadge.jsx';
 import QuestionPreview from '../components/QuestionPreview.jsx';
 
@@ -38,24 +39,19 @@ export default function TeacherQuestionBank() {
   const [type, setType] = useState('');
 
   const [selectedId, setSelectedId] = useState(null);
-  const [aiLoading, setAiLoading] = useState(false);
 
-  // AI generate options + selection list
+  // AI generate (two-step modal)
+  const [aiLoading, setAiLoading] = useState(false);
   const [showAiPanel, setShowAiPanel] = useState(false);
+  const [aiStep, setAiStep] = useState(1); // 1=configure, 2=select
   const [aiCount, setAiCount] = useState(6);
   const [aiTopic, setAiTopic] = useState('');
   const [aiTypes, setAiTypes] = useState(SUPPORTED_TYPES);
   const [aiCandidates, setAiCandidates] = useState([]);
   const [aiSelected, setAiSelected] = useState({});
+  const [aiSelectedIdx, setAiSelectedIdx] = useState(null);
 
-  const selected = useMemo(() => {
-    if (showAiPanel) {
-      const idx = selectedId === null ? null : Number(selectedId);
-      if (Number.isFinite(idx) && idx >= 0) return aiCandidates[idx] || null;
-      return null;
-    }
-    return (items || []).find((x) => x.id === selectedId) || null;
-  }, [items, selectedId, showAiPanel, aiCandidates]);
+  const selected = useMemo(() => (items || []).find((x) => x.id === selectedId) || null, [items, selectedId]);
 
   useEffect(() => {
     let mounted = true;
@@ -186,10 +182,11 @@ export default function TeacherQuestionBank() {
       }
 
       setAiCandidates(candidates);
-      // default select all
       const sel = {};
       candidates.forEach((_, idx) => { sel[idx] = true; });
       setAiSelected(sel);
+      setAiSelectedIdx(0);
+      setAiStep(2);
       setShowAiPanel(true);
     } catch (e) {
       alert(e?.message || 'AI 產生失敗');
@@ -227,10 +224,13 @@ export default function TeacherQuestionBank() {
           <button
             type="button"
             style={{ ...btnPrimary, padding: '12px 18px' }}
-            onClick={onAiGenerate}
-            disabled={aiLoading || !classroomId}
+            onClick={() => {
+              setShowAiPanel(true);
+              setAiStep(1);
+            }}
+            disabled={!classroomId}
           >
-            {aiLoading ? 'AI 產生中…' : 'AI 產生題目…'}
+            AI 產生題目…
           </button>
         </div>
 
@@ -249,95 +249,101 @@ export default function TeacherQuestionBank() {
         </div>
       </div>
 
-      {showAiPanel ? (
-        <div className="card">
-          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
-            <div>
-              <div style={{ fontWeight: 900 }}>AI 產生題目（請勾選要加入題庫的題）</div>
-              <div style={{ marginTop: 6, color: '#6B7280', fontWeight: 800, fontSize: 12 }}>
-                班級：{classroomId} · topic：{aiTopic || '（不限）'} · 題型：{aiTypes.map(typeLabel).join('、')}
-              </div>
-            </div>
-            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-              <button type="button" style={btnGhost} onClick={() => setShowAiPanel(false)}>返回題庫</button>
+      <Modal
+        open={showAiPanel}
+        title={aiStep === 1 ? 'AI 產生題目：設定' : 'AI 產生題目：挑選加入題庫'}
+        onClose={() => {
+          setShowAiPanel(false);
+          setAiStep(1);
+        }}
+        footer={
+          aiStep === 1 ? (
+            <>
+              <button type="button" style={btnGhost} onClick={() => setShowAiPanel(false)}>取消</button>
+              <button type="button" style={btnPrimary} onClick={onAiGenerate} disabled={aiLoading || !classroomId}>
+                {aiLoading ? '產生中…' : '下一步：產生題目'}
+              </button>
+            </>
+          ) : (
+            <>
+              <button type="button" style={btnGhost} onClick={() => setAiStep(1)}>返回設定</button>
               <button type="button" style={btnGhost} onClick={() => {
                 const sel = {};
                 aiCandidates.forEach((_, idx) => { sel[idx] = true; });
                 setAiSelected(sel);
               }}>全選</button>
               <button type="button" style={btnGhost} onClick={() => setAiSelected({})}>全不選</button>
-              <button
-                type="button"
-                style={btnPrimary}
-                onClick={async () => {
-                  const chosen = aiCandidates.filter((_, idx) => aiSelected[idx]);
-                  if (!chosen.length) return alert('請至少選一題');
+              <button type="button" style={btnPrimary} onClick={async () => {
+                const chosen = aiCandidates.filter((_, idx) => aiSelected[idx]);
+                if (!chosen.length) return alert('請至少選一題');
 
-                  const created = [];
-                  for (const payload of chosen) {
-                    const up = await upsertQuestionBankItem({ classroomId, ...payload });
-                    if (up?.ok) created.push(up.questionId);
-                  }
-                  await refresh();
-                  setShowAiPanel(false);
-                  setAiCandidates([]);
-                  setAiSelected({});
-                  alert(`已新增 ${created.length} 題到題庫`);
-                }}
-              >
-                加入題庫
-              </button>
+                const created = [];
+                for (const payload of chosen) {
+                  const up = await upsertQuestionBankItem({ classroomId, ...payload });
+                  if (up?.ok) created.push(up.questionId);
+                }
+                await refresh();
+                setShowAiPanel(false);
+                setAiStep(1);
+                setAiCandidates([]);
+                setAiSelected({});
+                alert(`已新增 ${created.length} 題到題庫`);
+              }}>加入題庫</button>
+            </>
+          )
+        }
+      >
+        {aiStep === 1 ? (
+          <div style={{ display: 'grid', gap: 12 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr', gap: 12 }}>
+              <label style={{ display: 'grid', gap: 6 }}>
+                <div style={labelStyle}>數量（1~30）</div>
+                <input type="number" value={aiCount} onChange={(e) => setAiCount(e.target.value)} style={inputStyle} />
+              </label>
+              <label style={{ display: 'grid', gap: 6 }}>
+                <div style={labelStyle}>Topic（可留空）</div>
+                <input value={aiTopic} onChange={(e) => setAiTopic(e.target.value)} style={inputStyle} placeholder="例如：分數加減" />
+              </label>
             </div>
-          </div>
 
-          <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: '1fr 220px 220px', gap: 10 }}>
-            <label style={{ display: 'grid', gap: 6 }}>
-              <div style={{ fontWeight: 900, fontSize: 12, color: '#6B7280' }}>數量（1~30）</div>
-              <input type="number" value={aiCount} onChange={(e) => setAiCount(e.target.value)} style={inputStyle} />
-            </label>
-            <label style={{ display: 'grid', gap: 6 }}>
-              <div style={{ fontWeight: 900, fontSize: 12, color: '#6B7280' }}>Topic（可留空）</div>
-              <input value={aiTopic} onChange={(e) => setAiTopic(e.target.value)} style={inputStyle} placeholder="例如：分數加減" />
-            </label>
-            <div style={{ display: 'grid', gap: 6 }}>
-              <div style={{ fontWeight: 900, fontSize: 12, color: '#6B7280' }}>題型</div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+            <div style={{ display: 'grid', gap: 8 }}>
+              <div style={labelStyle}>題型（可多選）</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
                 {SUPPORTED_TYPES.map((t) => {
                   const checked = aiTypes.includes(t);
                   return (
-                    <label key={t} style={{ display: 'flex', gap: 8, alignItems: 'center', fontWeight: 900, fontSize: 12, color: '#111827' }}>
+                    <label key={t} style={checkRow}>
                       <input
                         type="checkbox"
                         checked={checked}
-                        onChange={() => {
-                          setAiTypes((arr) => checked ? arr.filter((x) => x !== t) : [...arr, t]);
-                        }}
+                        onChange={() => setAiTypes((arr) => checked ? arr.filter((x) => x !== t) : [...arr, t])}
                       />
                       {typeLabel(t)}
                     </label>
                   );
                 })}
               </div>
-              <button type="button" style={{ ...btnGhost, padding: '8px 12px', borderRadius: 14 }} onClick={onAiGenerate} disabled={aiLoading}>
-                {aiLoading ? '重新產生中…' : '重新產生'}
-              </button>
+            </div>
+
+            <div style={{ color: '#6B7280', fontWeight: 800, fontSize: 12, lineHeight: 1.6 }}>
+              提示：下一步會先讓你預覽/勾選題目，確認後才會寫入題庫。
             </div>
           </div>
-
-          <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: '420px 1fr', gap: 16, alignItems: 'start' }}>
-            <div style={{ border: '1px solid rgba(17,24,39,0.10)', borderRadius: 20, overflow: 'hidden', background: '#F9FAFB' }}>
-              <div style={{ padding: 14, borderBottom: '1px solid rgba(17,24,39,0.10)', fontWeight: 900 }}>
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: '420px 1fr', gap: 14, alignItems: 'start' }}>
+            <div style={{ border: '1px solid rgba(17,24,39,0.10)', borderRadius: 18, overflow: 'hidden', background: '#F9FAFB' }}>
+              <div style={{ padding: 12, borderBottom: '1px solid rgba(17,24,39,0.10)', fontWeight: 900 }}>
                 產生結果（{aiCandidates.length}）
               </div>
-              <div style={{ maxHeight: 620, overflow: 'auto' }}>
+              <div style={{ maxHeight: 520, overflow: 'auto' }}>
                 {aiCandidates.map((it, idx) => {
-                  const active = String(idx) === String(selectedId);
+                  const active = aiSelectedIdx === idx;
                   const checked = Boolean(aiSelected[idx]);
                   return (
                     <button
                       key={idx}
                       type="button"
-                      onClick={() => setSelectedId(String(idx))}
+                      onClick={() => setAiSelectedIdx(idx)}
                       style={{
                         width: '100%',
                         textAlign: 'left',
@@ -370,26 +376,25 @@ export default function TeacherQuestionBank() {
               </div>
             </div>
 
-            <div className="card" style={{ minHeight: 300 }}>
+            <div style={{ border: '1px solid rgba(17,24,39,0.10)', borderRadius: 18, background: 'white', padding: 14 }}>
               <div style={{ fontWeight: 900, fontSize: 14 }}>預覽（教師視角）</div>
               <div style={{ marginTop: 6, color: '#6B7280', fontWeight: 800, fontSize: 12 }}>
-                {selectedId !== null ? `#${selectedId}` : '從左側選擇題目'}
+                {aiSelectedIdx !== null ? `#${aiSelectedIdx + 1}` : '從左側選擇題目'}
               </div>
               <div style={{ marginTop: 12 }}>
-                {selectedId !== null ? (
+                {aiSelectedIdx !== null ? (
                   <>
-                    <div style={{ fontWeight: 900, fontSize: 18 }}>{aiCandidates[Number(selectedId)]?.question_text || '（未選取）'}</div>
-                    <div style={{ marginTop: 8, color: '#6B7280', fontWeight: 900, fontSize: 12 }}>topic: {aiCandidates[Number(selectedId)]?.topic || '—'}</div>
-                    <QuestionPreview q={aiCandidates[Number(selectedId)]} />
+                    <div style={{ fontWeight: 900, fontSize: 18 }}>{aiCandidates[aiSelectedIdx]?.question_text || '（未選取）'}</div>
+                    <div style={{ marginTop: 8, color: '#6B7280', fontWeight: 900, fontSize: 12 }}>topic: {aiCandidates[aiSelectedIdx]?.topic || '—'}</div>
+                    <QuestionPreview q={aiCandidates[aiSelectedIdx]} />
                   </>
                 ) : null}
               </div>
             </div>
           </div>
-        </div>
-      ) : null}
+        )}
+      </Modal>
 
-      {!showAiPanel ? (
       <div style={{ display: 'grid', gridTemplateColumns: '420px 1fr', gap: 16, alignItems: 'start' }}>
         {/* List */}
         <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
@@ -462,10 +467,13 @@ export default function TeacherQuestionBank() {
           </div>
         </div>
       </div>
-      ) : null}
     </div>
   );
 }
+
+const labelStyle = { fontWeight: 900, fontSize: 12, color: '#6B7280' };
+
+const checkRow = { display: 'flex', gap: 8, alignItems: 'center', fontWeight: 900, fontSize: 12, color: '#111827', padding: 10, borderRadius: 14, border: '1px solid rgba(17,24,39,0.10)', background: '#F9FAFB' };
 
 const inputStyle = {
   width: '100%',
