@@ -209,8 +209,8 @@ export default function TeacherQuestionBank() {
             </div>
           </div>
 
-          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
-            <select value={classroomId} onChange={(e) => setClassroomId(e.target.value)} style={selectStyle} disabled={loadingClasses}>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', justifyContent: 'flex-end' }}>
+            <select value={classroomId} onChange={(e) => setClassroomId(e.target.value)} style={{ ...selectStyle, minWidth: 220 }} disabled={loadingClasses}>
               <option value="">{loadingClasses ? '載入班級…' : '選擇班級'}</option>
               {classrooms.map((c) => (
                 <option key={c.id} value={c.id}>{c.name || c.id}</option>
@@ -219,10 +219,19 @@ export default function TeacherQuestionBank() {
             <button type="button" style={btnGhost} onClick={refresh} disabled={loading || !classroomId}>
               {loading ? '更新中…' : '更新題庫'}
             </button>
-            <button type="button" style={btnPrimary} onClick={onAiGenerate} disabled={aiLoading || !classroomId}>
-              {aiLoading ? 'AI 產生中…' : 'AI 產生題目…'}
-            </button>
           </div>
+        </div>
+
+        {/* Make AI CTA always visible: put it on its own row */}
+        <div style={{ marginTop: 12, display: 'flex', justifyContent: 'flex-end' }}>
+          <button
+            type="button"
+            style={{ ...btnPrimary, padding: '12px 18px' }}
+            onClick={onAiGenerate}
+            disabled={aiLoading || !classroomId}
+          >
+            {aiLoading ? 'AI 產生中…' : 'AI 產生題目…'}
+          </button>
         </div>
 
         <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: '1fr 200px 200px', gap: 10 }}>
