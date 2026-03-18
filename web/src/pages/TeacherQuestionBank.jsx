@@ -520,6 +520,7 @@ export default function TeacherQuestionBank() {
 
 const labelStyle = { fontWeight: 900, fontSize: 12, color: '#6B7280' };
 
+const checkRow = { display: 'flex', gap: 8, alignItems: 'center', fontWeight: 900, fontSize: 12, color: '#111827', padding: 10, borderRadius: 14, border: '1px solid rgba(17,24,39,0.10)', background: '#F9FAFB' };
 
 const inputStyle = {
   width: '100%',
