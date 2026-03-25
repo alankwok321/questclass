@@ -233,8 +233,8 @@ export default function TeacherHomeworkPage() {
         listHomeworkAssignments(null, 100),
         listClassrooms(),
       ]);
-      setAssignments(hw || []);
-      setClassrooms(cls || []);
+      setAssignments(Array.isArray(hw) ? hw : []);
+      setClassrooms(Array.isArray(cls) ? cls : []);
     } catch (e) {
       console.error('Load error:', e);
     } finally {
