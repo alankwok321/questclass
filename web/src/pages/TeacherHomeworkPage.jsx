@@ -55,101 +55,6 @@ function nowMinString() {
   return d.toISOString().slice(0, 16);
 }
 
-function daysInMonth(year, month) {
-  return new Date(year, month, 0).getDate();
-}
-
-// ── Date Time Picker ──────────────────────────────────────────────────────────
-// Renders styled selects instead of the native datetime-local input
-function DateTimePicker({ value, onChange }) {
-  const now = new Date();
-  const parsed = value ? new Date(value) : null;
-
-  const selYear  = parsed ? parsed.getFullYear()  : '';
-  const selMonth = parsed ? parsed.getMonth() + 1 : '';
-  const selDay   = parsed ? parsed.getDate()      : '';
-  const selHour  = parsed ? parsed.getHours()     : '';
-  const selMin   = parsed ? parsed.getMinutes()   : '';
-
-  function emit(y, mo, d, h, mi) {
-    if (!y || !mo || !d || h === '' || mi === '') { onChange(''); return; }
-    const pad = n => String(n).padStart(2, '0');
-    onChange(`${y}-${pad(mo)}-${pad(d)}T${pad(h)}:${pad(mi)}`);
-  }
-
-  const years  = Array.from({ length: 3 }, (_, i) => now.getFullYear() + i);
-  const months = Array.from({ length: 12 }, (_, i) => i + 1);
-  const maxDay = (selYear && selMonth) ? daysInMonth(selYear, selMonth) : 31;
-  const days   = Array.from({ length: maxDay }, (_, i) => i + 1);
-  const hours  = Array.from({ length: 24 }, (_, i) => i);
-  const mins   = [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55];
-
-  const sel = { ...inputStyle, width: 'auto', flex: '1 1 0' };
-
-  // Validate: selected datetime must not be in the past
-  function isDisabled(y, mo, d, h, mi) {
-    if (!y || !mo || !d || h === '' || mi === '') return false;
-    const pad = n => String(n).padStart(2, '0');
-    return `${y}-${pad(mo)}-${pad(d)}T${pad(h)}:${pad(mi)}` < nowMinString();
-  }
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-      {/* Date row */}
-      <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-        <select value={selYear} style={sel}
-          onChange={e => emit(Number(e.target.value), selMonth, selDay, selHour, selMin)}>
-          <option value="">年</option>
-          {years.map(y => <option key={y} value={y}>{y} 年</option>)}
-        </select>
-        <select value={selMonth} style={sel}
-          onChange={e => emit(selYear, Number(e.target.value), selDay, selHour, selMin)}>
-          <option value="">月</option>
-          {months.map(m => <option key={m} value={m}>{m} 月</option>)}
-        </select>
-        <select value={selDay} style={sel}
-          onChange={e => emit(selYear, selMonth, Number(e.target.value), selHour, selMin)}>
-          <option value="">日</option>
-          {days.map(d => <option key={d} value={d}>{d} 日</option>)}
-        </select>
-      </div>
-      {/* Time row */}
-      <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-        <select value={selHour} style={sel}
-          onChange={e => emit(selYear, selMonth, selDay, Number(e.target.value), selMin)}>
-          <option value="">時</option>
-          {hours.map(h => (
-            <option key={h} value={h}
-              disabled={isDisabled(selYear, selMonth, selDay, h, selMin === '' ? 0 : selMin)}>
-              {String(h).padStart(2, '0')} 時
-            </option>
-          ))}
-        </select>
-        <select value={selMin} style={sel}
-          onChange={e => emit(selYear, selMonth, selDay, selHour, Number(e.target.value))}>
-          <option value="">分</option>
-          {mins.map(m => (
-            <option key={m} value={m}
-              disabled={isDisabled(selYear, selMonth, selDay, selHour === '' ? 0 : selHour, m)}>
-              {String(m).padStart(2, '0')} 分
-            </option>
-          ))}
-        </select>
-        {value && (
-          <button type="button" onClick={() => onChange('')}
-            style={{ ...btnGhost, padding: '8px 14px', fontSize: 12, color: '#FF3B30', flexShrink: 0 }}>
-            清除
-          </button>
-        )}
-      </div>
-      {value && (
-        <div style={{ fontSize: 12, color: '#6B7280', fontWeight: 700 }}>
-          截止時間：{new Date(value).toLocaleString('zh-HK')}
-        </div>
-      )}
-    </div>
-  );
-}
 
 // ── Question card (in assignment) ──────────────────────────────────────────────
 function QuestionCard({ q, index, onRemove }) {
@@ -701,9 +606,12 @@ export default function TeacherHomeworkPage() {
 
             <label style={labelStyle}>
               截止日期與時間
-              <DateTimePicker
+              <input
+                type="datetime-local"
+                style={{ ...inputStyle, colorScheme: 'light' }}
                 value={form.dueAt}
-                onChange={dueAt => setForm(f => ({ ...f, dueAt }))}
+                min={nowMinString()}
+                onChange={e => setForm(f => ({ ...f, dueAt: e.target.value }))}
               />
             </label>
           </div>
