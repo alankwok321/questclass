@@ -12,6 +12,19 @@ import QuestionPreview from '../components/QuestionPreview.jsx';
 
 const EMPTY_FORM = { title: '', description: '', dueAt: '', classroomId: '' };
 
+// Firestore rejects undefined values — strip them recursively before any write
+function stripUndefined(obj) {
+  if (Array.isArray(obj)) return obj.map(stripUndefined);
+  if (obj !== null && typeof obj === 'object') {
+    return Object.fromEntries(
+      Object.entries(obj)
+        .filter(([, v]) => v !== undefined)
+        .map(([k, v]) => [k, stripUndefined(v)])
+    );
+  }
+  return obj;
+}
+
 // ── Shared styles ──────────────────────────────────────────────────────────────
 const btnPrimary = {
   border: 0, background: '#007AFF', color: '#fff',
@@ -121,7 +134,7 @@ function QuestionBankPicker({ classroomId, alreadyIds, onAdd, onClose }) {
 
   function doAdd() {
     if (!selectedItems.length) return alert('請至少選擇一題');
-    onAdd(selectedItems.map(it => ({
+    onAdd(selectedItems.map(it => stripUndefined({
       id: `q_${Date.now()}_${Math.random().toString(36).slice(2)}`,
       type: it.type,
       topic: it.topic || '',
@@ -309,7 +322,7 @@ function AiModal({ form, onClose, onAdd }) {
       const match = text.match(/\{[\s\S]*\}/);
       if (!match) throw new Error('AI 回應中找不到 JSON 格式');
       const parsed = JSON.parse(match[0]);
-      const newQs = (parsed.questions || []).map((q, i) => ({
+      const newQs = (parsed.questions || []).map((q, i) => stripUndefined({
         ...q,
         id: `q_${Date.now()}_${i}`,
         prompt: q.question_text || q.prompt || '',
@@ -433,7 +446,8 @@ export default function TeacherHomeworkPage() {
     if (form.dueAt && form.dueAt < nowMinString()) return alert('截止日期不能早於現在。');
     setSaving(true);
     try {
-      const res = await createHomeworkAssignment({ ...form, status, questions, id: editId || undefined });
+      const payload = stripUndefined({ ...form, status, questions, ...(editId ? { id: editId } : {}) });
+      const res = await createHomeworkAssignment(payload);
       if (!res?.ok) return alert(res?.error || '儲存失敗');
       await load();
       setView('list');
