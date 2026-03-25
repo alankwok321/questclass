@@ -229,12 +229,12 @@ export default function TeacherHomeworkPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [hw, cls] = await Promise.all([
+      const [hwRes, clsRes] = await Promise.all([
         listHomeworkAssignments(null, 100),
         listClassrooms(),
       ]);
-      setAssignments(Array.isArray(hw) ? hw : []);
-      setClassrooms(Array.isArray(cls) ? cls : []);
+      setAssignments(Array.isArray(hwRes?.items) ? hwRes.items : []);
+      setClassrooms(Array.isArray(clsRes?.classrooms) ? clsRes.classrooms : []);
     } catch (e) {
       console.error('Load error:', e);
     } finally {
@@ -274,7 +274,13 @@ export default function TeacherHomeworkPage() {
     if (!form.classroomId) return alert('Please select a classroom.');
     setSaving(true);
     try {
-      await createHomeworkAssignment({ ...form, status, questions, id: editId || undefined });
+      const res = await createHomeworkAssignment({
+        ...form,
+        status,
+        questions,
+        id: editId || undefined,
+      });
+      if (!res?.ok) return alert(res?.error || 'Save failed');
       await load();
       setView('list');
       setTab(status === 'published' ? 'published' : 'draft');
@@ -285,9 +291,10 @@ export default function TeacherHomeworkPage() {
     }
   }
 
-  async function changeStatus(id, status) {
+  async function changeStatus(assignmentId, status) {
     try {
-      await updateHomeworkAssignmentStatus({ id, status });
+      const res = await updateHomeworkAssignmentStatus({ assignmentId, status });
+      if (!res?.ok) return alert(res?.error || 'Update failed');
       await load();
     } catch (e) {
       alert('Error: ' + e.message);
