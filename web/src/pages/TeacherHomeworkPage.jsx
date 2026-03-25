@@ -90,41 +90,41 @@ function QuestionBankPicker({ classroomId, alreadyIds, onAdd, onClose }) {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
+  const [topic, setTopic] = useState('');
   const [type, setType] = useState('');
   const [level, setLevel] = useState('');
   const [checked, setChecked] = useState({});
+  const [previewId, setPreviewId] = useState(null);
 
   useEffect(() => {
     let mounted = true;
     setLoading(true);
     listQuestionBank(classroomId, 200).then(res => {
       if (!mounted) return;
-      setItems(Array.isArray(res?.items) ? res.items : []);
+      const list = Array.isArray(res?.items) ? res.items : [];
+      setItems(list);
+      if (list[0]?.id) setPreviewId(list[0].id);
     }).catch(() => {}).finally(() => { if (mounted) setLoading(false); });
     return () => { mounted = false; };
   }, [classroomId]);
 
   const filtered = useMemo(() => {
     const sq = search.trim().toLowerCase();
+    const st = topic.trim().toLowerCase();
     const sy = type.trim().toUpperCase();
     const sl = level.trim().toUpperCase();
     return items.filter(it => {
-      const text = ((it.question_text || it.prompt || '') + ' ' + (it.topic || '')).toLowerCase();
+      const text = (it.question_text || it.prompt || '').toLowerCase();
       if (sq && !text.includes(sq)) return false;
+      if (st && !String(it.topic || '').toLowerCase().includes(st)) return false;
       if (sy && String(it.type || '').toUpperCase() !== sy) return false;
       if (sl && String(it.target_level || '').toUpperCase() !== sl) return false;
       return true;
     });
-  }, [items, search, type, level]);
+  }, [items, search, topic, type, level]);
 
-  const allChecked = filtered.length > 0 && filtered.every(it => checked[it.id]);
-  const toggleAll = () => {
-    const next = { ...checked };
-    filtered.forEach(it => { next[it.id] = !allChecked; });
-    setChecked(next);
-  };
-
-  const selectedItems = filtered.filter(it => checked[it.id]);
+  const preview = useMemo(() => items.find(it => it.id === previewId) || null, [items, previewId]);
+  const selectedItems = items.filter(it => checked[it.id]);
 
   function doAdd() {
     if (!selectedItems.length) return alert('請至少選擇一題');
@@ -149,8 +149,6 @@ function QuestionBankPicker({ classroomId, alreadyIds, onAdd, onClose }) {
     onClose();
   }
 
-  const pill = { padding: '8px 12px', fontSize: 13 };
-
   return (
     <div style={{
       position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)',
@@ -158,8 +156,8 @@ function QuestionBankPicker({ classroomId, alreadyIds, onAdd, onClose }) {
       zIndex: 1000, backdropFilter: 'blur(4px)',
     }}>
       <div style={{
-        background: '#fff', borderRadius: 28,
-        width: 620, maxWidth: '96vw', maxHeight: '88vh',
+        background: '#F9FAFB', borderRadius: 28,
+        width: 960, maxWidth: '96vw', maxHeight: '90vh',
         boxShadow: '0 24px 60px rgba(0,0,0,0.18)',
         border: '1px solid rgba(17,24,39,0.08)',
         display: 'flex', flexDirection: 'column', overflow: 'hidden',
@@ -167,7 +165,8 @@ function QuestionBankPicker({ classroomId, alreadyIds, onAdd, onClose }) {
 
         {/* ── Header ── */}
         <div style={{
-          padding: '18px 22px', borderBottom: '1px solid rgba(17,24,39,0.08)',
+          padding: '16px 20px', borderBottom: '1px solid rgba(17,24,39,0.08)',
+          background: '#fff',
           display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
         }}>
           <div>
@@ -186,15 +185,13 @@ function QuestionBankPicker({ classroomId, alreadyIds, onAdd, onClose }) {
 
         {/* ── Filters ── */}
         <div style={{
-          padding: '12px 22px', borderBottom: '1px solid rgba(17,24,39,0.08)',
-          display: 'grid', gridTemplateColumns: '1fr auto auto auto', gap: 8, alignItems: 'center',
+          padding: '12px 16px', borderBottom: '1px solid rgba(17,24,39,0.08)',
+          background: '#fff',
+          display: 'grid', gridTemplateColumns: '1fr 1fr auto auto', gap: 8,
         }}>
-          <input
-            value={search} onChange={e => setSearch(e.target.value)}
-            placeholder="🔍 搜尋題目或主題…"
-            style={{ ...inputStyle, ...pill }}
-          />
-          <select value={type} onChange={e => setType(e.target.value)} style={{ ...inputStyle, ...pill, width: 'auto' }}>
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="搜尋題幹…" style={inputStyle} />
+          <input value={topic} onChange={e => setTopic(e.target.value)} placeholder="主題篩選…" style={inputStyle} />
+          <select value={type} onChange={e => setType(e.target.value)} style={selectStyle}>
             <option value="">全部題型</option>
             <option value="TRUE_FALSE">是非題</option>
             <option value="MULTIPLE_CHOICE">選擇題</option>
@@ -203,86 +200,103 @@ function QuestionBankPicker({ classroomId, alreadyIds, onAdd, onClose }) {
             <option value="SHORT_ANSWER">簡答題</option>
             <option value="LONG_ANSWER">申論題</option>
           </select>
-          <select value={level} onChange={e => setLevel(e.target.value)} style={{ ...inputStyle, ...pill, width: 'auto' }}>
+          <select value={level} onChange={e => setLevel(e.target.value)} style={selectStyle}>
             <option value="">全部年級</option>
             {['P1','P2','P3','P4','P5','P6','S1','S2','S3','S4','S5','S6'].map(l => (
               <option key={l} value={l}>{l}</option>
             ))}
           </select>
-          <button onClick={toggleAll} style={{ ...btnGhost, ...pill, whiteSpace: 'nowrap' }}>
-            {allChecked ? '全不選' : '全選'}
-          </button>
         </div>
 
-        {/* ── List ── */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: '8px 0' }}>
-          {loading ? (
-            <div style={{ padding: 32, textAlign: 'center', color: '#9CA3AF', fontWeight: 700 }}>載入中…</div>
-          ) : filtered.length === 0 ? (
-            <div style={{ padding: 40, textAlign: 'center', color: '#9CA3AF', fontWeight: 700 }}>
-              {items.length === 0 ? '此班級題庫暫無題目' : '找不到符合條件的題目'}
+        {/* ── Two-column body ── */}
+        <div style={{ flex: 1, overflow: 'hidden', display: 'grid', gridTemplateColumns: '380px 1fr', gap: 0 }}>
+
+          {/* Left: question list */}
+          <div style={{ borderRight: '1px solid rgba(17,24,39,0.08)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+            <div style={{ padding: '10px 14px', borderBottom: '1px solid rgba(17,24,39,0.08)', fontWeight: 900, fontSize: 13, background: '#fff', color: '#111827' }}>
+              題目（{filtered.length}）
             </div>
-          ) : filtered.map(it => {
-            const isChecked = Boolean(checked[it.id]);
-            const alreadyAdded = alreadyIds.has(it.id);
-            return (
-              <div
-                key={it.id}
-                onClick={() => setChecked(c => ({ ...c, [it.id]: !isChecked }))}
-                style={{
-                  padding: '12px 22px',
-                  borderBottom: '1px solid rgba(17,24,39,0.06)',
-                  background: isChecked ? 'rgba(0,122,255,0.05)' : 'transparent',
-                  cursor: 'pointer',
-                  display: 'flex', gap: 12, alignItems: 'flex-start',
-                  transition: 'background 100ms',
-                }}
-              >
-                <input
-                  type="checkbox"
-                  checked={isChecked}
-                  onChange={() => {}}
-                  onClick={e => e.stopPropagation()}
-                  style={{ marginTop: 3, accentColor: '#007AFF', flexShrink: 0, width: 16, height: 16 }}
-                />
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{
-                    fontWeight: 800, fontSize: 13, color: '#111827', lineHeight: 1.4,
-                    opacity: alreadyAdded ? 0.45 : 1,
-                  }}>
-                    {it.question_text || it.prompt || '（無題目）'}
-                    {alreadyAdded && (
-                      <span style={{ marginLeft: 6, color: '#9CA3AF', fontSize: 11, fontWeight: 700 }}>已加入</span>
-                    )}
-                  </div>
-                  <div style={{ display: 'flex', gap: 8, marginTop: 5, alignItems: 'center', flexWrap: 'wrap' }}>
-                    <QuestionTypeBadge type={it.type} />
-                    {it.topic && <span style={{ fontSize: 11, color: '#9CA3AF', fontWeight: 700 }}>{it.topic}</span>}
-                    {it.target_level && (
-                      <span style={{
-                        fontSize: 11, fontWeight: 800, color: '#fff',
-                        background: '#6B7280', borderRadius: 999, padding: '1px 7px',
-                      }}>{it.target_level}</span>
-                    )}
-                    <span style={{ fontSize: 11, color: '#9CA3AF', fontWeight: 700, marginLeft: 'auto' }}>
-                      {it.points || 1} 分
-                    </span>
-                  </div>
+            <div style={{ flex: 1, overflowY: 'auto' }}>
+              {loading ? (
+                <div style={{ padding: 32, textAlign: 'center', color: '#9CA3AF', fontWeight: 700 }}>載入中…</div>
+              ) : filtered.length === 0 ? (
+                <div style={{ padding: 40, textAlign: 'center', color: '#9CA3AF', fontWeight: 700 }}>
+                  {items.length === 0 ? '此班級題庫暫無題目' : '找不到符合條件的題目'}
+                </div>
+              ) : filtered.map(it => {
+                const isChecked = Boolean(checked[it.id]);
+                const isActive = it.id === previewId;
+                const alreadyAdded = alreadyIds.has(it.id);
+                return (
+                  <button
+                    key={it.id}
+                    type="button"
+                    onClick={() => setPreviewId(it.id)}
+                    style={{
+                      width: '100%', textAlign: 'left', border: 0,
+                      borderLeft: isActive ? '4px solid #007AFF' : '4px solid transparent',
+                      background: isActive ? 'rgba(0,122,255,0.06)' : 'transparent',
+                      padding: '11px 14px', cursor: 'pointer',
+                      display: 'grid', gap: 5,
+                      borderBottom: '1px solid rgba(17,24,39,0.06)',
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <input
+                        type="checkbox"
+                        checked={isChecked}
+                        onChange={() => {}}
+                        onClick={e => { e.stopPropagation(); setChecked(c => ({ ...c, [it.id]: !isChecked })); }}
+                        style={{ accentColor: '#007AFF', flexShrink: 0, width: 15, height: 15 }}
+                      />
+                      <div style={{
+                        fontWeight: 900, fontSize: 13, color: '#111827', lineHeight: 1.4,
+                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                        opacity: alreadyAdded ? 0.4 : 1, flex: 1,
+                      }}>
+                        {it.question_text || it.prompt || '（無題幹）'}
+                        {alreadyAdded && <span style={{ marginLeft: 6, color: '#9CA3AF', fontSize: 11 }}>已加入</span>}
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'space-between', paddingLeft: 23 }}>
+                      <QuestionTypeBadge type={it.type} />
+                      <span style={{ color: '#6B7280', fontWeight: 900, fontSize: 11 }}>
+                        {it.topic || '—'} · {it.points ?? '—'} 分
+                      </span>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Right: preview */}
+          <div style={{ overflowY: 'auto', padding: 16, background: '#fff' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+              <div>
+                <div style={{ fontWeight: 900, fontSize: 14 }}>預覽（教師視角）</div>
+                <div style={{ marginTop: 4, color: '#6B7280', fontWeight: 800, fontSize: 12 }}>
+                  {preview ? `id: ${preview.id}` : '從左側選擇題目'}
                 </div>
               </div>
-            );
-          })}
-        </div>
-
-        {/* ── Footer count ── */}
-        {filtered.length > 0 && (
-          <div style={{
-            padding: '10px 22px', borderTop: '1px solid rgba(17,24,39,0.08)',
-            fontSize: 12, fontWeight: 700, color: '#9CA3AF', textAlign: 'right',
-          }}>
-            顯示 {filtered.length} / {items.length} 題
+              {preview && (
+                <div style={{ textAlign: 'right' }}>
+                  <div style={{ fontWeight: 900 }}>{preview.points ?? '—'} 分</div>
+                  <div style={{ marginTop: 4 }}><QuestionTypeBadge type={preview.type} /></div>
+                </div>
+              )}
+            </div>
+            <div style={{ marginTop: 12 }}>
+              <div style={{ fontWeight: 900, fontSize: 18 }}>
+                {preview?.question_text || preview?.prompt || '（未選取）'}
+              </div>
+              <div style={{ marginTop: 6, color: '#6B7280', fontWeight: 900, fontSize: 12 }}>
+                topic: {preview?.topic || '—'}
+              </div>
+              <QuestionPreview q={preview} />
+            </div>
           </div>
-        )}
+        </div>
       </div>
     </div>
   );
