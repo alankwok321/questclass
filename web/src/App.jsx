@@ -16,6 +16,7 @@ import TeacherHomeworkLayout from './pages/TeacherHomeworkLayout.jsx';
 import TeacherHomeworkList from './pages/TeacherHomeworkList.jsx';
 import TeacherHomeworkDetail from './pages/TeacherHomeworkDetail.jsx';
 import TeacherHomeworkEditor from './pages/TeacherHomeworkEditor.jsx';
+import TeacherHomeworkPage from './pages/TeacherHomeworkPage.jsx';
 import TeacherQuestionBank from './pages/TeacherQuestionBank.jsx';
 import StudentHomework from './pages/StudentHomework.jsx';
 
@@ -253,17 +254,8 @@ function AppRoutes({ user }) {
       <Route path="/reports" element={<PlaceholderTab title="學習報告" />} />
       <Route path="/parents" element={<PlaceholderTab title="家長通知" />} />
 
-      {/* Homework (Teams-style teacher UI) */}
-      <Route path="/teacher-homework" element={<TeacherHomeworkLayout />}>
-        {/* Default to Assigned */}
-        <Route index element={<TeacherHomeworkDetail />} />
-        <Route path="drafts" element={<TeacherHomeworkDetail />} />
-        <Route path="assigned" element={<TeacherHomeworkDetail />} />
-        <Route path="archived" element={<TeacherHomeworkDetail />} />
-        <Route path="new" element={<TeacherHomeworkEditor mode="new" />} />
-        <Route path=":id" element={<TeacherHomeworkDetail />} />
-        <Route path=":id/edit" element={<TeacherHomeworkEditor mode="edit" />} />
-      </Route>
+      {/* Homework – simplified teacher UI */}
+      <Route path="/teacher-homework" element={<TeacherHomeworkPage />} />
 
       {/* Teacher question bank */}
       <Route path="/teacher-question-bank" element={<TeacherQuestionBank />} />
@@ -271,8 +263,9 @@ function AppRoutes({ user }) {
       {/* Student homework */}
       <Route path="/student-homework" element={<StudentHomework />} />
 
-      {/* Legacy teacher-homework page (kept for now; can delete later) */}
+      {/* Legacy pages (kept for reference) */}
       <Route path="/teacher-homework-legacy" element={<TeacherHomework />} />
+      <Route path="/teacher-homework-old/*" element={<TeacherHomeworkLayout />} />
 
       {/* Existing core tools */}
       <Route path="/teacher" element={<Teacher />} />
