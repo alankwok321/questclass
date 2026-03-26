@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { listClassrooms, listQuestionBank, upsertQuestionBankItem } from '../services/firebase.js';
+import { listQuestionBank, upsertQuestionBankItem } from '../services/firebase.js';
 import { chat } from '../services/api.js';
 import Modal from '../components/Modal.jsx';
 import QuestionTypeBadge from '../components/QuestionTypeBadge.jsx';
@@ -248,10 +248,6 @@ const EMPTY_ITEM = {
 };
 
 export default function TeacherQuestionBank() {
-  const [classrooms, setClassrooms] = useState([]);
-  const [classroomId, setClassroomId] = useState('');
-  const [loadingClasses, setLoadingClasses] = useState(false);
-
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(false);
 
@@ -280,27 +276,11 @@ export default function TeacherQuestionBank() {
   const [aiSelected, setAiSelected] = useState({});
   const [aiSelectedIdx, setAiSelectedIdx] = useState(null);
 
-  // Load classrooms
-  useEffect(() => {
-    let mounted = true;
-    setLoadingClasses(true);
-    listClassrooms().then(res => {
-      if (!mounted) return;
-      if (res?.ok) {
-        const cs = res.classrooms || [];
-        setClassrooms(cs);
-        if (cs[0]?.id) setClassroomId(cs[0].id);
-      }
-    }).finally(() => { if (mounted) setLoadingClasses(false); });
-    return () => { mounted = false; };
-  }, []);
-
-  // Load questions when classroom changes
-  const refresh = useCallback(async (cid) => {
-    const id = cid !== undefined ? cid : classroomId;
+  // Load questions
+  const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await listQuestionBank(id || '', 200);
+      const res = await listQuestionBank('', 200);
       if (!res?.ok) { alert(res?.error || '載入題庫失敗'); return; }
       const list = res.items || [];
       setItems(list);
@@ -308,9 +288,9 @@ export default function TeacherQuestionBank() {
     } finally {
       setLoading(false);
     }
-  }, [classroomId, selectedId]);
+  }, [selectedId]);
 
-  useEffect(() => { refresh(); }, [classroomId]); // eslint-disable-line
+  useEffect(() => { refresh(); }, []); // eslint-disable-line
 
   const selected = useMemo(() => items.find(x => x.id === selectedId) || null, [items, selectedId]);
 
@@ -334,7 +314,7 @@ export default function TeacherQuestionBank() {
     if (!payload) return;
     setSaving(true);
     try {
-      const res = await upsertQuestionBankItem({ classroomId: classroomId || '', ...stripUndef(payload) });
+      const res = await upsertQuestionBankItem({ ...stripUndef(payload) });
       if (res?.ok) {
         setItems(prev => {
           const idx = prev.findIndex(x => x.id === payload.id);
@@ -365,7 +345,7 @@ export default function TeacherQuestionBank() {
     if (!newItem.question_text?.trim()) return alert('請填入題目文字');
     setAddSaving(true);
     try {
-      const res = await upsertQuestionBankItem({ classroomId: classroomId || '', ...stripUndef(newItem) });
+      const res = await upsertQuestionBankItem({ ...stripUndef(newItem) });
       if (res?.ok) {
         await refresh();
         setShowAddModal(false);
@@ -389,7 +369,7 @@ export default function TeacherQuestionBank() {
       if (!idToken) { alert('請先登入'); return; }
       const allowedTypes = aiTypes.map(t => String(t).toUpperCase()).filter(t => SUPPORTED_TYPES.includes(t));
       const system = `你是一個老師助教。請產出「題庫題目」JSON，輸出必須是純 JSON，不要 markdown。\n\n你只能使用以下題型：\n${allowedTypes.map(t => `- ${t}`).join('\n')}\n\n重要：請依照香港學制（HK）調整難度。\n- target_level: ${aiTargetLevel}\n\n輸出規格：{"questions":[{"type":"...","topic":"...","points":1,"question_text":"...","correct_answer":true,"options":[{"id":"A","text":"...","is_correct":false}],"blanks":[{"position":1,"accepted":["..."]}],"pairs":[{"prompt":"...","match":"..."}],"ideal_answer":"...","grading_rubric":"...","max_word_count":500}]}`;
-      const user = `班級: ${classroomId || '全局'}\n請產生 ${count} 題。\nHK 年級：${aiTargetLevel}\ntopic：${aiTopic || '（不限）'}`;
+      const user = `請產生 ${count} 題。\nHK 年級：${aiTargetLevel}\ntopic：${aiTopic || '（不限）'}`;
       const res = await chat({ idToken, topic: 'question-bank', mode: 'generate', studentName: 'teacher', message: user, system, format: 'json' });
       if (res?.error) { alert(`${res.error}${res.detail ? `: ${res.detail}` : ''}`); return; }
       const qs = res?.questions || [];
@@ -420,21 +400,7 @@ export default function TeacherQuestionBank() {
 
       {/* Top filter card */}
       <div className="card">
-        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
-          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
-            <select
-              value={classroomId}
-              onChange={e => setClassroomId(e.target.value)}
-              style={{ ...selectStyle, minWidth: 180 }}
-              disabled={loadingClasses}
-            >
-              <option value="">{loadingClasses ? '載入班級…' : '全部班級'}</option>
-              {classrooms.map(c => <option key={c.id} value={c.id}>{c.name || c.id}</option>)}
-            </select>
-            <button type="button" style={btnGhost} onClick={() => refresh()} disabled={loading}>
-              {loading ? '更新中…' : '更新題庫'}
-            </button>
-          </div>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
           <div style={{ display: 'flex', gap: 10 }}>
             <button type="button" style={btnGhost}
               onClick={() => { setNewItem(EMPTY_ITEM); setShowAddModal(true); }}>
@@ -482,7 +448,7 @@ export default function TeacherQuestionBank() {
               if (!chosen.length) return alert('請至少選一題');
               const created = [], errors = [];
               for (const payload of chosen) {
-                const res = await upsertQuestionBankItem({ classroomId: classroomId || '', ...stripUndef(payload) });
+                const res = await upsertQuestionBankItem({ ...stripUndef(payload) });
                 if (res?.ok) created.push(res.questionId); else errors.push(res?.error || 'error');
               }
               await refresh();
@@ -602,7 +568,7 @@ export default function TeacherQuestionBank() {
         <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
           <div style={{ padding: 14, borderBottom: '1px solid rgba(17,24,39,0.10)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div style={{ fontWeight: 900 }}>題目（{filtered.length}）</div>
-            <div style={{ color: '#6B7280', fontWeight: 900, fontSize: 12 }}>{classroomId || '全部'}</div>
+            <div style={{ color: '#6B7280', fontWeight: 900, fontSize: 12 }}>{filtered.length} 題</div>
           </div>
           <div style={{ maxHeight: 620, overflow: 'auto' }}>
             {loading ? (
