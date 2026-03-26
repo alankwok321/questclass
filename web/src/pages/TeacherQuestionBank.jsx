@@ -428,8 +428,6 @@ export default function TeacherQuestionBank() {
   const [view, setView] = useState('list'); // 'list' | 'edit'
 
   const [classrooms, setClassrooms] = useState([]);
-  const [classroomId, setClassroomId] = useState('');
-  const [loadingClasses, setLoadingClasses] = useState(false);
 
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -448,36 +446,38 @@ export default function TeacherQuestionBank() {
   const [aiOpen, setAiOpen] = useState(false);
   const [aiCandidates, setAiCandidates] = useState([]);
   const [aiResultsOpen, setAiResultsOpen] = useState(false);
+  const [aiClassroomId, setAiClassroomId] = useState('');
 
-  // Load classrooms once, auto-select first
-  useEffect(() => {
-    let mounted = true;
-    setLoadingClasses(true);
-    listClassrooms().then(res => {
-      if (!mounted) return;
-      if (res?.ok) {
-        const cs = res.classrooms || [];
-        setClassrooms(cs);
-        if (cs[0]?.id) setClassroomId(cs[0].id);
-      }
-    }).finally(() => { if (mounted) setLoadingClasses(false); });
-    return () => { mounted = false; };
-  }, []);
-
-  const refresh = useCallback(async (cid) => {
-    const id = cid !== undefined ? cid : classroomId;
-    if (!id) return;
+  // Load classrooms once, then load all questions from all classrooms
+  const refresh = useCallback(async (cls) => {
+    const list = cls !== undefined ? cls : classrooms;
+    if (!list.length) return;
     setLoading(true);
     try {
-      const res = await listQuestionBank(id, 200);
-      if (!res?.ok) { alert(res?.error || '載入題庫失敗'); return; }
-      setItems(res.items || []);
+      const results = await Promise.all(
+        list.map(c =>
+          listQuestionBank(c.id, 200)
+            .then(res => (res?.items || []).map(it => ({ ...it, _classroomId: c.id })))
+            .catch(() => [])
+        )
+      );
+      setItems(results.flat());
     } finally {
       setLoading(false);
     }
-  }, [classroomId]);
+  }, [classrooms]);
 
-  useEffect(() => { if (classroomId) refresh(); }, [classroomId]); // eslint-disable-line
+  useEffect(() => {
+    let mounted = true;
+    listClassrooms().then(res => {
+      if (!mounted) return;
+      const cs = res?.classrooms || [];
+      setClassrooms(cs);
+      if (cs[0]?.id) setAiClassroomId(cs[0].id);
+      if (cs.length) refresh(cs);
+    });
+    return () => { mounted = false; };
+  }, []); // eslint-disable-line
 
   const filtered = useMemo(() => {
     const sq = q.trim().toLowerCase();
@@ -492,7 +492,7 @@ export default function TeacherQuestionBank() {
   }, [items, q, filterType, filterLevel]);
 
   function openNew() {
-    setEditItem({ ...EMPTY_ITEM });
+    setEditItem({ ...EMPTY_ITEM, _classroomId: classrooms[0]?.id || '' });
     setIsNew(true);
     setView('edit');
   }
@@ -505,9 +505,12 @@ export default function TeacherQuestionBank() {
 
   async function saveEdit() {
     if (!editItem.question_text?.trim()) return alert('請填入題目文字');
+    const cid = editItem._classroomId || classrooms[0]?.id || '';
+    if (!cid) return alert('請選擇所屬班級');
     setSaving(true);
     try {
-      const res = await upsertQuestionBankItem({ classroomId: classroomId || '', ...stripUndef(editItem) });
+      const { _classroomId, ...rest } = editItem;
+      const res = await upsertQuestionBankItem({ classroomId: cid, ...stripUndef(rest) });
       if (!res?.ok) { alert(res?.error || '儲存失敗'); return; }
       await refresh();
       setView('list');
@@ -520,9 +523,11 @@ export default function TeacherQuestionBank() {
 
   async function deleteEdit() {
     if (!window.confirm('確認刪除此題目？')) return;
+    const cid = editItem._classroomId || classrooms[0]?.id || '';
     setSaving(true);
     try {
-      const res = await upsertQuestionBankItem({ ...stripUndef(editItem), classroomId: classroomId || '', deleted: true });
+      const { _classroomId, ...rest } = editItem;
+      const res = await upsertQuestionBankItem({ ...stripUndef(rest), classroomId: cid, deleted: true });
       if (!res?.ok) { alert(res?.error || '刪除失敗'); return; }
       await refresh();
       setView('list');
@@ -553,15 +558,6 @@ export default function TeacherQuestionBank() {
         {/* Filters */}
         <div className="qcCard" style={{ padding: '16px 24px' }}>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10 }}>
-            <select
-              value={classroomId}
-              onChange={e => { setClassroomId(e.target.value); setItems([]); }}
-              style={inputStyle}
-              disabled={loadingClasses}
-            >
-              <option value="">{loadingClasses ? '載入班級…' : '選擇班級'}</option>
-              {classrooms.map(c => <option key={c.id} value={c.id}>{c.name || c.id}</option>)}
-            </select>
             <input value={q} onChange={e => setQ(e.target.value)} placeholder="搜尋題幹或主題…" style={inputStyle} />
             <select value={filterType} onChange={e => setFilterType(e.target.value)} style={inputStyle}>
               <option value="">全部題型</option>
@@ -590,11 +586,6 @@ export default function TeacherQuestionBank() {
 
           {loading ? (
             <div style={{ textAlign: 'center', padding: '48px 0', color: '#9CA3AF', fontWeight: 700 }}>載入中…</div>
-          ) : !classroomId ? (
-            <div style={{ textAlign: 'center', padding: '56px 0', color: '#9CA3AF' }}>
-              <div style={{ fontSize: 40, marginBottom: 12 }}>📚</div>
-              <div style={{ fontWeight: 800, fontSize: 15 }}>請先選擇班級</div>
-            </div>
           ) : filtered.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '56px 0', color: '#9CA3AF' }}>
               <div style={{ fontSize: 40, marginBottom: 12 }}>📝</div>
@@ -635,7 +626,7 @@ export default function TeacherQuestionBank() {
         {/* AI Modal */}
         {aiOpen && (
           <AiModal
-            classroomId={classroomId}
+            classroomId={aiClassroomId}
             onClose={() => setAiOpen(false)}
             onAdd={candidates => {
               setAiCandidates(candidates);
@@ -647,7 +638,7 @@ export default function TeacherQuestionBank() {
         {aiResultsOpen && (
           <AiResultsModal
             candidates={aiCandidates}
-            classroomId={classroomId}
+            classroomId={aiClassroomId}
             onSave={refresh}
             onBack={() => { setAiResultsOpen(false); setAiOpen(true); }}
             onClose={() => setAiResultsOpen(false)}
@@ -669,8 +660,26 @@ export default function TeacherQuestionBank() {
           {isNew ? '新增題目' : '編輯題目'}
         </div>
         <div style={{ color: '#6B7280', fontWeight: 700, fontSize: 13, marginBottom: 24 }}>
-          {classrooms.find(c => c.id === classroomId)?.name || classroomId || '—'}
+          {isNew
+            ? '填寫題目內容後儲存到題庫'
+            : (classrooms.find(c => c.id === editItem?._classroomId)?.name || editItem?._classroomId || '—')
+          }
         </div>
+
+        {/* Classroom selector for new questions */}
+        {isNew && classrooms.length > 1 && (
+          <label style={{ ...labelStyle, marginBottom: 16 }}>
+            所屬班級 *
+            <select
+              value={editItem?._classroomId || ''}
+              style={inputStyle}
+              onChange={e => setEditItem(it => ({ ...it, _classroomId: e.target.value }))}
+            >
+              <option value="">選擇班級…</option>
+              {classrooms.map(c => <option key={c.id} value={c.id}>{c.name || c.id}</option>)}
+            </select>
+          </label>
+        )}
 
         {editItem && (
           <QuestionEditForm item={editItem} onChange={setEditItem} />

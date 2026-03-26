@@ -90,7 +90,6 @@ function QuestionBankPicker({ classroomId, alreadyIds, onAdd, onClose }) {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
-  const [topic, setTopic] = useState('');
   const [type, setType] = useState('');
   const [level, setLevel] = useState('');
   const [checked, setChecked] = useState({});
@@ -110,18 +109,19 @@ function QuestionBankPicker({ classroomId, alreadyIds, onAdd, onClose }) {
 
   const filtered = useMemo(() => {
     const sq = search.trim().toLowerCase();
-    const st = topic.trim().toLowerCase();
     const sy = type.trim().toUpperCase();
     const sl = level.trim().toUpperCase();
     return items.filter(it => {
-      const text = (it.question_text || it.prompt || '').toLowerCase();
-      if (sq && !text.includes(sq)) return false;
-      if (st && !String(it.topic || '').toLowerCase().includes(st)) return false;
+      if (sq) {
+        const text = (it.question_text || it.prompt || '').toLowerCase();
+        const top = (it.topic || '').toLowerCase();
+        if (!text.includes(sq) && !top.includes(sq)) return false;
+      }
       if (sy && String(it.type || '').toUpperCase() !== sy) return false;
       if (sl && String(it.target_level || '').toUpperCase() !== sl) return false;
       return true;
     });
-  }, [items, search, topic, type, level]);
+  }, [items, search, type, level]);
 
   const preview = useMemo(() => items.find(it => it.id === previewId) || null, [items, previewId]);
   const selectedItems = items.filter(it => checked[it.id]);
@@ -187,11 +187,10 @@ function QuestionBankPicker({ classroomId, alreadyIds, onAdd, onClose }) {
         <div style={{
           padding: '12px 16px', borderBottom: '1px solid rgba(17,24,39,0.08)',
           background: '#fff',
-          display: 'grid', gridTemplateColumns: '1fr 1fr auto auto', gap: 8,
+          display: 'grid', gridTemplateColumns: '1fr auto auto', gap: 8,
         }}>
-          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="搜尋題幹…" style={inputStyle} />
-          <input value={topic} onChange={e => setTopic(e.target.value)} placeholder="主題篩選…" style={inputStyle} />
-          <select value={type} onChange={e => setType(e.target.value)} style={selectStyle}>
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="搜尋題幹或主題…" style={inputStyle} />
+          <select value={type} onChange={e => setType(e.target.value)} style={inputStyle}>
             <option value="">全部題型</option>
             <option value="TRUE_FALSE">是非題</option>
             <option value="MULTIPLE_CHOICE">選擇題</option>
@@ -200,7 +199,7 @@ function QuestionBankPicker({ classroomId, alreadyIds, onAdd, onClose }) {
             <option value="SHORT_ANSWER">簡答題</option>
             <option value="LONG_ANSWER">申論題</option>
           </select>
-          <select value={level} onChange={e => setLevel(e.target.value)} style={selectStyle}>
+          <select value={level} onChange={e => setLevel(e.target.value)} style={inputStyle}>
             <option value="">全部年級</option>
             {['P1','P2','P3','P4','P5','P6','S1','S2','S3','S4','S5','S6'].map(l => (
               <option key={l} value={l}>{l}</option>
