@@ -539,7 +539,7 @@ export default function TeacherQuestionBank() {
   // ── LIST VIEW ──────────────────────────────────────────────────────────────
   if (view === 'list') {
     return (
-      <div style={{ display: 'grid', gap: 20 }}>
+      <div style={{ display: 'grid', gap: 20, gridTemplateColumns: 'minmax(0, 1fr)' }}>
 
         {/* Header */}
         <div className="qcCard" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', padding: '18px 24px' }}>
@@ -650,7 +650,7 @@ export default function TeacherQuestionBank() {
 
   // ── EDIT VIEW ──────────────────────────────────────────────────────────────
   return (
-    <div style={{ display: 'grid', gap: 16 }}>
+    <div style={{ display: 'grid', gap: 16, gridTemplateColumns: 'minmax(0, 1fr)' }}>
       <div>
         <button onClick={() => setView('list')} style={btnGhost}>← 返回題庫</button>
       </div>

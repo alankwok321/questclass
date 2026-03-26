@@ -483,7 +483,7 @@ export default function TeacherHomeworkPage() {
   // ── LIST VIEW ──────────────────────────────────────────────────────────────
   if (view === 'list') {
     return (
-      <div style={{ display: 'grid', gap: 20 }}>
+      <div style={{ display: 'grid', gap: 20, gridTemplateColumns: 'minmax(0, 1fr)' }}>
         <div className="qcCard" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', padding: '18px 24px' }}>
           <div>
             <div style={{ fontWeight: 900, fontSize: 16, color: '#111827' }}>出作業</div>
@@ -572,7 +572,7 @@ export default function TeacherHomeworkPage() {
 
   // ── EDIT VIEW ─────────────────────────────────────────────────────────────
   return (
-    <div style={{ display: 'grid', gap: 16 }}>
+    <div style={{ display: 'grid', gap: 16, gridTemplateColumns: 'minmax(0, 1fr)' }}>
       <div>
         <button onClick={() => setView('list')} style={btnGhost}>← 返回清單</button>
       </div>

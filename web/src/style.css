@@ -164,7 +164,8 @@ button, input { font: inherit; }
 .content {
   flex: 1;
   min-height: 0;
-  overflow: auto;
+  overflow-y: auto;
+  overflow-x: hidden;
   padding: 16px 40px 40px;
   min-width: 0;
 }
