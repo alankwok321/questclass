@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { listQuestionBank, upsertQuestionBankItem } from '../services/firebase.js';
+import { listClassrooms, listQuestionBank, upsertQuestionBankItem } from '../services/firebase.js';
 import { chat } from '../services/api.js';
 import Modal from '../components/Modal.jsx';
 import QuestionTypeBadge from '../components/QuestionTypeBadge.jsx';
@@ -248,6 +248,10 @@ const EMPTY_ITEM = {
 };
 
 export default function TeacherQuestionBank() {
+  const [classrooms, setClassrooms] = useState([]);
+  const [classroomId, setClassroomId] = useState('');
+  const [loadingClasses, setLoadingClasses] = useState(false);
+
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(false);
 
@@ -276,11 +280,28 @@ export default function TeacherQuestionBank() {
   const [aiSelected, setAiSelected] = useState({});
   const [aiSelectedIdx, setAiSelectedIdx] = useState(null);
 
-  // Load questions
-  const refresh = useCallback(async () => {
+  // Load classrooms once, auto-select first
+  useEffect(() => {
+    let mounted = true;
+    setLoadingClasses(true);
+    listClassrooms().then(res => {
+      if (!mounted) return;
+      if (res?.ok) {
+        const cs = res.classrooms || [];
+        setClassrooms(cs);
+        if (cs[0]?.id) setClassroomId(cs[0].id);
+      }
+    }).finally(() => { if (mounted) setLoadingClasses(false); });
+    return () => { mounted = false; };
+  }, []);
+
+  // Load questions when classroom changes
+  const refresh = useCallback(async (cid) => {
+    const id = cid !== undefined ? cid : classroomId;
+    if (!id) return;
     setLoading(true);
     try {
-      const res = await listQuestionBank('', 200);
+      const res = await listQuestionBank(id, 200);
       if (!res?.ok) { alert(res?.error || '載入題庫失敗'); return; }
       const list = res.items || [];
       setItems(list);
@@ -288,9 +309,9 @@ export default function TeacherQuestionBank() {
     } finally {
       setLoading(false);
     }
-  }, [selectedId]);
+  }, [classroomId, selectedId]);
 
-  useEffect(() => { refresh(); }, []); // eslint-disable-line
+  useEffect(() => { if (classroomId) refresh(); }, [classroomId]); // eslint-disable-line
 
   const selected = useMemo(() => items.find(x => x.id === selectedId) || null, [items, selectedId]);
 
@@ -314,7 +335,7 @@ export default function TeacherQuestionBank() {
     if (!payload) return;
     setSaving(true);
     try {
-      const res = await upsertQuestionBankItem({ ...stripUndef(payload) });
+      const res = await upsertQuestionBankItem({ classroomId: classroomId || '', ...stripUndef(payload) });
       if (res?.ok) {
         setItems(prev => {
           const idx = prev.findIndex(x => x.id === payload.id);
@@ -414,6 +435,15 @@ export default function TeacherQuestionBank() {
         </div>
 
         <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(160px,1fr))', gap: 10 }}>
+          <select
+            value={classroomId}
+            onChange={e => { setClassroomId(e.target.value); setSelectedId(null); setItems([]); }}
+            style={{ ...selectStyle, minWidth: 180 }}
+            disabled={loadingClasses}
+          >
+            <option value="">{loadingClasses ? '載入班級…' : '選擇班級'}</option>
+            {classrooms.map(c => <option key={c.id} value={c.id}>{c.name || c.id}</option>)}
+          </select>
           <input value={q} onChange={e => setQ(e.target.value)} placeholder="搜尋題幹…" style={inputStyle} />
           <select value={type} onChange={e => setType(e.target.value)} style={selectStyle}>
             <option value="">全部題型</option>
@@ -448,7 +478,7 @@ export default function TeacherQuestionBank() {
               if (!chosen.length) return alert('請至少選一題');
               const created = [], errors = [];
               for (const payload of chosen) {
-                const res = await upsertQuestionBankItem({ ...stripUndef(payload) });
+                const res = await upsertQuestionBankItem({ classroomId: classroomId || '', ...stripUndef(payload) });
                 if (res?.ok) created.push(res.questionId); else errors.push(res?.error || 'error');
               }
               await refresh();
