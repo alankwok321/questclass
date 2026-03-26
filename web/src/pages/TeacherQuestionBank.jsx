@@ -82,7 +82,7 @@ function QuestionEditForm({ item, onChange }) {
   return (
     <div style={{ display: 'grid', gap: 16 }}>
       {/* Type + Grade + Points row */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 12 }}>
         {field('題型',
           <select value={item.type} style={inputStyle}
             onChange={e => {
@@ -146,7 +146,7 @@ function QuestionEditForm({ item, onChange }) {
           選項（點擊 ✔ 標記正確答案）
           <div style={{ display: 'grid', gap: 8 }}>
             {(item.options || []).map((opt, i) => (
-              <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center', minWidth: 0 }}>
                 <button type="button"
                   style={{ ...( opt.is_correct ? btnPrimary : btnGhost ), padding: '8px 12px', flexShrink: 0 }}
                   onClick={() => {
@@ -211,7 +211,7 @@ function QuestionEditForm({ item, onChange }) {
           配對（左欄提示 → 右欄答案）
           <div style={{ display: 'grid', gap: 8 }}>
             {(item.pairs || []).map((pair, i) => (
-              <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: 8 }}>
+              <div key={i} style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) minmax(0,1fr) auto', gap: 8 }}>
                 <input value={pair.prompt || ''} style={inputStyle} placeholder="提示"
                   onChange={e => {
                     const pairs = [...(item.pairs||[])];
