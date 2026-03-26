@@ -535,7 +535,7 @@ export default function TeacherHomeworkPage() {
               {tab === 'draft' && <button onClick={openNew} style={{ ...btnPrimary, marginTop: 16 }}>新增作業</button>}
             </div>
           ) : (
-            <div style={{ display: 'grid', gap: 10 }}>
+            <div style={{ display: 'grid', gap: 10, gridTemplateColumns: 'minmax(0, 1fr)' }}>
               {byTab[tab].map(a => {
                 const room = classrooms.find(c => c.id === a.classroomId);
                 return (
@@ -543,6 +543,7 @@ export default function TeacherHomeworkPage() {
                     display: 'flex', alignItems: 'center', gap: 14,
                     padding: '14px 16px', borderRadius: 18,
                     border: '1px solid rgba(17,24,39,0.08)', background: '#F9FAFB',
+                    minWidth: 0,
                   }}>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontWeight: 900, fontSize: 14, marginBottom: 4, color: '#111827' }}>
@@ -662,7 +663,7 @@ export default function TeacherHomeworkPage() {
             <div style={{ fontWeight: 700, fontSize: 12 }}>點擊「從題庫選題」或「AI 產生題目」來新增題目</div>
           </div>
         ) : (
-          <div style={{ display: 'grid', gap: 8 }}>
+          <div style={{ display: 'grid', gap: 8, gridTemplateColumns: 'minmax(0, 1fr)' }}>
             {questions.map((q, i) => (
               <QuestionCard key={q.id || i} q={q} index={i}
                 onRemove={() => setQuestions(prev => prev.filter((_, idx) => idx !== i))} />
