@@ -4,6 +4,7 @@ import {
   createHomeworkAssignment,
   updateHomeworkAssignmentStatus,
   listQuestionBank,
+  listSubmissionsForAssignment,
   getIdToken,
 } from '../services/firebase.js';
 import QuestionTypeBadge, { formatTypeLabel } from '../components/QuestionTypeBadge.jsx';
@@ -392,6 +393,174 @@ function AiModal({ form, onClose, onAdd }) {
   );
 }
 
+// ── Submissions View ──────────────────────────────────────────────────────────
+function SubmissionsView({ assignment, onBack }) {
+  const [submissions, setSubmissions] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [expanded, setExpanded] = useState(null);
+
+  useEffect(() => {
+    let mounted = true;
+    setLoading(true);
+    listSubmissionsForAssignment(assignment.id).then(res => {
+      if (!mounted) return;
+      setSubmissions(Array.isArray(res?.submissions) ? res.submissions : []);
+    }).catch(() => {}).finally(() => { if (mounted) setLoading(false); });
+    return () => { mounted = false; };
+  }, [assignment.id]);
+
+  const questions = Array.isArray(assignment.questions) ? assignment.questions : [];
+
+  function getAnswerDisplay(q, answers) {
+    const ans = answers?.find(a => a.questionId === q.id);
+    const val = ans?.value;
+    if (val == null || val === '') return <span style={{ color: '#9CA3AF', fontWeight: 700 }}>（未作答）</span>;
+    const type = (q.type || '').toUpperCase();
+
+    if (type === 'TRUE_FALSE') {
+      return <span style={{ fontWeight: 800, color: val ? '#15803D' : '#B91C1C' }}>{val ? '✓ 正確 (True)' : '✗ 錯誤 (False)'}</span>;
+    }
+    if (type === 'MULTIPLE_CHOICE') {
+      const opts = q.options || [];
+      const chosen = opts.find(o => o.id === val || o.value === val);
+      const label = chosen ? `${chosen.id}. ${chosen.text}` : String(val);
+      const isCorrect = q.correct_answer != null
+        ? val === q.correct_answer
+        : chosen?.is_correct;
+      return (
+        <span style={{ fontWeight: 800, color: isCorrect === true ? '#15803D' : isCorrect === false ? '#B91C1C' : '#111827' }}>
+          {isCorrect === true ? '✓ ' : isCorrect === false ? '✗ ' : ''}{label}
+        </span>
+      );
+    }
+    return <span style={{ fontWeight: 800, color: '#111827' }}>{String(val)}</span>;
+  }
+
+  return (
+    <div style={{ display: 'grid', gap: 16, gridTemplateColumns: 'minmax(0, 1fr)' }}>
+      <div>
+        <button onClick={onBack} style={btnGhost}>← 返回清單</button>
+      </div>
+
+      <div className="qcCard" style={{ padding: '20px 24px' }}>
+        <div style={{ fontWeight: 900, fontSize: 17, color: '#111827', marginBottom: 2 }}>
+          📊 提交記錄
+        </div>
+        <div style={{ color: '#6B7280', fontWeight: 700, fontSize: 13, marginBottom: 2 }}>
+          {assignment.title || '（未命名作業）'}
+        </div>
+        {assignment.dueAt && (
+          <div style={{ color: '#9CA3AF', fontWeight: 700, fontSize: 12, marginBottom: 0 }}>
+            截止：{new Date(assignment.dueAt).toLocaleDateString('zh-HK')}
+          </div>
+        )}
+      </div>
+
+      <div className="qcCard" style={{ padding: '18px 24px' }}>
+        {/* Stats bar */}
+        <div style={{
+          display: 'flex', gap: 24, flexWrap: 'wrap', marginBottom: 20,
+          paddingBottom: 16, borderBottom: '1px solid rgba(17,24,39,0.08)',
+        }}>
+          <div>
+            <div style={{ fontWeight: 900, fontSize: 22, color: '#007AFF' }}>{submissions.length}</div>
+            <div style={{ fontWeight: 700, fontSize: 12, color: '#6B7280' }}>已提交</div>
+          </div>
+          <div>
+            <div style={{ fontWeight: 900, fontSize: 22, color: '#111827' }}>{questions.length}</div>
+            <div style={{ fontWeight: 700, fontSize: 12, color: '#6B7280' }}>題目數</div>
+          </div>
+        </div>
+
+        {loading ? (
+          <div style={{ textAlign: 'center', padding: '40px 0', color: '#9CA3AF', fontWeight: 700 }}>載入中…</div>
+        ) : submissions.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '56px 0', color: '#9CA3AF' }}>
+            <div style={{ fontSize: 40, marginBottom: 12 }}>📭</div>
+            <div style={{ fontWeight: 800, fontSize: 15, marginBottom: 4 }}>尚無學生提交</div>
+            <div style={{ fontWeight: 700, fontSize: 13 }}>學生提交作業後會顯示在這裡</div>
+          </div>
+        ) : (
+          <div style={{ display: 'grid', gap: 10 }}>
+            {submissions.map(sub => {
+              const isOpen = expanded === sub.id;
+              const submittedAt = sub.submittedAt ? new Date(sub.submittedAt).toLocaleString('zh-HK') : '—';
+              const answeredCount = (sub.answers || []).filter(a => a.value != null && a.value !== '').length;
+              return (
+                <div key={sub.id} style={{
+                  border: '1px solid rgba(17,24,39,0.10)', borderRadius: 18,
+                  background: '#F9FAFB', overflow: 'hidden',
+                }}>
+                  {/* Row header */}
+                  <button
+                    type="button"
+                    onClick={() => setExpanded(isOpen ? null : sub.id)}
+                    style={{
+                      width: '100%', textAlign: 'left', border: 0, background: 'none',
+                      padding: '14px 16px', cursor: 'pointer',
+                      display: 'flex', alignItems: 'center', gap: 14,
+                    }}
+                  >
+                    <div style={{
+                      width: 36, height: 36, borderRadius: 999, flexShrink: 0,
+                      background: 'linear-gradient(135deg,#007AFF,#60A5FA)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      color: '#fff', fontWeight: 900, fontSize: 14,
+                    }}>
+                      {(sub.studentName || '?')[0].toUpperCase()}
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 900, fontSize: 14, color: '#111827' }}>
+                        {sub.studentName || '未知學生'}
+                      </div>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: '#6B7280', marginTop: 2 }}>
+                        提交於 {submittedAt} · 作答 {answeredCount}/{questions.length} 題
+                      </div>
+                    </div>
+                    <div style={{ color: '#9CA3AF', fontSize: 18, fontWeight: 900, flexShrink: 0 }}>
+                      {isOpen ? '▲' : '▼'}
+                    </div>
+                  </button>
+
+                  {/* Expanded answers */}
+                  {isOpen && (
+                    <div style={{ borderTop: '1px solid rgba(17,24,39,0.08)', padding: '14px 16px', background: '#fff' }}>
+                      {questions.length === 0 ? (
+                        <div style={{ color: '#9CA3AF', fontWeight: 700, fontSize: 13 }}>此作業沒有題目</div>
+                      ) : (
+                        <div style={{ display: 'grid', gap: 12 }}>
+                          {questions.map((q, idx) => {
+                            const text = q.question_text || q.prompt || '（未填寫題目）';
+                            return (
+                              <div key={q.id || idx} style={{
+                                background: '#F9FAFB', border: '1px solid rgba(17,24,39,0.07)',
+                                borderRadius: 14, padding: '12px 14px',
+                              }}>
+                                <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 6 }}>
+                                  <span style={{ fontSize: 12, fontWeight: 900, color: '#9CA3AF' }}>{idx + 1}.</span>
+                                  <QuestionTypeBadge type={q.type} />
+                                  <span style={{ fontSize: 12, color: '#9CA3AF', fontWeight: 700 }}>{q.points || 1} 分</span>
+                                </div>
+                                <div style={{ fontSize: 13, fontWeight: 800, color: '#111827', marginBottom: 8 }}>{text}</div>
+                                <div style={{ fontSize: 12, fontWeight: 700, color: '#6B7280', marginBottom: 4 }}>學生答案</div>
+                                <div style={{ fontSize: 13 }}>{getAnswerDisplay(q, sub.answers)}</div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── Main Page ─────────────────────────────────────────────────────────────────
 export default function TeacherHomeworkPage() {
   const [view, setView] = useState('list');
@@ -405,6 +574,7 @@ export default function TeacherHomeworkPage() {
   const [questions, setQuestions] = useState([]);
   const [aiOpen, setAiOpen] = useState(false);
   const [bankOpen, setBankOpen] = useState(false);
+  const [submissionsAssignment, setSubmissionsAssignment] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -470,6 +640,16 @@ export default function TeacherHomeworkPage() {
 
   const totalPts = questions.reduce((s, q) => s + (Number(q.points) || 1), 0);
   const addedBankIds = useMemo(() => new Set(questions.map(q => q.bankId).filter(Boolean)), [questions]);
+
+  // ── SUBMISSIONS VIEW ───────────────────────────────────────────────────────
+  if (view === 'submissions' && submissionsAssignment) {
+    return (
+      <SubmissionsView
+        assignment={submissionsAssignment}
+        onBack={() => { setView('list'); setSubmissionsAssignment(null); }}
+      />
+    );
+  }
 
   // ── LIST VIEW ──────────────────────────────────────────────────────────────
   if (view === 'list') {
@@ -544,7 +724,12 @@ export default function TeacherHomeworkPage() {
                         {a.questions?.length > 0 && <span>❓ {a.questions.length} 題</span>}
                       </div>
                     </div>
-                    <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+                    <div style={{ display: 'flex', gap: 8, flexShrink: 0, flexWrap: 'wrap' }}>
+                      {a.status === 'published' && (
+                        <button onClick={() => { setSubmissionsAssignment(a); setView('submissions'); }} style={btnGhost}>
+                          📊 提交記錄
+                        </button>
+                      )}
                       <button onClick={() => openEdit(a)} style={btnGhost}>編輯</button>
                       {a.status === 'draft' && <button onClick={() => changeStatus(a.id, 'published')} style={btnPrimary}>指派</button>}
                       {a.status === 'published' && <button onClick={() => changeStatus(a.id, 'archived')} style={btnGhost}>封存</button>}

@@ -56,3 +56,7 @@ export async function listQuestionBank(limit = 200) {
 export async function getQuestionBankItemsByIds(ids) {
   return await window.QuestClassFirebase?.getQuestionBankItemsByIds?.(ids);
 }
+
+export async function listSubmissionsForAssignment(assignmentId, limit = 200) {
+  return await window.QuestClassFirebase?.listSubmissionsForAssignment?.(assignmentId, limit);
+}

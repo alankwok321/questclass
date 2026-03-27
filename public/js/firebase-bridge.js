@@ -761,6 +761,55 @@ window.QuestClassFirebase = {
     }
   },
 
+  async listSubmissionsForAssignment(assignmentId, limit = 200) {
+    const check = await this._requireSignedIn();
+    if (!check.ok) return { ok: false, error: check.error, submissions: [] };
+    const { db, sdk } = check.ready;
+    const me = check.me || {};
+    if (!['teacher', 'admin'].includes(String(me.role || '').toLowerCase())) {
+      return { ok: false, error: 'Teacher/admin only', submissions: [] };
+    }
+
+    const aId = String(assignmentId || '').trim();
+    if (!aId) return { ok: false, error: 'assignmentId required', submissions: [] };
+
+    try {
+      const q = sdk.query(
+        sdk.collection(db, 'submissions'),
+        sdk.where('assignmentId', '==', aId),
+        sdk.orderBy('submittedAt', 'desc'),
+        sdk.limit(limit)
+      );
+      const snap = await sdk.getDocs(q);
+      const submissions = snap.docs.map((doc) => this._docData(doc)).filter(Boolean);
+
+      // Fetch student names in one batch (up to 10 per IN query)
+      const uids = [...new Set(submissions.map(s => s.studentUid).filter(Boolean))];
+      const nameMap = {};
+      for (let i = 0; i < uids.length; i += 10) {
+        const slice = uids.slice(i, i + 10);
+        try {
+          const uSnap = await sdk.getDocs(
+            sdk.query(sdk.collection(db, 'users'), sdk.where(sdk.documentId(), 'in', slice))
+          );
+          uSnap.docs.forEach(d => {
+            const u = this._docData(d);
+            if (u) nameMap[d.id] = u.name || u.email || d.id;
+          });
+        } catch { /* ignore */ }
+      }
+
+      const enriched = submissions.map(s => ({
+        ...s,
+        studentName: nameMap[s.studentUid] || s.studentUid || '未知學生',
+      }));
+
+      return { ok: true, submissions: enriched };
+    } catch (error) {
+      return { ok: false, error: error?.message || 'List submissions failed', submissions: [] };
+    }
+  },
+
   async getTeacherDashboard(classroomId = null) {
     const check = await this._requireSignedIn();
     if (!check.ok) return { ok: false, error: check.error };
