@@ -333,16 +333,23 @@ function AiModal({ classroomId, onClose, onSave }) {
   async function saveSelected() {
     const chosen = candidates.map((q, i) => ({ q, i })).filter(({ i }) => checked[i]);
     if (!chosen.length) return alert('請至少選一題');
+    if (!classroomId) return alert('找不到班級，請重新整理頁面後再試');
     setSaving(true);
-    let ok = 0, fail = 0;
+    let ok = 0;
+    const errors = [];
     for (const { q } of chosen) {
-      const res = await upsertQuestionBankItem({ classroomId: classroomId || '', ...stripUndef(q) });
-      if (res?.ok) ok++; else fail++;
+      const res = await upsertQuestionBankItem({ classroomId, ...stripUndef(q) });
+      if (res?.ok) ok++;
+      else errors.push(res?.error || '未知錯誤');
     }
     setSaving(false);
-    if (fail) alert(`已新增 ${ok} 題（失敗 ${fail}）`);
-    onSave();
-    onClose();
+    if (errors.length) {
+      alert(`已新增 ${ok} 題，失敗 ${errors.length} 題。\n原因：${[...new Set(errors)].join('、')}`);
+    }
+    if (ok > 0) {
+      onSave();
+      onClose();
+    }
   }
 
   return (
