@@ -397,15 +397,19 @@ function AiModal({ form, onClose, onAdd }) {
 function SubmissionsView({ assignment, onBack }) {
   const [submissions, setSubmissions] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState('');
   const [expanded, setExpanded] = useState(null);
 
   useEffect(() => {
     let mounted = true;
     setLoading(true);
+    setLoadError('');
     listSubmissionsForAssignment(assignment.id).then(res => {
       if (!mounted) return;
+      if (!res?.ok) setLoadError(res?.error || '載入失敗');
       setSubmissions(Array.isArray(res?.submissions) ? res.submissions : []);
-    }).catch(() => {}).finally(() => { if (mounted) setLoading(false); });
+    }).catch(e => { if (mounted) setLoadError(e?.message || '載入失敗'); })
+      .finally(() => { if (mounted) setLoading(false); });
     return () => { mounted = false; };
   }, [assignment.id]);
 
@@ -472,7 +476,11 @@ function SubmissionsView({ assignment, onBack }) {
           </div>
         </div>
 
-        {loading ? (
+        {loadError ? (
+          <div style={{ textAlign: 'center', padding: '32px 0', color: '#EF4444', fontWeight: 700, fontSize: 13 }}>
+            ⚠️ 載入失敗：{loadError}
+          </div>
+        ) : loading ? (
           <div style={{ textAlign: 'center', padding: '40px 0', color: '#9CA3AF', fontWeight: 700 }}>載入中…</div>
         ) : submissions.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '56px 0', color: '#9CA3AF' }}>

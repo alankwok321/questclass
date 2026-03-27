@@ -746,11 +746,15 @@ window.QuestClassFirebase = {
       const q = sdk.query(
         sdk.collection(db, 'submissions'),
         sdk.where('assignmentId', '==', aId),
-        sdk.orderBy('submittedAt', 'desc'),
         sdk.limit(limit)
       );
       const snap = await sdk.getDocs(q);
-      const submissions = snap.docs.map((doc) => this._docData(doc)).filter(Boolean);
+      const submissions = snap.docs.map((doc) => this._docData(doc)).filter(Boolean)
+        .sort((a, b) => {
+          const ta = a.submittedAt ? new Date(a.submittedAt).getTime() : 0;
+          const tb = b.submittedAt ? new Date(b.submittedAt).getTime() : 0;
+          return tb - ta;
+        });
 
       // Fetch student names in one batch (up to 10 per IN query)
       const uids = [...new Set(submissions.map(s => s.studentUid).filter(Boolean))];
