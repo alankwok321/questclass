@@ -133,7 +133,6 @@ service cloud.firestore {
     function allowedHomeworkKeys() {
       return [
         'id',
-        'classroomId',
         'title',
         'description',
         'dueAt',
@@ -152,43 +151,15 @@ service cloud.firestore {
         || request.resource.data.status in ['draft', 'published', 'archived'];
     }
 
-    function homeworkClassroomId() {
-      return ('classroomId' in request.resource.data)
-        ? request.resource.data.classroomId
-        : resource.data.classroomId;
-    }
-
-    function classroomDocById(classroomId) {
-      return get(/databases/$(database)/documents/classrooms/$(classroomId)).data;
-    }
-
-    function teacherCanAccessHomeworkClassroom() {
-      return isAdmin()
-        || (
-          isSignedIn()
-          && homeworkClassroomId() is string
-          && request.auth.uid in classroomDocById(homeworkClassroomId()).teacherUids
-        );
-    }
-
-    function studentCanReadHomeworkResource() {
-      // Align with app logic: users/{uid}.classroomIds is source of truth
-      return isSignedIn()
-        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
-        && (resource.data.classroomId in userDoc().classroomIds);
-    }
-
     match /homeworkAssignments/{assignmentId} {
-      allow read: if isTeacherLike() || studentCanReadHomeworkResource();
+      allow read: if isSignedIn() || isTeacherLike();
 
       allow create: if isTeacherLike()
-        && teacherCanAccessHomeworkClassroom()
         && request.resource.data.keys().hasOnly(allowedHomeworkKeys())
         && homeworkStatusValid()
         && request.resource.data.createdBy == request.auth.uid;
 
       allow update: if isTeacherLike()
-        && teacherCanAccessHomeworkClassroom()
         && request.resource.data.diff(resource.data).changedKeys().hasOnly(allowedHomeworkKeys())
         && homeworkStatusValid()
         && (
@@ -204,7 +175,6 @@ service cloud.firestore {
       return [
         // common
         'id',
-        'classroomId',
         'type',
         'topic',
         'points',
@@ -236,38 +206,14 @@ service cloud.firestore {
       ];
     }
 
-    function qbClassroomId() {
-      return ('classroomId' in request.resource.data)
-        ? request.resource.data.classroomId
-        : resource.data.classroomId;
-    }
-
-    function teacherCanAccessQbClassroom() {
-      return isAdmin()
-        || (
-          isSignedIn()
-          && qbClassroomId() is string
-          && request.auth.uid in classroomDocById(qbClassroomId()).teacherUids
-        );
-    }
-
-    function studentCanReadQbResource() {
-      return isSignedIn()
-        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
-        && (resource.data.classroomId in userDoc().classroomIds);
-    }
-
     match /questionBank/{questionId} {
-      // Teachers/admins can read for their classrooms; students can read for their own classrooms (preview/use).
-      allow read: if isTeacherLike() || studentCanReadQbResource();
+      allow read: if isTeacherLike();
 
       allow create: if isTeacherLike()
-        && teacherCanAccessQbClassroom()
         && request.resource.data.keys().hasOnly(allowedQuestionBankKeys())
         && request.resource.data.createdBy == request.auth.uid;
 
       allow update: if isTeacherLike()
-        && teacherCanAccessQbClassroom()
         && request.resource.data.diff(resource.data).changedKeys().hasOnly(allowedQuestionBankKeys())
         && (
           isAdmin()

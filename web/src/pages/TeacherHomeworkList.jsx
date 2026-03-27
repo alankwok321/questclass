@@ -1,21 +1,16 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
-import { listClassrooms, listHomeworkAssignments, updateHomeworkAssignmentStatus } from '../services/firebase.js';
+import { useNavigate } from 'react-router-dom';
+import { listHomeworkAssignments, updateHomeworkAssignmentStatus } from '../services/firebase.js';
 
 export default function TeacherHomeworkList({ status = 'published', compact = false, hideTitle = false, onSelect = null }) {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [classrooms, setClassrooms] = useState([]);
-  const [loadingClasses, setLoadingClasses] = useState(false);
-  const [params, setParams] = useSearchParams();
   const navigate = useNavigate();
-
-  const classroomId = params.get('classroomId') || '';
 
   async function refresh() {
     setLoading(true);
     try {
-      const res = await listHomeworkAssignments(classroomId || null, 100);
+      const res = await listHomeworkAssignments(100);
       if (res?.ok) {
         const filtered = (res.items || []).filter((a) => String(a.status || 'published') === status);
         setItems(filtered);
@@ -28,23 +23,8 @@ export default function TeacherHomeworkList({ status = 'published', compact = fa
   }
 
   useEffect(() => {
-    let mounted = true;
-    (async () => {
-      setLoadingClasses(true);
-      try {
-        const res = await listClassrooms();
-        if (!mounted) return;
-        if (res?.ok) setClassrooms(res.classrooms || []);
-      } finally {
-        if (mounted) setLoadingClasses(false);
-      }
-    })();
-    return () => { mounted = false; };
-  }, []);
-
-  useEffect(() => {
     refresh();
-  }, [classroomId, status]);
+  }, [status]);
 
   const title = useMemo(() => {
     if (status === 'draft') return '草稿';
@@ -68,26 +48,6 @@ export default function TeacherHomeworkList({ status = 'published', compact = fa
           </button>
         </div>
       )}
-
-      <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 10, flexWrap: 'wrap' }}>
-        <div style={{ fontWeight: 900, fontSize: 12, color: '#6B7280' }}>班級：</div>
-        <select
-          value={classroomId}
-          onChange={(e) => {
-            const v = e.target.value;
-            const next = new URLSearchParams(params);
-            if (v) next.set('classroomId', v); else next.delete('classroomId');
-            setParams(next);
-          }}
-          style={selectStyle}
-          disabled={loadingClasses}
-        >
-          <option value="">全部</option>
-          {classrooms.map((c) => (
-            <option key={c.id} value={c.id}>{c.name || c.id}</option>
-          ))}
-        </select>
-      </div>
 
       {items.length ? (
         <div style={{ display: 'grid', gap: 10 }}>
@@ -115,7 +75,7 @@ export default function TeacherHomeworkList({ status = 'published', compact = fa
                     {a.title || '（未命名作業）'}
                   </div>
                   <div style={{ marginTop: 4, color: '#6B7280', fontWeight: 800, fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {a.classroomId || '—'} · dueAt: {a.dueAt || '—'} · Q: {(a.questions || []).length}
+                    dueAt: {a.dueAt || '—'} · Q: {(a.questions || []).length}
                   </div>
                 </button>
 
@@ -166,15 +126,6 @@ const cardRow = {
   borderRadius: 18,
   border: '1px solid rgba(17,24,39,0.10)',
   background: '#F9FAFB',
-};
-
-const selectStyle = {
-  padding: '10px 12px',
-  borderRadius: 14,
-  border: '1px solid rgba(17,24,39,0.10)',
-  background: '#F2F2F7',
-  outline: 'none',
-  fontWeight: 800,
 };
 
 const btnPrimary = {

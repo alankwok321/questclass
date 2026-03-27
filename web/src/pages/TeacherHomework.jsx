@@ -1,14 +1,13 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { listClassrooms, createHomeworkAssignment, listHomeworkAssignments, updateHomeworkAssignmentStatus } from '../services/firebase.js';
+import { createHomeworkAssignment, listHomeworkAssignments, updateHomeworkAssignmentStatus } from '../services/firebase.js';
 import { chat, getAiConfig } from '../services/api.js';
 
 function toEditFormFromAssignment(a) {
-  if (!a) return { title: '', description: '', dueAt: '', classroomId: '', status: 'published' };
+  if (!a) return { title: '', description: '', dueAt: '', status: 'published' };
   return {
     title: String(a.title || ''),
     description: String(a.description || ''),
     dueAt: String(a.dueAt || ''),
-    classroomId: String(a.classroomId || ''),
     status: String(a.status || 'published'),
   };
 }
@@ -18,12 +17,9 @@ export default function TeacherHomework() {
     title: '',
     description: '',
     dueAt: '',
-    classroomId: '',
     status: 'published',
   });
 
-  const [classrooms, setClassrooms] = useState([]);
-  const [loadingClasses, setLoadingClasses] = useState(false);
   const [genLoading, setGenLoading] = useState(false);
   const [questions, setQuestions] = useState([]);
   const [listLoading, setListLoading] = useState(false);
@@ -38,10 +34,10 @@ export default function TeacherHomework() {
 
   const canGenerate = useMemo(() => Boolean(String(form.title || '').trim()), [form.title]);
 
-  async function refreshList(classroomId = null) {
+  async function refreshList() {
     setListLoading(true);
     try {
-      const res = await listHomeworkAssignments(classroomId || null, 50);
+      const res = await listHomeworkAssignments(50);
       if (res?.ok) setItems(res.items || []);
     } finally {
       setListLoading(false);
@@ -51,17 +47,8 @@ export default function TeacherHomework() {
   useEffect(() => {
     let mounted = true;
     (async () => {
-      setLoadingClasses(true);
-      try {
-        const res = await listClassrooms();
-        if (!mounted) return;
-        if (res?.ok) setClassrooms(res.classrooms || []);
-      } finally {
-        if (mounted) setLoadingClasses(false);
-      }
-
       if (!mounted) return;
-      await refreshList(null);
+      await refreshList();
     })();
     return () => { mounted = false; };
   }, []);
@@ -170,26 +157,10 @@ export default function TeacherHomework() {
             <textarea value={form.description} onChange={(e) => setForm(s => ({ ...s, description: e.target.value }))} style={{ ...inputStyle, minHeight: 90, resize: 'vertical' }} placeholder="作業內容/規則..." />
           </label>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-            <label style={{ display: 'grid', gap: 6 }}>
-              <div style={label}>班級</div>
-              <select
-                value={form.classroomId}
-                onChange={(e) => setForm(s => ({ ...s, classroomId: e.target.value }))}
-                style={selectStyle}
-                disabled={loadingClasses}
-              >
-                <option value="">{loadingClasses ? '載入中…' : '請選擇班級'}</option>
-                {classrooms.map((c) => (
-                  <option key={c.id} value={c.id}>{c.name || c.id}</option>
-                ))}
-              </select>
-            </label>
-            <label style={{ display: 'grid', gap: 6 }}>
-              <div style={label}>截止時間（dueAt）</div>
-              <input value={form.dueAt} onChange={(e) => setForm(s => ({ ...s, dueAt: e.target.value }))} style={inputStyle} placeholder="2026-03-20T12:00:00Z" />
-            </label>
-          </div>
+          <label style={{ display: 'grid', gap: 6 }}>
+            <div style={label}>截止時間（dueAt）</div>
+            <input value={form.dueAt} onChange={(e) => setForm(s => ({ ...s, dueAt: e.target.value }))} style={inputStyle} placeholder="2026-03-20T12:00:00Z" />
+          </label>
 
           <label style={{ display: 'grid', gap: 6 }}>
             <div style={label}>狀態</div>
@@ -208,7 +179,6 @@ export default function TeacherHomework() {
               const totalPoints = (questions || []).reduce((sum, q) => sum + Number(q?.points || 0), 0);
               const res = await createHomeworkAssignment({
                 id: editingId || undefined,
-                classroomId: form.classroomId,
                 title: form.title,
                 description: form.description,
                 dueAt: form.dueAt,
@@ -218,7 +188,7 @@ export default function TeacherHomework() {
               });
               if (res?.ok) {
                 alert((isEditing ? '已更新作業：' : '已儲存作業：') + res.assignmentId);
-                await refreshList(form.classroomId || null);
+                await refreshList();
               } else {
                 alert(res?.error || (isEditing ? '更新失敗' : '儲存失敗'));
               }
@@ -229,7 +199,7 @@ export default function TeacherHomework() {
             {isEditing ? (
               <button type="button" style={btnGhost} onClick={() => {
                 setEditingId(null);
-                setForm({ title: '', description: '', dueAt: '', classroomId: form.classroomId || '', status: 'published' });
+                setForm({ title: '', description: '', dueAt: '', status: 'published' });
                 setQuestions([]);
               }}>
                 取消編輯
@@ -259,31 +229,12 @@ export default function TeacherHomework() {
       <div className="card">
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 10 }}>
           <div style={{ fontWeight: 900 }}>作業清單</div>
-          <button type="button" style={btnGhost} onClick={() => refreshList(form.classroomId || null)} disabled={listLoading}>
+          <button type="button" style={btnGhost} onClick={() => refreshList()} disabled={listLoading}>
             {listLoading ? '更新中…' : '重新整理'}
           </button>
         </div>
 
-        <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 10, flexWrap: 'wrap' }}>
-          <div style={{ fontWeight: 900, fontSize: 12, color: '#6B7280' }}>篩選班級：</div>
-          <select
-            value={form.classroomId}
-            onChange={async (e) => {
-              const v = e.target.value;
-              setForm(s => ({ ...s, classroomId: v }));
-              await refreshList(v || null);
-            }}
-            style={selectStyle}
-            disabled={loadingClasses}
-          >
-            <option value="">全部</option>
-            {classrooms.map((c) => (
-              <option key={c.id} value={c.id}>{c.name || c.id}</option>
-            ))}
-          </select>
-        </div>
-
-        {items.length ? (
+          {items.length ? (
           <div style={{ display: 'grid', gap: 10 }}>
             {items.map((a) => (
               <div key={a.id} style={{ padding: 12, borderRadius: 18, border: '1px solid rgba(17,24,39,0.10)', background: '#F9FAFB', display: 'grid', gap: 8 }}>
@@ -303,7 +254,7 @@ export default function TeacherHomework() {
                       const res = await updateHomeworkAssignmentStatus({ assignmentId: a.id, status: 'archived' });
                       if (res?.ok) {
                         alert('已下架（archived）：' + a.id);
-                        await refreshList(form.classroomId || null);
+                        await refreshList();
                       } else {
                         alert(res?.error || '下架失敗');
                       }
@@ -314,7 +265,7 @@ export default function TeacherHomework() {
                 </div>
 
                 <div style={{ color: '#6B7280', fontWeight: 800, fontSize: 12 }}>
-                  id: {a.id || '—'} · classroom: {a.classroomId || '—'} · dueAt: {a.dueAt || '—'} · status: {a.status || '—'} · questions: {(a.questions || []).length} · total: {a.totalPoints ?? '—'}
+                  id: {a.id || '—'} · dueAt: {a.dueAt || '—'} · status: {a.status || '—'} · questions: {(a.questions || []).length} · total: {a.totalPoints ?? '—'}
                 </div>
               </div>
             ))}

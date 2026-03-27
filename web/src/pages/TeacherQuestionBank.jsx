@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { listClassrooms, listQuestionBank, upsertQuestionBankItem } from '../services/firebase.js';
+import { listQuestionBank, upsertQuestionBankItem } from '../services/firebase.js';
 import { getIdToken } from '../services/firebase.js';
 import QuestionTypeBadge from '../components/QuestionTypeBadge.jsx';
 
@@ -261,7 +261,7 @@ const OVERLAY = {
   zIndex: 1000, backdropFilter: 'blur(4px)',
 };
 
-function AiModal({ classroomId, onClose, onSave }) {
+function AiModal({ onClose, onSave }) {
   // Step 1 – settings
   const [step, setStep] = useState(1);
   const [topic, setTopic] = useState('');
@@ -333,12 +333,11 @@ function AiModal({ classroomId, onClose, onSave }) {
   async function saveSelected() {
     const chosen = candidates.map((q, i) => ({ q, i })).filter(({ i }) => checked[i]);
     if (!chosen.length) return alert('請至少選一題');
-    if (!classroomId) return alert('找不到班級，請重新整理頁面後再試');
     setSaving(true);
     let ok = 0;
     const errors = [];
     for (const { q } of chosen) {
-      const res = await upsertQuestionBankItem({ classroomId, ...stripUndef(q) });
+      const res = await upsertQuestionBankItem({ ...stripUndef(q) });
       if (res?.ok) ok++;
       else errors.push(res?.error || '未知錯誤');
     }
@@ -529,8 +528,6 @@ function AiModal({ classroomId, onClose, onSave }) {
 export default function TeacherQuestionBank() {
   const [view, setView] = useState('list'); // 'list' | 'edit'
 
-  const [classrooms, setClassrooms] = useState([]);
-
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -547,34 +544,18 @@ export default function TeacherQuestionBank() {
   // AI
   const [aiOpen, setAiOpen] = useState(false);
 
-  // Load all questions from all classrooms
-  const refresh = useCallback(async (cls) => {
-    const list = cls !== undefined ? cls : classrooms;
-    if (!list.length) return;
+  const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      const results = await Promise.all(
-        list.map(c =>
-          listQuestionBank(c.id, 200)
-            .then(res => (res?.items || []).map(it => ({ ...it, _cid: c.id })))
-            .catch(() => [])
-        )
-      );
-      setItems(results.flat());
+      const res = await listQuestionBank(200);
+      setItems(Array.isArray(res?.items) ? res.items : []);
     } finally {
       setLoading(false);
     }
-  }, [classrooms]);
+  }, []);
 
   useEffect(() => {
-    let mounted = true;
-    listClassrooms().then(res => {
-      if (!mounted) return;
-      const cs = res?.classrooms || [];
-      setClassrooms(cs);
-      if (cs.length) refresh(cs);
-    });
-    return () => { mounted = false; };
+    refresh();
   }, []); // eslint-disable-line
 
   const filtered = useMemo(() => {
@@ -590,7 +571,7 @@ export default function TeacherQuestionBank() {
   }, [items, q, filterType, filterLevel]);
 
   function openNew() {
-    setEditItem({ ...EMPTY_ITEM, _cid: classrooms[0]?.id || '' });
+    setEditItem({ ...EMPTY_ITEM });
     setIsNew(true);
     setView('edit');
   }
@@ -603,11 +584,10 @@ export default function TeacherQuestionBank() {
 
   async function saveEdit() {
     if (!editItem.question_text?.trim()) return alert('請填入題目文字');
-    const cid = editItem._cid || classrooms[0]?.id || '';
     setSaving(true);
     try {
       const { _cid, ...rest } = editItem;
-      const res = await upsertQuestionBankItem({ classroomId: cid, ...stripUndef(rest) });
+      const res = await upsertQuestionBankItem({ ...stripUndef(rest) });
       if (!res?.ok) { alert(res?.error || '儲存失敗'); return; }
       await refresh();
       setView('list');
@@ -620,11 +600,10 @@ export default function TeacherQuestionBank() {
 
   async function deleteEdit() {
     if (!window.confirm('確認刪除此題目？')) return;
-    const cid = editItem._cid || classrooms[0]?.id || '';
     setSaving(true);
     try {
       const { _cid, ...rest } = editItem;
-      const res = await upsertQuestionBankItem({ ...stripUndef(rest), classroomId: cid, deleted: true });
+      const res = await upsertQuestionBankItem({ ...stripUndef(rest), deleted: true });
       if (!res?.ok) { alert(res?.error || '刪除失敗'); return; }
       await refresh();
       setView('list');
@@ -687,7 +666,7 @@ export default function TeacherQuestionBank() {
             <div style={{ textAlign: 'center', padding: '56px 0', color: '#9CA3AF' }}>
               <div style={{ fontSize: 40, marginBottom: 12 }}>📝</div>
               <div style={{ fontWeight: 800, fontSize: 15, marginBottom: 4 }}>
-                {items.length === 0 ? '此班級題庫暫無題目' : '找不到符合條件的題目'}
+                {items.length === 0 ? '題庫暫無題目' : '找不到符合條件的題目'}
               </div>
               {items.length === 0 && (
                 <button onClick={openNew} style={{ ...btnPrimary, marginTop: 16 }}>新增題目</button>
@@ -725,7 +704,6 @@ export default function TeacherQuestionBank() {
         {/* AI Modal */}
         {aiOpen && (
           <AiModal
-            classroomId={classrooms[0]?.id || ''}
             onClose={() => setAiOpen(false)}
             onSave={refresh}
           />

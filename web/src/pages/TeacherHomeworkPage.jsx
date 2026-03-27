@@ -3,13 +3,12 @@ import {
   listHomeworkAssignments,
   createHomeworkAssignment,
   updateHomeworkAssignmentStatus,
-  listClassrooms,
   listQuestionBank,
   getIdToken,
 } from '../services/firebase.js';
 import QuestionTypeBadge, { formatTypeLabel } from '../components/QuestionTypeBadge.jsx';
 
-const EMPTY_FORM = { title: '', description: '', dueAt: '', classroomId: '' };
+const EMPTY_FORM = { title: '', description: '', dueAt: '' };
 
 // Firestore rejects undefined values — strip them recursively before any write
 function stripUndefined(obj) {
@@ -86,7 +85,7 @@ function QuestionCard({ q, index, onRemove }) {
 }
 
 // ── Question Bank Picker Modal ─────────────────────────────────────────────────
-function QuestionBankPicker({ classroomId, alreadyIds, onAdd, onClose }) {
+function QuestionBankPicker({ alreadyIds, onAdd, onClose }) {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
@@ -98,14 +97,14 @@ function QuestionBankPicker({ classroomId, alreadyIds, onAdd, onClose }) {
   useEffect(() => {
     let mounted = true;
     setLoading(true);
-    listQuestionBank(classroomId, 200).then(res => {
+    listQuestionBank(200).then(res => {
       if (!mounted) return;
       const list = Array.isArray(res?.items) ? res.items : [];
       setItems(list);
       if (list[0]?.id) setPreviewId(list[0].id);
     }).catch(() => {}).finally(() => { if (mounted) setLoading(false); });
     return () => { mounted = false; };
-  }, [classroomId]);
+  }, []);
 
   const filtered = useMemo(() => {
     const sq = search.trim().toLowerCase();
@@ -220,7 +219,7 @@ function QuestionBankPicker({ classroomId, alreadyIds, onAdd, onClose }) {
                 <div style={{ padding: 32, textAlign: 'center', color: '#9CA3AF', fontWeight: 700 }}>載入中…</div>
               ) : filtered.length === 0 ? (
                 <div style={{ padding: 40, textAlign: 'center', color: '#9CA3AF', fontWeight: 700 }}>
-                  {items.length === 0 ? '此班級題庫暫無題目' : '找不到符合條件的題目'}
+                  {items.length === 0 ? '題庫暫無題目' : '找不到符合條件的題目'}
                 </div>
               ) : filtered.map(it => {
                 const isChecked = Boolean(checked[it.id]);
@@ -398,7 +397,6 @@ export default function TeacherHomeworkPage() {
   const [view, setView] = useState('list');
   const [tab, setTab] = useState('published');
   const [assignments, setAssignments] = useState([]);
-  const [classrooms, setClassrooms] = useState([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [editId, setEditId] = useState(null);
@@ -411,12 +409,8 @@ export default function TeacherHomeworkPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [hwRes, clsRes] = await Promise.all([
-        listHomeworkAssignments(null, 100),
-        listClassrooms(),
-      ]);
+      const hwRes = await listHomeworkAssignments(100);
       setAssignments(Array.isArray(hwRes?.items) ? hwRes.items : []);
-      setClassrooms(Array.isArray(clsRes?.classrooms) ? clsRes.classrooms : []);
     } catch (e) {
       console.error('載入失敗：', e);
     } finally {
@@ -441,7 +435,6 @@ export default function TeacherHomeworkPage() {
       title: a.title || '',
       description: a.description || '',
       dueAt: a.dueAt ? a.dueAt.substring(0, 16) : '',
-      classroomId: a.classroomId || '',
     });
     setQuestions(Array.isArray(a.questions) ? a.questions : []);
     setView('edit');
@@ -449,7 +442,6 @@ export default function TeacherHomeworkPage() {
 
   async function save(status) {
     if (!form.title.trim()) return alert('請輸入作業標題。');
-    if (!form.classroomId) return alert('請選擇班級。');
     if (form.dueAt && form.dueAt < nowMinString()) return alert('截止日期不能早於現在。');
     setSaving(true);
     try {
@@ -477,7 +469,6 @@ export default function TeacherHomeworkPage() {
   }
 
   const totalPts = questions.reduce((s, q) => s + (Number(q.points) || 1), 0);
-  const selectedClass = classrooms.find(c => c.id === form.classroomId);
   const addedBankIds = useMemo(() => new Set(questions.map(q => q.bankId).filter(Boolean)), [questions]);
 
   // ── LIST VIEW ──────────────────────────────────────────────────────────────
@@ -536,9 +527,7 @@ export default function TeacherHomeworkPage() {
             </div>
           ) : (
             <div style={{ display: 'grid', gap: 10, gridTemplateColumns: 'minmax(0, 1fr)' }}>
-              {byTab[tab].map(a => {
-                const room = classrooms.find(c => c.id === a.classroomId);
-                return (
+              {byTab[tab].map(a => (
                   <div key={a.id} style={{
                     display: 'flex', alignItems: 'center', gap: 14,
                     padding: '14px 16px', borderRadius: 18,
@@ -551,7 +540,6 @@ export default function TeacherHomeworkPage() {
                         {a.title || '（未命名作業）'}
                       </div>
                       <div style={{ fontSize: 12, fontWeight: 700, color: '#6B7280', display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-                        {room && <span>🏫 {room.name || room.id}</span>}
                         {a.dueAt && <span>📅 截止：{new Date(a.dueAt).toLocaleDateString('zh-HK')}</span>}
                         {a.questions?.length > 0 && <span>❓ {a.questions.length} 題</span>}
                       </div>
@@ -563,8 +551,7 @@ export default function TeacherHomeworkPage() {
                       {a.status === 'archived' && <button onClick={() => changeStatus(a.id, 'draft')} style={btnGhost}>還原</button>}
                     </div>
                   </div>
-                );
-              })}
+              ))}
             </div>
           )}
         </div>
@@ -602,27 +589,16 @@ export default function TeacherHomeworkPage() {
               onChange={e => setForm(f => ({ ...f, description: e.target.value }))} />
           </label>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-            <label style={labelStyle}>
-              班級 *
-              <select style={inputStyle} value={form.classroomId}
-                onChange={e => setForm(f => ({ ...f, classroomId: e.target.value }))}>
-                <option value="">選擇班級…</option>
-                {classrooms.map(c => <option key={c.id} value={c.id}>{c.name || c.id}</option>)}
-              </select>
-            </label>
-
-            <label style={labelStyle}>
-              截止日期與時間
-              <input
-                type="datetime-local"
-                style={{ ...inputStyle, colorScheme: 'light' }}
-                value={form.dueAt}
-                min={nowMinString()}
-                onChange={e => setForm(f => ({ ...f, dueAt: e.target.value }))}
-              />
-            </label>
-          </div>
+          <label style={labelStyle}>
+            截止日期與時間
+            <input
+              type="datetime-local"
+              style={{ ...inputStyle, colorScheme: 'light' }}
+              value={form.dueAt}
+              min={nowMinString()}
+              onChange={e => setForm(f => ({ ...f, dueAt: e.target.value }))}
+            />
+          </label>
         </div>
 
         <div style={{ borderTop: '1px solid rgba(17,24,39,0.08)', margin: '24px 0' }} />
@@ -639,10 +615,7 @@ export default function TeacherHomeworkPage() {
           </div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <button
-              onClick={() => {
-                if (!form.classroomId) return alert('請先選擇班級才能開啟題庫');
-                setBankOpen(true);
-              }}
+              onClick={() => setBankOpen(true)}
               style={btnGhost}
             >
               📚 從題庫選題
@@ -677,11 +650,6 @@ export default function TeacherHomeworkPage() {
           marginTop: 24, paddingTop: 18, borderTop: '1px solid rgba(17,24,39,0.08)',
           display: 'flex', gap: 10, justifyContent: 'flex-end', alignItems: 'center', flexWrap: 'wrap',
         }}>
-          {selectedClass && (
-            <span style={{ fontSize: 12, fontWeight: 700, color: '#9CA3AF', marginRight: 'auto' }}>
-              指派至：<strong style={{ color: '#111827' }}>{selectedClass.name || selectedClass.id}</strong>
-            </span>
-          )}
           <button onClick={() => setView('list')} style={btnGhost} disabled={saving}>取消</button>
           <button onClick={() => save('draft')} style={btnGhost} disabled={saving}>
             {saving ? '儲存中…' : '儲存草稿'}
@@ -695,7 +663,6 @@ export default function TeacherHomeworkPage() {
       {/* Modals */}
       {bankOpen && (
         <QuestionBankPicker
-          classroomId={form.classroomId}
           alreadyIds={addedBankIds}
           onAdd={qs => setQuestions(prev => [...prev, ...qs])}
           onClose={() => setBankOpen(false)}

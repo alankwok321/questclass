@@ -25,16 +25,12 @@ export async function getTeacherDashboard(classroomId = null) {
   return await window.QuestClassFirebase?.getTeacherDashboard?.(classroomId);
 }
 
-export async function listClassrooms() {
-  return await window.QuestClassFirebase?.listClassrooms?.();
-}
-
 export async function createHomeworkAssignment(payload) {
   return await window.QuestClassFirebase?.createHomeworkAssignment?.(payload);
 }
 
-export async function listHomeworkAssignments(classroomId = null, limit = 50) {
-  return await window.QuestClassFirebase?.listHomeworkAssignments?.(classroomId, limit);
+export async function listHomeworkAssignments(limit = 50) {
+  return await window.QuestClassFirebase?.listHomeworkAssignments?.(limit);
 }
 
 export async function listMyHomework(limit = 50) {
@@ -53,8 +49,8 @@ export async function upsertQuestionBankItem(payload) {
   return await window.QuestClassFirebase?.upsertQuestionBankItem?.(payload);
 }
 
-export async function listQuestionBank(classroomId, limit = 200) {
-  return await window.QuestClassFirebase?.listQuestionBank?.(classroomId, limit);
+export async function listQuestionBank(limit = 200) {
+  return await window.QuestClassFirebase?.listQuestionBank?.(limit);
 }
 
 export async function getQuestionBankItemsByIds(ids) {

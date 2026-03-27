@@ -82,7 +82,7 @@ export default function Dashboard() {
           <div style={{ color: '#B91C1C', fontWeight: 900 }}>{state.err}</div>
         ) : (
           <div style={{ color: '#6B7280', fontWeight: 700, lineHeight: 1.7 }}>
-            mode: <strong style={{ color: '#111827' }}>{state.data?.mode || '—'}</strong> · classroom: <strong style={{ color: '#111827' }}>{detail.classroom?.name || '—'}</strong> · students: <strong style={{ color: '#111827' }}>{(detail.students || []).length}</strong> · submissions: <strong style={{ color: '#111827' }}>{(detail.submissions || []).length}</strong>
+            mode: <strong style={{ color: '#111827' }}>{state.data?.mode || '—'}</strong> · students: <strong style={{ color: '#111827' }}>{(detail.students || []).length}</strong> · submissions: <strong style={{ color: '#111827' }}>{(detail.submissions || []).length}</strong>
           </div>
         )}
       </div>

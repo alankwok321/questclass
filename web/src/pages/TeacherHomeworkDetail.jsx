@@ -16,7 +16,7 @@ export default function TeacherHomeworkDetail() {
     setLoading(true);
     try {
       // No get-by-id API yet. Quick workaround: list and find.
-      const res = await listHomeworkAssignments(null, 200);
+      const res = await listHomeworkAssignments(200);
       if (res?.ok) {
         const found = (res.items || []).find((a) => a.id === id);
         setItem(found || null);
@@ -54,7 +54,7 @@ export default function TeacherHomeworkDetail() {
         <div>
           <div style={{ fontWeight: 900, fontSize: 16 }}>{item?.title || (loading ? '載入中…' : '找不到作業')}</div>
           <div style={{ marginTop: 6, color: '#6B7280', fontWeight: 800, fontSize: 12 }}>
-            id: {id} · classroom: {item?.classroomId || '—'} · dueAt: {item?.dueAt || '—'} · status: {item?.status || '—'}
+            id: {id} · dueAt: {item?.dueAt || '—'} · status: {item?.status || '—'}
           </div>
         </div>
 

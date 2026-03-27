@@ -5,7 +5,6 @@ import Modal from '../components/Modal.jsx';
 import QuestionTypeBadge from '../components/QuestionTypeBadge.jsx';
 import QuestionPreview from '../components/QuestionPreview.jsx';
 import {
-  listClassrooms,
   createHomeworkAssignment,
   listHomeworkAssignments,
   updateHomeworkAssignmentStatus,
@@ -20,8 +19,6 @@ export default function TeacherHomeworkEditor({ mode = 'new' }) {
 
   const isEdit = mode === 'edit';
 
-  const [classrooms, setClassrooms] = useState([]);
-  const [loadingClasses, setLoadingClasses] = useState(false);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -29,7 +26,6 @@ export default function TeacherHomeworkEditor({ mode = 'new' }) {
     title: '',
     description: '',
     dueAt: '',
-    classroomId: '',
     status: 'draft',
   });
 
@@ -72,27 +68,12 @@ export default function TeacherHomeworkEditor({ mode = 'new' }) {
   }, [questionRefs, selectedQuestionId, selectedQuestion]);
 
   useEffect(() => {
-    let mounted = true;
-    (async () => {
-      setLoadingClasses(true);
-      try {
-        const res = await listClassrooms();
-        if (!mounted) return;
-        if (res?.ok) setClassrooms(res.classrooms || []);
-      } finally {
-        if (mounted) setLoadingClasses(false);
-      }
-    })();
-    return () => { mounted = false; };
-  }, []);
-
-  useEffect(() => {
     if (!isEdit || !id) return;
     let mounted = true;
     (async () => {
       setLoading(true);
       try {
-        const res = await listHomeworkAssignments(null, 200);
+        const res = await listHomeworkAssignments(200);
         if (!mounted) return;
         if (!res?.ok) {
           alert(res?.error || '載入失敗');
@@ -104,7 +85,6 @@ export default function TeacherHomeworkEditor({ mode = 'new' }) {
           title: a.title || '',
           description: a.description || '',
           dueAt: a.dueAt || '',
-          classroomId: a.classroomId || '',
           status: a.status || 'draft',
         });
         setQuestions(Array.isArray(a.questions) ? a.questions : []);
@@ -162,10 +142,6 @@ export default function TeacherHomeworkEditor({ mode = 'new' }) {
       }
 
       // Kahoot-style: store into questionBank, then reference from homework.
-      if (!String(form.classroomId || '').trim()) {
-        alert('請先選擇班級（Assign to），才能把題目存到題庫');
-        return;
-      }
       setShowAiPanel(false);
 
       const created = [];
@@ -173,7 +149,6 @@ export default function TeacherHomeworkEditor({ mode = 'new' }) {
         const q = qs[i] || {};
         const type = String(q.type || 'MULTIPLE_CHOICE');
         const itemRes = await upsertQuestionBankItem({
-          classroomId: form.classroomId,
           type,
           topic: String(q.topic || ''),
           points: Number(q.points || 1),
@@ -225,7 +200,6 @@ export default function TeacherHomeworkEditor({ mode = 'new' }) {
     try {
       const res = await createHomeworkAssignment({
         id: isEdit ? id : undefined,
-        classroomId: form.classroomId,
         title: form.title,
         description: form.description,
         dueAt: form.dueAt,
@@ -250,7 +224,6 @@ export default function TeacherHomeworkEditor({ mode = 'new' }) {
         // Save changes first
         const saveRes = await createHomeworkAssignment({
           id,
-          classroomId: form.classroomId,
           title: form.title,
           description: form.description,
           dueAt: form.dueAt,
@@ -269,7 +242,6 @@ export default function TeacherHomeworkEditor({ mode = 'new' }) {
 
       // New: create as published
       const res = await createHomeworkAssignment({
-        classroomId: form.classroomId,
         title: form.title,
         description: form.description,
         dueAt: form.dueAt,
@@ -330,27 +302,10 @@ export default function TeacherHomeworkEditor({ mode = 'new' }) {
             <textarea value={form.description} onChange={(e) => setForm(s => ({ ...s, description: e.target.value }))} style={{ ...inputStyle, minHeight: 90, resize: 'vertical' }} placeholder="作業內容/規則..." />
           </label>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-            <label style={{ display: 'grid', gap: 6 }}>
-              <div style={labelStyle}>班級（Assign to）</div>
-              <select
-                value={form.classroomId}
-                onChange={(e) => setForm(s => ({ ...s, classroomId: e.target.value }))}
-                style={selectStyle}
-                disabled={loadingClasses}
-              >
-                <option value="">{loadingClasses ? '載入中…' : '請選擇班級'}</option>
-                {classrooms.map((c) => (
-                  <option key={c.id} value={c.id}>{c.name || c.id}</option>
-                ))}
-              </select>
-            </label>
-
-            <label style={{ display: 'grid', gap: 6 }}>
-              <div style={labelStyle}>截止時間（dueAt）</div>
-              <input value={form.dueAt} onChange={(e) => setForm(s => ({ ...s, dueAt: e.target.value }))} style={inputStyle} placeholder="2026-03-20T12:00:00Z" />
-            </label>
-          </div>
+          <label style={{ display: 'grid', gap: 6 }}>
+            <div style={labelStyle}>截止時間（dueAt）</div>
+            <input value={form.dueAt} onChange={(e) => setForm(s => ({ ...s, dueAt: e.target.value }))} style={inputStyle} placeholder="2026-03-20T12:00:00Z" />
+          </label>
 
           <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
             <div style={{ fontWeight: 900, fontSize: 12, color: '#6B7280' }}>總分：</div>
@@ -438,8 +393,7 @@ export default function TeacherHomeworkEditor({ mode = 'new' }) {
               題庫
             </button>
             <button type="button" style={btnGhost} onClick={async () => {
-              if (!form.classroomId) return alert('請先選擇班級');
-              const res = await listQuestionBank(form.classroomId, 200);
+              const res = await listQuestionBank(200);
               if (!res?.ok) return alert(res?.error || '載入題庫失敗');
               setBankItems(res.items || []);
             }}>
