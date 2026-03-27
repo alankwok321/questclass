@@ -9,6 +9,7 @@ import {
   getIdToken,
 } from '../services/firebase.js';
 import QuestionTypeBadge, { formatTypeLabel } from '../components/QuestionTypeBadge.jsx';
+import QuestionPreview from '../components/QuestionPreview.jsx';
 
 const EMPTY_FORM = { title: '', description: '', dueAt: '', targetType: 'all', targetClass: '', targetStudentUids: [] };
 
