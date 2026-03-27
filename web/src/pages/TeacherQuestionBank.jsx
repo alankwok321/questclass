@@ -446,9 +446,8 @@ export default function TeacherQuestionBank() {
   const [aiOpen, setAiOpen] = useState(false);
   const [aiCandidates, setAiCandidates] = useState([]);
   const [aiResultsOpen, setAiResultsOpen] = useState(false);
-  const [aiClassroomId, setAiClassroomId] = useState('');
 
-  // Load classrooms once, then load all questions from all classrooms
+  // Load all questions from all classrooms
   const refresh = useCallback(async (cls) => {
     const list = cls !== undefined ? cls : classrooms;
     if (!list.length) return;
@@ -457,7 +456,7 @@ export default function TeacherQuestionBank() {
       const results = await Promise.all(
         list.map(c =>
           listQuestionBank(c.id, 200)
-            .then(res => (res?.items || []).map(it => ({ ...it, _classroomId: c.id })))
+            .then(res => (res?.items || []).map(it => ({ ...it, _cid: c.id })))
             .catch(() => [])
         )
       );
@@ -473,7 +472,6 @@ export default function TeacherQuestionBank() {
       if (!mounted) return;
       const cs = res?.classrooms || [];
       setClassrooms(cs);
-      if (cs[0]?.id) setAiClassroomId(cs[0].id);
       if (cs.length) refresh(cs);
     });
     return () => { mounted = false; };
@@ -492,7 +490,7 @@ export default function TeacherQuestionBank() {
   }, [items, q, filterType, filterLevel]);
 
   function openNew() {
-    setEditItem({ ...EMPTY_ITEM, _classroomId: classrooms[0]?.id || '' });
+    setEditItem({ ...EMPTY_ITEM, _cid: classrooms[0]?.id || '' });
     setIsNew(true);
     setView('edit');
   }
@@ -505,11 +503,10 @@ export default function TeacherQuestionBank() {
 
   async function saveEdit() {
     if (!editItem.question_text?.trim()) return alert('請填入題目文字');
-    const cid = editItem._classroomId || classrooms[0]?.id || '';
-    if (!cid) return alert('請選擇所屬班級');
+    const cid = editItem._cid || classrooms[0]?.id || '';
     setSaving(true);
     try {
-      const { _classroomId, ...rest } = editItem;
+      const { _cid, ...rest } = editItem;
       const res = await upsertQuestionBankItem({ classroomId: cid, ...stripUndef(rest) });
       if (!res?.ok) { alert(res?.error || '儲存失敗'); return; }
       await refresh();
@@ -523,10 +520,10 @@ export default function TeacherQuestionBank() {
 
   async function deleteEdit() {
     if (!window.confirm('確認刪除此題目？')) return;
-    const cid = editItem._classroomId || classrooms[0]?.id || '';
+    const cid = editItem._cid || classrooms[0]?.id || '';
     setSaving(true);
     try {
-      const { _classroomId, ...rest } = editItem;
+      const { _cid, ...rest } = editItem;
       const res = await upsertQuestionBankItem({ ...stripUndef(rest), classroomId: cid, deleted: true });
       if (!res?.ok) { alert(res?.error || '刪除失敗'); return; }
       await refresh();
@@ -628,7 +625,7 @@ export default function TeacherQuestionBank() {
         {/* AI Modal */}
         {aiOpen && (
           <AiModal
-            classroomId={aiClassroomId}
+            classroomId={classrooms[0]?.id || ''}
             onClose={() => setAiOpen(false)}
             onAdd={candidates => {
               setAiCandidates(candidates);
@@ -640,7 +637,7 @@ export default function TeacherQuestionBank() {
         {aiResultsOpen && (
           <AiResultsModal
             candidates={aiCandidates}
-            classroomId={aiClassroomId}
+            classroomId={classrooms[0]?.id || ''}
             onSave={refresh}
             onBack={() => { setAiResultsOpen(false); setAiOpen(true); }}
             onClose={() => setAiResultsOpen(false)}
@@ -662,26 +659,8 @@ export default function TeacherQuestionBank() {
           {isNew ? '新增題目' : '編輯題目'}
         </div>
         <div style={{ color: '#6B7280', fontWeight: 700, fontSize: 13, marginBottom: 24 }}>
-          {isNew
-            ? '填寫題目內容後儲存到題庫'
-            : (classrooms.find(c => c.id === editItem?._classroomId)?.name || editItem?._classroomId || '—')
-          }
+          填寫題目內容後儲存到題庫
         </div>
-
-        {/* Classroom selector for new questions */}
-        {isNew && classrooms.length > 1 && (
-          <label style={{ ...labelStyle, marginBottom: 16 }}>
-            所屬班級 *
-            <select
-              value={editItem?._classroomId || ''}
-              style={inputStyle}
-              onChange={e => setEditItem(it => ({ ...it, _classroomId: e.target.value }))}
-            >
-              <option value="">選擇班級…</option>
-              {classrooms.map(c => <option key={c.id} value={c.id}>{c.name || c.id}</option>)}
-            </select>
-          </label>
-        )}
 
         {editItem && (
           <QuestionEditForm item={editItem} onChange={setEditItem} />
