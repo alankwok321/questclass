@@ -455,11 +455,13 @@ window.QuestClassFirebase = {
       const q = sdk.query(
         col,
         sdk.where('status', '==', 'published'),
-        sdk.orderBy('createdAt', 'desc'),
         sdk.limit(limit)
       );
       const snap = await sdk.getDocs(q);
-      const items = snap.docs.map((doc) => this._docData(doc)).filter(Boolean);
+      const items = snap.docs
+        .map((doc) => this._docData(doc))
+        .filter(Boolean)
+        .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
       return { ok: true, items };
     } catch (error) {
       return { ok: false, error: error?.message || 'My homework list failed', items: [] };
