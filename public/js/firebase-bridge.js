@@ -402,6 +402,13 @@ window.QuestClassFirebase = {
       ? sdk.doc(db, 'homeworkAssignments', cleanId)
       : sdk.doc(sdk.collection(db, 'homeworkAssignments'));
 
+    // Build target object (strip undefined so Firestore doesn't reject)
+    const targetType = String(payload.targetType || 'all').trim();
+    const targetClass = targetType === 'class' ? String(payload.targetClass || '').trim() : '';
+    const targetStudentUids = targetType === 'students'
+      ? (Array.isArray(payload.targetStudentUids) ? payload.targetStudentUids : [])
+      : [];
+
     const assignment = {
       id: docRef.id,
       title: String(payload.title || '').trim(),
@@ -410,6 +417,9 @@ window.QuestClassFirebase = {
       status: String(payload.status || 'published').trim(),
       totalPoints: Number(payload.totalPoints || 0),
       questions: Array.isArray(payload.questions) ? payload.questions : [],
+      targetType,
+      targetClass,
+      targetStudentUids,
 
       // On update, preserve createdBy/createdAt if they already exist.
       createdBy: isUpdate ? (payload.createdBy || check.authUser.uid) : check.authUser.uid,
@@ -449,22 +459,56 @@ window.QuestClassFirebase = {
     const check = await this._requireSignedIn();
     if (!check.ok) return { ok: false, error: check.error, items: [] };
     const { db, sdk } = check.ready;
+    const uid = check.authUser.uid;
+
+    // Fetch current user's profile for class-based filtering
+    let myClass = '';
+    try {
+      const userSnap = await sdk.getDoc(sdk.doc(db, 'users', uid));
+      if (userSnap.exists()) myClass = String(userSnap.data().class || '').trim();
+    } catch (_) { /* ignore */ }
 
     try {
       const col = sdk.collection(db, 'homeworkAssignments');
-      const q = sdk.query(
-        col,
-        sdk.where('status', '==', 'published'),
-        sdk.limit(limit)
-      );
+      const q = sdk.query(col, sdk.where('status', '==', 'published'), sdk.limit(limit));
       const snap = await sdk.getDocs(q);
-      const items = snap.docs
-        .map((doc) => this._docData(doc))
-        .filter(Boolean)
-        .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+      const all = snap.docs.map((doc) => this._docData(doc)).filter(Boolean);
+
+      // Filter by target
+      const items = all.filter(a => {
+        const t = a.targetType || 'all';
+        if (t === 'all') return true;
+        if (t === 'class') return myClass && a.targetClass && myClass === a.targetClass;
+        if (t === 'students') return Array.isArray(a.targetStudentUids) && a.targetStudentUids.includes(uid);
+        return true; // unknown type → show
+      }).sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+
       return { ok: true, items };
     } catch (error) {
       return { ok: false, error: error?.message || 'My homework list failed', items: [] };
+    }
+  },
+
+  async listStudents(limit = 200) {
+    const check = await this._requireSignedIn();
+    if (!check.ok) return { ok: false, error: check.error, students: [] };
+    const { db, sdk } = check.ready;
+    const me = check.me || {};
+    if (!['teacher', 'admin'].includes(String(me.role || '').toLowerCase())) {
+      return { ok: false, error: 'Teacher/admin only', students: [] };
+    }
+    try {
+      const q = sdk.query(
+        sdk.collection(db, 'users'),
+        sdk.where('role', '==', 'student'),
+        sdk.limit(limit)
+      );
+      const snap = await sdk.getDocs(q);
+      const students = snap.docs.map((doc) => this._docData(doc)).filter(Boolean)
+        .sort((a, b) => (a.displayName || a.name || '').localeCompare(b.displayName || b.name || ''));
+      return { ok: true, students };
+    } catch (error) {
+      return { ok: false, error: error?.message || 'List students failed', students: [] };
     }
   },
 

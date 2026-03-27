@@ -28,7 +28,7 @@ service cloud.firestore {
     }
 
     function allowedUserKeys() {
-      return ['name', 'email', 'role', 'requestedRole', 'learnerStage', 'roleNote', 'photoURL', 'createdAt', 'updatedAt', 'lastLoginAt', 'accountStatus', 'adminNote', 'disabledReason', 'resolvedAt', 'issueFlag', 'studentId', 'classroomIds'];
+      return ['name', 'email', 'role', 'requestedRole', 'learnerStage', 'roleNote', 'photoURL', 'createdAt', 'updatedAt', 'lastLoginAt', 'accountStatus', 'adminNote', 'disabledReason', 'resolvedAt', 'issueFlag', 'studentId', 'classroomIds', 'class'];
     }
 
     function allowedStudentKeys() {
@@ -52,7 +52,7 @@ service cloud.firestore {
     }
 
     match /users/{userId} {
-      allow read: if isSelf(userId) || isAdmin();
+      allow read: if isSelf(userId) || isTeacherLike();
 
       allow create: if isSelf(userId)
         && request.resource.data.keys().hasOnly(allowedUserKeys())
@@ -142,7 +142,10 @@ service cloud.firestore {
         'questionRefs', // Kahoot-style
         'createdBy',
         'createdAt',
-        'updatedAt'
+        'updatedAt',
+        'targetType',        // 'all' | 'class' | 'students'
+        'targetClass',       // class name string
+        'targetStudentUids'  // array of student uids
       ];
     }
 
@@ -202,7 +205,10 @@ service cloud.firestore {
         // audit
         'createdBy',
         'createdAt',
-        'updatedAt'
+        'updatedAt',
+
+        // legacy
+        'classroomId'
       ];
     }
 

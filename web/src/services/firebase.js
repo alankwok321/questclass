@@ -64,3 +64,7 @@ export async function listMySubmissions(limit = 100) {
 export async function listSubmissionsForAssignment(assignmentId, limit = 200) {
   return await window.QuestClassFirebase?.listSubmissionsForAssignment?.(assignmentId, limit);
 }
+
+export async function listStudents(limit = 200) {
+  return await window.QuestClassFirebase?.listStudents?.(limit);
+}

@@ -5,11 +5,12 @@ import {
   updateHomeworkAssignmentStatus,
   listQuestionBank,
   listSubmissionsForAssignment,
+  listStudents,
   getIdToken,
 } from '../services/firebase.js';
 import QuestionTypeBadge, { formatTypeLabel } from '../components/QuestionTypeBadge.jsx';
 
-const EMPTY_FORM = { title: '', description: '', dueAt: '' };
+const EMPTY_FORM = { title: '', description: '', dueAt: '', targetType: 'all', targetClass: '', targetStudentUids: [] };
 
 // Firestore rejects undefined values — strip them recursively before any write
 function stripUndefined(obj) {
@@ -569,6 +570,59 @@ function SubmissionsView({ assignment, onBack }) {
   );
 }
 
+// ── Student Picker (for targetType === 'students') ───────────────────────────
+function StudentPicker({ selectedUids, onChange }) {
+  const [students, setStudents] = useState([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+    setLoading(true);
+    listStudents(200).then(res => {
+      if (!mounted) return;
+      setStudents(Array.isArray(res?.students) ? res.students : []);
+    }).catch(() => {}).finally(() => { if (mounted) setLoading(false); });
+    return () => { mounted = false; };
+  }, []);
+
+  function toggle(uid) {
+    if (selectedUids.includes(uid)) onChange(selectedUids.filter(u => u !== uid));
+    else onChange([...selectedUids, uid]);
+  }
+
+  if (loading) return <div style={{ color: '#9CA3AF', fontWeight: 700, fontSize: 13 }}>載入學生名單…</div>;
+  if (students.length === 0) return <div style={{ color: '#9CA3AF', fontWeight: 700, fontSize: 13 }}>目前沒有學生帳戶</div>;
+
+  return (
+    <div style={{
+      border: '1px solid rgba(17,24,39,0.10)', borderRadius: 14,
+      maxHeight: 220, overflowY: 'auto', background: '#F9FAFB',
+    }}>
+      {students.map(s => {
+        const uid = s.uid || s.id;
+        const checked = selectedUids.includes(uid);
+        const name = s.displayName || s.name || '（未命名）';
+        const cls = s.class || '';
+        return (
+          <label key={uid} style={{
+            display: 'flex', alignItems: 'center', gap: 12,
+            padding: '10px 14px', cursor: 'pointer',
+            borderBottom: '1px solid rgba(17,24,39,0.06)',
+            background: checked ? 'rgba(0,122,255,0.06)' : 'transparent',
+          }}>
+            <input type="checkbox" checked={checked} onChange={() => toggle(uid)}
+              style={{ accentColor: '#007AFF', width: 15, height: 15 }} />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontWeight: 800, fontSize: 13, color: '#111827' }}>{name}</div>
+              {cls && <div style={{ fontWeight: 700, fontSize: 11, color: '#9CA3AF' }}>班別：{cls}</div>}
+            </div>
+          </label>
+        );
+      })}
+    </div>
+  );
+}
+
 // ── Main Page ─────────────────────────────────────────────────────────────────
 export default function TeacherHomeworkPage() {
   const [view, setView] = useState('list');
@@ -613,6 +667,9 @@ export default function TeacherHomeworkPage() {
       title: a.title || '',
       description: a.description || '',
       dueAt: a.dueAt ? a.dueAt.substring(0, 16) : '',
+      targetType: a.targetType || 'all',
+      targetClass: a.targetClass || '',
+      targetStudentUids: Array.isArray(a.targetStudentUids) ? a.targetStudentUids : [],
     });
     setQuestions(Array.isArray(a.questions) ? a.questions : []);
     setView('edit');
@@ -623,7 +680,15 @@ export default function TeacherHomeworkPage() {
     if (form.dueAt && form.dueAt < nowMinString()) return alert('截止日期不能早於現在。');
     setSaving(true);
     try {
-      const payload = stripUndefined({ ...form, status, questions, ...(editId ? { id: editId } : {}) });
+      const payload = stripUndefined({
+        ...form,
+        status,
+        questions,
+        targetType: form.targetType || 'all',
+        targetClass: form.targetClass || '',
+        targetStudentUids: Array.isArray(form.targetStudentUids) ? form.targetStudentUids : [],
+        ...(editId ? { id: editId } : {}),
+      });
       const res = await createHomeworkAssignment(payload);
       if (!res?.ok) return alert(res?.error || '儲存失敗');
       await load();
@@ -730,6 +795,9 @@ export default function TeacherHomeworkPage() {
                       <div style={{ fontSize: 12, fontWeight: 700, color: '#6B7280', display: 'flex', gap: 12, flexWrap: 'wrap' }}>
                         {a.dueAt && <span>📅 截止：{new Date(a.dueAt).toLocaleDateString('zh-HK')}</span>}
                         {a.questions?.length > 0 && <span>❓ {a.questions.length} 題</span>}
+                        {(!a.targetType || a.targetType === 'all') && <span>👥 全部學生</span>}
+                        {a.targetType === 'class' && <span>🏫 班別：{a.targetClass || '（未設定）'}</span>}
+                        {a.targetType === 'students' && <span>👤 指定 {(a.targetStudentUids || []).length} 位學生</span>}
                       </div>
                     </div>
                     <div style={{ display: 'flex', gap: 8, flexShrink: 0, flexWrap: 'wrap' }}>
@@ -792,6 +860,48 @@ export default function TeacherHomeworkPage() {
               onChange={e => setForm(f => ({ ...f, dueAt: e.target.value }))}
             />
           </label>
+
+          {/* Target section */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <div style={{ fontSize: 13, fontWeight: 800, color: '#6B7280' }}>指派對象</div>
+            <div style={{
+              background: '#F9FAFB', border: '1px solid rgba(17,24,39,0.10)',
+              borderRadius: 14, padding: '14px 16px', display: 'grid', gap: 10,
+            }}>
+              {[
+                { val: 'all',      label: '全部學生' },
+                { val: 'class',    label: '指定班別' },
+                { val: 'students', label: '指定學生' },
+              ].map(opt => (
+                <label key={opt.val} style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
+                  <input type="radio" name="targetType" value={opt.val}
+                    checked={form.targetType === opt.val}
+                    onChange={() => setForm(f => ({ ...f, targetType: opt.val }))}
+                    style={{ accentColor: '#007AFF', width: 15, height: 15 }} />
+                  <span style={{ fontSize: 13, fontWeight: 800, color: '#111827' }}>{opt.label}</span>
+                </label>
+              ))}
+              {form.targetType === 'class' && (
+                <input
+                  style={{ ...inputStyle, marginTop: 4 }}
+                  value={form.targetClass}
+                  placeholder="輸入班別名稱（例如：3A、S3B）"
+                  onChange={e => setForm(f => ({ ...f, targetClass: e.target.value }))}
+                />
+              )}
+              {form.targetType === 'students' && (
+                <div style={{ marginTop: 4 }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: '#6B7280', marginBottom: 6 }}>
+                    已選 <strong style={{ color: '#007AFF' }}>{(form.targetStudentUids || []).length}</strong> 位學生
+                  </div>
+                  <StudentPicker
+                    selectedUids={form.targetStudentUids || []}
+                    onChange={uids => setForm(f => ({ ...f, targetStudentUids: uids }))}
+                  />
+                </div>
+              )}
+            </div>
+          </div>
         </div>
 
         <div style={{ borderTop: '1px solid rgba(17,24,39,0.08)', margin: '24px 0' }} />
