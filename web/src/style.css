@@ -177,6 +177,9 @@ button, input { font: inherit; }
   border-radius: 28px;
   padding: 18px;
   box-shadow: 0 2px 12px rgba(0,0,0,0.03);
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .qcCardSoft {

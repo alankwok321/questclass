@@ -602,8 +602,9 @@ export default function TeacherQuestionBank() {
                 <div key={it.id} style={{
                   display: 'flex', alignItems: 'center', gap: 14,
                   padding: '14px 16px', borderRadius: 18,
-                  border: '1px solid rgba(17,24,39,0.08)', background: '#F9FAFB',
-                  minWidth: 0,
+                  border: '1px solid rgba(17,24,39,0.12)', background: '#F9FAFB',
+                  minWidth: 0, width: '100%', boxSizing: 'border-box',
+                  overflow: 'hidden',
                 }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontWeight: 900, fontSize: 14, marginBottom: 6, color: '#111827',
