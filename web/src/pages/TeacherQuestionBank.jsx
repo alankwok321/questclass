@@ -254,29 +254,61 @@ function QuestionEditForm({ item, onChange }) {
   );
 }
 
-// ── AI Generate Modal ─────────────────────────────────────────────────────────
-function AiModal({ classroomId, onClose, onAdd }) {
+// ── AI Generate Modal (unified: settings → review/edit → save) ────────────────
+const OVERLAY = {
+  position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)',
+  display: 'flex', alignItems: 'center', justifyContent: 'center',
+  zIndex: 1000, backdropFilter: 'blur(4px)',
+};
+
+function AiModal({ classroomId, onClose, onSave }) {
+  // Step 1 – settings
+  const [step, setStep] = useState(1);
   const [topic, setTopic] = useState('');
   const [count, setCount] = useState(5);
   const [level, setLevel] = useState('S1');
-  const [loading, setLoading] = useState(false);
+  const [types, setTypes] = useState({
+    MULTIPLE_CHOICE: true, TRUE_FALSE: true, SHORT_ANSWER: true,
+    FILL_IN_BLANK: false, MATCHING: false, LONG_ANSWER: false,
+  });
+
+  // Step 2 – review & edit
+  const [generating, setGenerating] = useState(false);
+  const [candidates, setCandidates] = useState([]);
+  const [checked, setChecked] = useState({});
+  const [activeIdx, setActiveIdx] = useState(0);
+  const [saving, setSaving] = useState(false);
+
+  const selectedTypes = Object.entries(types).filter(([, v]) => v).map(([k]) => k);
+  const checkedCount = Object.values(checked).filter(Boolean).length;
 
   async function generate() {
-    setLoading(true);
+    if (!selectedTypes.length) return alert('請至少選擇一種題型');
+    setGenerating(true);
     try {
       const token = await getIdToken();
       if (!token) { alert('請先登入才能使用 AI 功能'); return; }
-      const system = `你是一個老師助教。請產出「題庫題目」JSON，輸出必須是純 JSON，不要 markdown。\n只能使用以下題型：TRUE_FALSE、MULTIPLE_CHOICE、SHORT_ANSWER、FILL_IN_BLANK\n依照香港學制（HK）調整難度，target_level: ${level}\n輸出格式：{"questions":[{"type":"MULTIPLE_CHOICE","question_text":"題目","topic":"主題","target_level":"${level}","points":1,"options":[{"id":"A","text":"選項A","is_correct":true},{"id":"B","text":"選項B","is_correct":false}]},{"type":"TRUE_FALSE","question_text":"陳述句","correct_answer":true,"points":1},{"type":"SHORT_ANSWER","question_text":"問題","ideal_answer":"參考答案","points":2}]}\n請產出 ${count} 題。`;
+      const typesStr = selectedTypes.join('、');
+      const system = [
+        '你是老師助教。請產出「題庫題目」JSON，輸出必須是純 JSON，不要 markdown。',
+        `只能使用以下題型：${typesStr}`,
+        `依照香港學制（HK）調整難度，target_level: ${level}`,
+        '輸出格式示例：{"questions":[',
+        '{"type":"MULTIPLE_CHOICE","question_text":"題目","topic":"主題","target_level":"S1","points":1,"options":[{"id":"A","text":"A選項","is_correct":true},{"id":"B","text":"B選項","is_correct":false}]},',
+        '{"type":"TRUE_FALSE","question_text":"陳述句","correct_answer":true,"points":1},',
+        '{"type":"SHORT_ANSWER","question_text":"問題","ideal_answer":"答案","points":2},',
+        '{"type":"FILL_IN_BLANK","question_text":"句子[____]填空","blanks":[{"position":1,"accepted":["答案"]}],"points":1},',
+        '{"type":"MATCHING","question_text":"配對","pairs":[{"prompt":"A","match":"1"}],"points":2},',
+        '{"type":"LONG_ANSWER","question_text":"申論題","grading_rubric":"評分標準","points":4}',
+        `]}\n請產出 ${count} 題，混合使用以下題型：${typesStr}。`,
+      ].join('\n');
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          idToken: token,
-          topic: 'teacher-question-bank',
-          mode: 'generate',
-          format: 'json',
-          studentName: 'teacher',
-          message: `主題：${topic || '（不限）'}\n年級：${level}\n題數：${count}`,
+          idToken: token, topic: 'teacher-question-bank', mode: 'generate',
+          format: 'json', studentName: 'teacher',
+          message: `主題：${topic || '（不限）'}\n年級：${level}\n題數：${count}\n題型：${typesStr}`,
           system,
         }),
       });
@@ -285,138 +317,201 @@ function AiModal({ classroomId, onClose, onAdd }) {
       const match = text.match(/\{[\s\S]*\}/);
       if (!match) throw new Error('AI 回應中找不到 JSON 格式');
       const parsed = JSON.parse(match[0]);
-      const newQs = (parsed.questions || []).map(q => stripUndef({ ...q, classroomId: classroomId || '' }));
-      if (!newQs.length) throw new Error('未產生任何題目');
-      onAdd(newQs);
-      onClose();
+      const qs = (parsed.questions || []).map(q => stripUndef({ ...q }));
+      if (!qs.length) throw new Error('未產生任何題目');
+      setCandidates(qs);
+      setChecked(Object.fromEntries(qs.map((_, i) => [i, true])));
+      setActiveIdx(0);
+      setStep(2);
     } catch (e) {
       alert('AI 產生失敗：' + e.message);
     } finally {
-      setLoading(false);
+      setGenerating(false);
     }
   }
 
-  return (
-    <div style={{
-      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      zIndex: 1000, backdropFilter: 'blur(4px)',
-    }}>
-      <div style={{
-        background: '#fff', borderRadius: 28, padding: 28,
-        width: 420, maxWidth: '92vw',
-        boxShadow: '0 24px 60px rgba(0,0,0,0.15)',
-        border: '1px solid rgba(17,24,39,0.08)',
-      }}>
-        <div style={{ fontWeight: 900, fontSize: 18, marginBottom: 4 }}>✨ AI 產生題目</div>
-        <div style={{ color: '#6B7280', fontWeight: 700, fontSize: 13, marginBottom: 22 }}>
-          輸入主題，AI 將自動生成適合的題庫題目
-        </div>
-        <div style={{ display: 'grid', gap: 16 }}>
-          <label style={labelStyle}>
-            主題 / 科目
-            <input style={inputStyle} value={topic}
-              onChange={e => setTopic(e.target.value)}
-              placeholder="例如：分數、二次大戰…" />
-          </label>
-          <label style={labelStyle}>
-            題目數量：<strong style={{ color: '#111827' }}>{count} 題</strong>
-            <input type="range" min="1" max="20" value={count}
-              onChange={e => setCount(Number(e.target.value))}
-              style={{ width: '100%', marginTop: 4, accentColor: '#007AFF' }} />
-          </label>
-          <label style={labelStyle}>
-            年級程度
-            <select style={inputStyle} value={level} onChange={e => setLevel(e.target.value)}>
-              {GRADES.map(l => <option key={l} value={l}>{l}</option>)}
-            </select>
-          </label>
-        </div>
-        <div style={{ marginTop: 24, display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-          <button onClick={onClose} style={btnGhost} disabled={loading}>取消</button>
-          <button onClick={generate} style={{ ...btnPrimary, background: '#7C3AED' }} disabled={loading}>
-            {loading ? '產生中…' : '產生題目'}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ── AI Results Modal ──────────────────────────────────────────────────────────
-function AiResultsModal({ candidates, classroomId, onSave, onBack, onClose }) {
-  const [selected, setSelected] = useState(() => {
-    const s = {};
-    candidates.forEach((_, i) => { s[i] = true; });
-    return s;
-  });
-  const [saving, setSaving] = useState(false);
-
-  const count = Object.values(selected).filter(Boolean).length;
-
-  async function save() {
-    const chosen = candidates.filter((_, i) => selected[i]);
+  async function saveSelected() {
+    const chosen = candidates.map((q, i) => ({ q, i })).filter(({ i }) => checked[i]);
     if (!chosen.length) return alert('請至少選一題');
     setSaving(true);
-    let created = 0, errors = 0;
-    for (const q of chosen) {
+    let ok = 0, fail = 0;
+    for (const { q } of chosen) {
       const res = await upsertQuestionBankItem({ classroomId: classroomId || '', ...stripUndef(q) });
-      if (res?.ok) created++; else errors++;
+      if (res?.ok) ok++; else fail++;
     }
     setSaving(false);
-    if (errors) alert(`已新增 ${created} 題（失敗 ${errors}）`);
-    else alert(`已新增 ${created} 題到題庫`);
+    if (fail) alert(`已新增 ${ok} 題（失敗 ${fail}）`);
     onSave();
     onClose();
   }
 
   return (
-    <div style={{
-      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      zIndex: 1000, backdropFilter: 'blur(4px)',
-    }}>
+    <div style={OVERLAY}>
       <div style={{
-        background: '#fff', borderRadius: 28, padding: 28,
-        width: 560, maxWidth: '94vw', maxHeight: '88vh',
-        boxShadow: '0 24px 60px rgba(0,0,0,0.15)',
+        background: '#F9FAFB', borderRadius: 28,
+        width: step === 1 ? 500 : 980, maxWidth: '96vw', maxHeight: '92vh',
+        boxShadow: '0 24px 60px rgba(0,0,0,0.18)',
         border: '1px solid rgba(17,24,39,0.08)',
-        display: 'flex', flexDirection: 'column',
+        display: 'flex', flexDirection: 'column', overflow: 'hidden',
       }}>
-        <div style={{ fontWeight: 900, fontSize: 18, marginBottom: 4 }}>選擇要加入題庫的題目</div>
-        <div style={{ color: '#6B7280', fontWeight: 700, fontSize: 13, marginBottom: 16 }}>
-          已選 <strong style={{ color: '#007AFF' }}>{count}</strong> / {candidates.length} 題
+
+        {/* Header */}
+        <div style={{
+          padding: '16px 22px', background: '#fff',
+          borderBottom: '1px solid rgba(17,24,39,0.08)',
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        }}>
+          <div>
+            <div style={{ fontWeight: 900, fontSize: 16, color: '#111827' }}>✨ AI 產生題目</div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: '#6B7280', marginTop: 2 }}>
+              {step === 1 ? '設定題目條件' : `已產生 ${candidates.length} 題，可編輯後加入題庫`}
+            </div>
+          </div>
+          <button onClick={onClose} style={{ ...btnGhost, padding: '6px 12px', fontSize: 18, lineHeight: 1 }}>×</button>
         </div>
-        <div style={{ flex: 1, overflowY: 'auto', display: 'grid', gap: 8, marginBottom: 20 }}>
-          {candidates.map((it, i) => (
-            <div key={i} onClick={() => setSelected(s => ({ ...s, [i]: !s[i] }))} style={{
-              display: 'flex', gap: 12, alignItems: 'flex-start',
-              padding: '12px 14px', borderRadius: 14, cursor: 'pointer',
-              background: selected[i] ? 'rgba(0,122,255,0.06)' : '#F9FAFB',
-              border: `1px solid ${selected[i] ? 'rgba(0,122,255,0.25)' : 'rgba(17,24,39,0.08)'}`,
-            }}>
-              <input type="checkbox" checked={!!selected[i]} onChange={() => {}}
-                style={{ accentColor: '#007AFF', marginTop: 3, flexShrink: 0 }} />
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontWeight: 900, fontSize: 13, color: '#111827', marginBottom: 4 }}>
-                  {it.question_text || '（無題幹）'}
+
+        {step === 1 ? (
+          /* ── Step 1: Settings ── */
+          <div style={{ flex: 1, overflowY: 'auto', padding: '24px 28px' }}>
+            <div style={{ display: 'grid', gap: 18 }}>
+              <label style={labelStyle}>
+                主題 / 科目
+                <input style={inputStyle} value={topic}
+                  onChange={e => setTopic(e.target.value)}
+                  placeholder="例如：分數、二次大戰、光合作用…" />
+              </label>
+
+              <label style={labelStyle}>
+                年級程度
+                <select style={inputStyle} value={level} onChange={e => setLevel(e.target.value)}>
+                  {GRADES.map(l => <option key={l} value={l}>{l}</option>)}
+                </select>
+              </label>
+
+              <label style={labelStyle}>
+                題目數量：<strong style={{ color: '#111827', fontWeight: 900 }}>{count} 題</strong>
+                <input type="range" min="1" max="15" value={count}
+                  onChange={e => setCount(Number(e.target.value))}
+                  style={{ width: '100%', marginTop: 6, accentColor: '#7C3AED' }} />
+              </label>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <div style={{ fontSize: 13, fontWeight: 800, color: '#6B7280' }}>
+                  題型（可多選）
+                  {selectedTypes.length === 0 && (
+                    <span style={{ color: '#FF3B30', marginLeft: 8 }}>請至少選一種</span>
+                  )}
                 </div>
-                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                  <QuestionTypeBadge type={it.type} />
-                  {it.topic && <span style={{ fontSize: 11, color: '#6B7280', fontWeight: 700 }}>{it.topic}</span>}
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                  {SUPPORTED_TYPES.map(t => (
+                    <button key={t} type="button"
+                      style={types[t]
+                        ? { ...btnPrimary, background: '#7C3AED', padding: '8px 16px' }
+                        : { ...btnGhost, padding: '8px 16px' }}
+                      onClick={() => setTypes(prev => ({ ...prev, [t]: !prev[t] }))}>
+                      {typeLabel(t)}
+                    </button>
+                  ))}
                 </div>
               </div>
             </div>
-          ))}
-        </div>
-        <div style={{ display: 'flex', gap: 10, justifyContent: 'space-between' }}>
-          <button onClick={onBack} style={btnGhost} disabled={saving}>← 重新設定</button>
-          <div style={{ display: 'flex', gap: 10 }}>
-            <button onClick={onClose} style={btnGhost} disabled={saving}>取消</button>
-            <button onClick={save} style={{ ...btnPrimary, background: '#7C3AED' }} disabled={saving || !count}>
-              {saving ? '儲存中…' : `加入題庫（${count}）`}
-            </button>
           </div>
+        ) : (
+          /* ── Step 2: Review & Edit ── */
+          <div style={{ flex: 1, overflow: 'hidden', display: 'grid', gridTemplateColumns: '340px 1fr' }}>
+
+            {/* Left: question list */}
+            <div style={{
+              borderRight: '1px solid rgba(17,24,39,0.08)',
+              display: 'flex', flexDirection: 'column', overflow: 'hidden',
+            }}>
+              <div style={{
+                padding: '10px 14px', borderBottom: '1px solid rgba(17,24,39,0.08)',
+                background: '#fff', fontSize: 13, fontWeight: 900, color: '#111827',
+              }}>
+                已選 <span style={{ color: '#7C3AED' }}>{checkedCount}</span> / {candidates.length} 題
+              </div>
+              <div style={{ flex: 1, overflowY: 'auto' }}>
+                {candidates.map((q, i) => {
+                  const isActive = activeIdx === i;
+                  return (
+                    <button key={i} type="button" onClick={() => setActiveIdx(i)} style={{
+                      width: '100%', textAlign: 'left', border: 0,
+                      borderLeft: isActive ? '4px solid #7C3AED' : '4px solid transparent',
+                      background: isActive ? 'rgba(124,58,237,0.06)' : 'transparent',
+                      padding: '10px 14px', cursor: 'pointer',
+                      borderBottom: '1px solid rgba(17,24,39,0.06)', display: 'grid', gap: 5,
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                        <input type="checkbox" checked={!!checked[i]} onChange={() => {}}
+                          onClick={e => { e.stopPropagation(); setChecked(c => ({ ...c, [i]: !c[i] })); }}
+                          style={{ accentColor: '#7C3AED', flexShrink: 0, width: 15, height: 15 }} />
+                        <div style={{
+                          fontWeight: 900, fontSize: 13, color: '#111827',
+                          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1,
+                        }}>
+                          {q.question_text || '（無題幹）'}
+                        </div>
+                      </div>
+                      <div style={{ paddingLeft: 23, display: 'flex', gap: 8, alignItems: 'center' }}>
+                        <QuestionTypeBadge type={q.type} />
+                        {q.topic && <span style={{ fontSize: 11, color: '#6B7280', fontWeight: 700 }}>{q.topic}</span>}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Right: edit form */}
+            <div style={{ overflowY: 'auto', padding: '20px 24px', background: '#fff' }}>
+              {candidates[activeIdx] ? (
+                <>
+                  <div style={{ fontSize: 12, fontWeight: 800, color: '#9CA3AF', marginBottom: 16 }}>
+                    題目 {activeIdx + 1} / {candidates.length} — 點擊左側列表切換
+                  </div>
+                  <QuestionEditForm
+                    item={candidates[activeIdx]}
+                    onChange={updated =>
+                      setCandidates(prev => prev.map((q, i) => i === activeIdx ? updated : q))
+                    }
+                  />
+                </>
+              ) : (
+                <div style={{ color: '#9CA3AF', fontWeight: 700, padding: '40px 0', textAlign: 'center' }}>
+                  從左側選擇題目以編輯
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Footer */}
+        <div style={{
+          padding: '14px 22px', background: '#fff',
+          borderTop: '1px solid rgba(17,24,39,0.08)',
+          display: 'flex', gap: 10, justifyContent: 'flex-end', alignItems: 'center',
+        }}>
+          {step === 2 && (
+            <button onClick={() => setStep(1)} style={{ ...btnGhost, marginRight: 'auto' }}
+              disabled={saving}>← 重新設定</button>
+          )}
+          <button onClick={onClose} style={btnGhost} disabled={generating || saving}>取消</button>
+          {step === 1 ? (
+            <button
+              onClick={generate}
+              style={{ ...btnPrimary, background: '#7C3AED' }}
+              disabled={generating || selectedTypes.length === 0}>
+              {generating ? '產生中…' : '產生題目 →'}
+            </button>
+          ) : (
+            <button
+              onClick={saveSelected}
+              style={{ ...btnPrimary, background: '#7C3AED' }}
+              disabled={saving || checkedCount === 0}>
+              {saving ? '儲存中…' : `加入題庫（${checkedCount}）`}
+            </button>
+          )}
         </div>
       </div>
     </div>
@@ -444,8 +539,6 @@ export default function TeacherQuestionBank() {
 
   // AI
   const [aiOpen, setAiOpen] = useState(false);
-  const [aiCandidates, setAiCandidates] = useState([]);
-  const [aiResultsOpen, setAiResultsOpen] = useState(false);
 
   // Load all questions from all classrooms
   const refresh = useCallback(async (cls) => {
@@ -627,20 +720,7 @@ export default function TeacherQuestionBank() {
           <AiModal
             classroomId={classrooms[0]?.id || ''}
             onClose={() => setAiOpen(false)}
-            onAdd={candidates => {
-              setAiCandidates(candidates);
-              setAiOpen(false);
-              setAiResultsOpen(true);
-            }}
-          />
-        )}
-        {aiResultsOpen && (
-          <AiResultsModal
-            candidates={aiCandidates}
-            classroomId={classrooms[0]?.id || ''}
             onSave={refresh}
-            onBack={() => { setAiResultsOpen(false); setAiOpen(true); }}
-            onClose={() => setAiResultsOpen(false)}
           />
         )}
       </div>
