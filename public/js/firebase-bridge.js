@@ -395,23 +395,6 @@ window.QuestClassFirebase = {
       return { ok: false, error: 'Teacher/admin only' };
     }
 
-    const classroomId = String(payload.classroomId || '').trim();
-    if (!classroomId) return { ok: false, error: 'classroomId required' };
-
-    // Ensure teacher can only write to classrooms they belong to (unless admin)
-    if (String(me.role || '').toLowerCase() === 'teacher') {
-      try {
-        const classroomSnap = await sdk.getDoc(sdk.doc(db, 'classrooms', classroomId));
-        const classroom = this._docData(classroomSnap);
-        const teacherUids = Array.isArray(classroom?.teacherUids) ? classroom.teacherUids : [];
-        if (!teacherUids.includes(check.authUser.uid)) {
-          return { ok: false, error: 'Insufficient role for this classroom' };
-        }
-      } catch (e) {
-        return { ok: false, error: e?.message || 'Classroom permission check failed' };
-      }
-    }
-
     const cleanId = String(payload.id || '').trim();
     const isUpdate = Boolean(cleanId);
 
@@ -421,7 +404,6 @@ window.QuestClassFirebase = {
 
     const assignment = {
       id: docRef.id,
-      classroomId,
       title: String(payload.title || '').trim(),
       description: String(payload.description || '').trim(),
       dueAt: String(payload.dueAt || '').trim(),
@@ -467,22 +449,17 @@ window.QuestClassFirebase = {
     const check = await this._requireSignedIn();
     if (!check.ok) return { ok: false, error: check.error, items: [] };
     const { db, sdk } = check.ready;
-    const me = check.me || {};
-    const classroomIds = Array.isArray(me.classroomIds) ? me.classroomIds : [];
-    if (!classroomIds.length) return { ok: true, items: [] };
 
     try {
       const col = sdk.collection(db, 'homeworkAssignments');
-      const slice = classroomIds.slice(0, 10);
       const q = sdk.query(
         col,
-        sdk.where('classroomId', 'in', slice),
+        sdk.where('status', '==', 'published'),
         sdk.orderBy('createdAt', 'desc'),
         sdk.limit(limit)
       );
       const snap = await sdk.getDocs(q);
-      const items = snap.docs.map((doc) => this._docData(doc)).filter(Boolean)
-        .filter((a) => String(a.status || 'published') === 'published');
+      const items = snap.docs.map((doc) => this._docData(doc)).filter(Boolean);
       return { ok: true, items };
     } catch (error) {
       return { ok: false, error: error?.message || 'My homework list failed', items: [] };
@@ -641,20 +618,12 @@ window.QuestClassFirebase = {
       const a = this._docData(aSnap);
       if (!a) return { ok: false, error: 'assignment not found' };
 
-      // Basic membership check using users.classroomIds
-      const me = check.me || {};
-      const classroomIds = Array.isArray(me.classroomIds) ? me.classroomIds : [];
-      if (!classroomIds.includes(a.classroomId)) {
-        return { ok: false, error: 'Not in classroom' };
-      }
-
       const answers = Array.isArray(payload.answers) ? payload.answers : [];
       const subId = `${assignmentId}_${check.authUser.uid}`;
       const docRef = sdk.doc(db, 'submissions', subId);
       const submission = {
         id: subId,
         assignmentId,
-        classroomId: a.classroomId,
         studentUid: check.authUser.uid,
         assignmentTitle: a.title || '',
         topic: 'homework',
