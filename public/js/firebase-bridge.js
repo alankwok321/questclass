@@ -730,6 +730,25 @@ window.QuestClassFirebase = {
     }
   },
 
+  async listMySubmissions(limit = 100) {
+    const check = await this._requireSignedIn();
+    if (!check.ok) return { ok: false, error: check.error, submissions: [] };
+    const { db, sdk } = check.ready;
+
+    try {
+      const q = sdk.query(
+        sdk.collection(db, 'submissions'),
+        sdk.where('studentUid', '==', check.authUser.uid),
+        sdk.limit(limit)
+      );
+      const snap = await sdk.getDocs(q);
+      const submissions = snap.docs.map((doc) => this._docData(doc)).filter(Boolean);
+      return { ok: true, submissions };
+    } catch (error) {
+      return { ok: false, error: error?.message || 'List my submissions failed', submissions: [] };
+    }
+  },
+
   async listSubmissionsForAssignment(assignmentId, limit = 200) {
     const check = await this._requireSignedIn();
     if (!check.ok) return { ok: false, error: check.error, submissions: [] };
