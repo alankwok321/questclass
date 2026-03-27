@@ -80,7 +80,11 @@ function Shell({ user, setUser, fbReady, setFbReady, children }) {
   const extraItems = [
     ...(role === 'student' ? [{ to: '/student-homework', label: '我的作業', icon: FileText }] : []),
     ...(role === 'teacher' ? teacherNavItems : []),
-    ...(role === 'admin' ? [...teacherNavItems, { to: '/admin', label: '系統管理', icon: FileText }] : []),
+    ...(role === 'admin' ? [
+      { to: '/student-homework', label: '學生作業', icon: FileText },
+      ...teacherNavItems,
+      { to: '/admin', label: '系統管理', icon: FileText },
+    ] : []),
     { to: '/chat', label: 'AI 聊天', icon: MessageSquare },
     { to: '/analytics', label: '分析', icon: TrendingUp },
     { to: '/', label: '首頁', icon: BookOpen },
