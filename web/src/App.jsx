@@ -69,13 +69,19 @@ function Shell({ user, setUser, fbReady, setFbReady, children }) {
     { to: '/parents', label: '家長通知', icon: MessageSquare },
   ];
 
-  const extraItems = [
+  const role = user?.role || '';
+
+  const teacherNavItems = [
     { to: '/teacher-homework', label: '出作業', icon: BookOpen },
     { to: '/teacher-question-bank', label: '題庫', icon: BookOpen },
-    { to: '/student-homework', label: '我的作業', icon: FileText },
     { to: '/teacher', label: '教師工具', icon: LayoutDashboard },
+  ];
+
+  const extraItems = [
+    ...(role === 'student' ? [{ to: '/student-homework', label: '我的作業', icon: FileText }] : []),
+    ...(role === 'teacher' ? teacherNavItems : []),
+    ...(role === 'admin' ? [...teacherNavItems, { to: '/admin', label: '系統管理', icon: FileText }] : []),
     { to: '/chat', label: 'AI 聊天', icon: MessageSquare },
-    { to: '/admin', label: '系統管理', icon: FileText },
     { to: '/analytics', label: '分析', icon: TrendingUp },
     { to: '/', label: '首頁', icon: BookOpen },
   ];

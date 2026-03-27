@@ -443,7 +443,7 @@ window.QuestClassFirebase = {
     }
   },
 
-  async listHomeworkAssignments(classroomId = null, limit = 50) {
+  async listHomeworkAssignments(limit = 50) {
     const check = await this._requireSignedIn();
     if (!check.ok) return { ok: false, error: check.error, items: [] };
     const { db, sdk } = check.ready;
@@ -454,11 +454,7 @@ window.QuestClassFirebase = {
 
     try {
       const col = sdk.collection(db, 'homeworkAssignments');
-      const clean = String(classroomId || '').trim();
-      let q = sdk.query(col, sdk.orderBy('createdAt', 'desc'), sdk.limit(limit));
-      if (clean) {
-        q = sdk.query(col, sdk.where('classroomId', '==', clean), sdk.orderBy('createdAt', 'desc'), sdk.limit(limit));
-      }
+      const q = sdk.query(col, sdk.orderBy('createdAt', 'desc'), sdk.limit(limit));
       const snap = await sdk.getDocs(q);
       const items = snap.docs.map((doc) => this._docData(doc)).filter(Boolean);
       return { ok: true, items };
@@ -529,23 +525,6 @@ window.QuestClassFirebase = {
       return { ok: false, error: 'Teacher/admin only' };
     }
 
-    const classroomId = String(payload.classroomId || '').trim();
-    if (!classroomId) return { ok: false, error: 'classroomId required' };
-
-    // Ensure teacher can only write to classrooms they belong to (unless admin)
-    if (String(me.role || '').toLowerCase() === 'teacher') {
-      try {
-        const classroomSnap = await sdk.getDoc(sdk.doc(db, 'classrooms', classroomId));
-        const classroom = this._docData(classroomSnap);
-        const teacherUids = Array.isArray(classroom?.teacherUids) ? classroom.teacherUids : [];
-        if (!teacherUids.includes(check.authUser.uid)) {
-          return { ok: false, error: 'Insufficient role for this classroom' };
-        }
-      } catch (e) {
-        return { ok: false, error: e?.message || 'Classroom permission check failed' };
-      }
-    }
-
     const cleanId = String(payload.id || '').trim();
     const isUpdate = Boolean(cleanId);
 
@@ -559,7 +538,6 @@ window.QuestClassFirebase = {
 
     const item = {
       id: docRef.id,
-      classroomId,
       type,
       topic: String(payload.topic || '').trim(),
       points: Number(payload.points || 1),
@@ -627,17 +605,18 @@ window.QuestClassFirebase = {
     }
   },
 
-  async listQuestionBank(classroomId = '', limit = 200) {
+  async listQuestionBank(limit = 200) {
     const check = await this._requireSignedIn();
     if (!check.ok) return { ok: false, error: check.error, items: [] };
     const { db, sdk } = check.ready;
-    const cid = String(classroomId || '').trim();
-    if (!cid) return { ok: true, items: [] };
+    const me = check.me || {};
+    if (!['teacher', 'admin'].includes(String(me.role || '').toLowerCase())) {
+      return { ok: false, error: 'Teacher/admin only', items: [] };
+    }
 
     try {
       const q = sdk.query(
         sdk.collection(db, 'questionBank'),
-        sdk.where('classroomId', '==', cid),
         sdk.orderBy('updatedAt', 'desc'),
         sdk.limit(limit)
       );
