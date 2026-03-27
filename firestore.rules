@@ -214,6 +214,7 @@ service cloud.firestore {
         'difficulty',
 
         // UI-aligned content fields
+        'target_level',
         'question_text',
         'options',
         'correct_answer',
