@@ -1,4 +1,5 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import * as XLSX from 'xlsx';
 import { listQuestionBank, upsertQuestionBankItem } from '../services/firebase.js';
 import { getIdToken } from '../services/firebase.js';
 import QuestionTypeBadge from '../components/QuestionTypeBadge.jsx';
@@ -524,6 +525,201 @@ function AiModal({ onClose, onSave }) {
   );
 }
 
+// ── Excel Import Modal ────────────────────────────────────────────────────────
+// Expected columns (case-insensitive): type, question_text, option_a/b/c/d,
+// correct_answer, points, topic, target_level, ideal_answer
+function parseExcelRows(rows) {
+  return rows.map((row, i) => {
+    const get = (...keys) => {
+      for (const k of keys) {
+        const match = Object.keys(row).find(rk => rk.toLowerCase().replace(/[\s_]/g, '') === k.toLowerCase().replace(/[\s_]/g, ''));
+        if (match && row[match] !== undefined && row[match] !== '') return String(row[match]).trim();
+      }
+      return '';
+    };
+
+    const type = get('type').toUpperCase();
+    if (!type) return null;
+    const question_text = get('question_text', 'question', 'questiontext');
+    if (!question_text) return null;
+
+    const points = parseInt(get('points'), 10) || 1;
+    const topic = get('topic');
+    const target_level = get('target_level', 'targetlevel', 'level', 'grade');
+    const ideal_answer = get('ideal_answer', 'idealanswer', 'answer', 'model_answer');
+
+    let result = { type, question_text, points, topic, target_level, _row: i + 2 };
+
+    if (type === 'TRUE_FALSE') {
+      const ca = get('correct_answer', 'correctanswer', 'answer').toUpperCase();
+      result.correct_answer = ca === 'TRUE' || ca === '是' || ca === 'T' || ca === '1' || ca === 'YES';
+    } else if (type === 'MULTIPLE_CHOICE') {
+      const optA = get('option_a', 'optiona', 'a');
+      const optB = get('option_b', 'optionb', 'b');
+      const optC = get('option_c', 'optionc', 'c');
+      const optD = get('option_d', 'optiond', 'd');
+      const opts = [optA, optB, optC, optD].map((text, idx) => ({
+        id: String.fromCharCode(65 + idx), text, is_correct: false,
+      })).filter(o => o.text);
+      const ca = get('correct_answer', 'correctanswer', 'answer').toUpperCase();
+      opts.forEach(o => { if (ca.includes(o.id)) o.is_correct = true; });
+      result.options = opts;
+    } else if (type === 'SHORT_ANSWER' || type === 'LONG_ANSWER') {
+      result.ideal_answer = ideal_answer || get('correct_answer', 'correctanswer');
+    } else if (type === 'FILL_IN_BLANK') {
+      const answers = (get('correct_answer', 'correctanswer', 'answer') || '').split(/[;；,，]/);
+      result.blanks = answers.map((a, idx) => ({ position: idx + 1, accepted: [a.trim()] }));
+    }
+
+    return result;
+  }).filter(Boolean);
+}
+
+function ExcelImportModal({ onClose, onDone }) {
+  const fileRef = useRef();
+  const [rows, setRows] = useState(null);   // parsed preview
+  const [fileName, setFileName] = useState('');
+  const [importing, setImporting] = useState(false);
+  const [results, setResults] = useState(null); // { ok, fail }
+
+  function handleFile(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setFileName(file.name);
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const wb = XLSX.read(ev.target.result, { type: 'array' });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const json = XLSX.utils.sheet_to_json(ws, { defval: '' });
+        setRows(parseExcelRows(json));
+      } catch (err) {
+        alert('無法解析檔案：' + err.message);
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  }
+
+  async function doImport() {
+    if (!rows?.length) return;
+    setImporting(true);
+    let ok = 0, fail = 0;
+    for (const row of rows) {
+      const { _row, ...item } = row;
+      try {
+        const res = await upsertQuestionBankItem(stripUndef({
+          ...item,
+          id: undefined, // let bridge generate
+        }));
+        if (res?.ok) ok++; else fail++;
+      } catch { fail++; }
+    }
+    setResults({ ok, fail });
+    setImporting(false);
+    if (ok > 0) onDone();
+  }
+
+  const typeColor = { TRUE_FALSE: '#34C759', MULTIPLE_CHOICE: '#007AFF', FILL_IN_BLANK: '#FF9500', SHORT_ANSWER: '#AF52DE', LONG_ANSWER: '#FF3B30' };
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, backdropFilter: 'blur(4px)' }}>
+      <div style={{ background: '#fff', borderRadius: 24, width: 680, maxWidth: '96vw', maxHeight: '88vh', display: 'flex', flexDirection: 'column', boxShadow: '0 24px 60px rgba(0,0,0,0.18)', overflow: 'hidden' }}>
+
+        {/* Header */}
+        <div style={{ padding: '18px 24px', borderBottom: '1px solid rgba(17,24,39,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div>
+            <div style={{ fontWeight: 900, fontSize: 16 }}>📥 Excel 匯入題目</div>
+            <div style={{ fontSize: 12, color: '#6B7280', fontWeight: 700, marginTop: 2 }}>
+              支援 .xlsx / .xls / .csv
+            </div>
+          </div>
+          <button onClick={onClose} style={btnGhost}>關閉</button>
+        </div>
+
+        <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+
+          {/* Format guide */}
+          <div style={{ background: '#F0F9FF', borderRadius: 14, padding: '12px 16px', fontSize: 12, color: '#0369A1', fontWeight: 700, lineHeight: 1.6 }}>
+            <strong>必填欄位：</strong> type、question_text<br />
+            <strong>type 值：</strong> TRUE_FALSE、MULTIPLE_CHOICE、SHORT_ANSWER、FILL_IN_BLANK、LONG_ANSWER<br />
+            <strong>選擇題：</strong> option_A/B/C/D 填選項，correct_answer 填 A/B/C/D<br />
+            <strong>是非題：</strong> correct_answer 填 TRUE 或 FALSE<br />
+            <strong>其他：</strong> points（分數）、topic（主題）、target_level（年級如 S1）、ideal_answer
+          </div>
+
+          {/* Download template button */}
+          <button
+            style={{ ...btnGhost, alignSelf: 'flex-start', fontSize: 12 }}
+            onClick={() => {
+              const ws = XLSX.utils.aoa_to_sheet([
+                ['type','question_text','option_A','option_B','option_C','option_D','correct_answer','points','topic','target_level','ideal_answer'],
+                ['MULTIPLE_CHOICE','以下哪個是香港的法定語文？','英文','普通話','廣東話','日文','C',1,'常識','P5',''],
+                ['TRUE_FALSE','香港特別行政區於1997年成立。','','','','','TRUE',1,'歷史','S1',''],
+                ['SHORT_ANSWER','請簡述香港的地理位置。','','','','','',2,'地理','S2','位於中國南部沿海'],
+              ]);
+              const wb = XLSX.utils.book_new();
+              XLSX.utils.book_append_sheet(wb, ws, 'Questions');
+              XLSX.writeFile(wb, 'question_template.xlsx');
+            }}
+          >
+            ⬇ 下載範本
+          </button>
+
+          {/* File picker */}
+          <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" style={{ display: 'none' }} onChange={handleFile} />
+          <button style={btnPrimary} onClick={() => fileRef.current?.click()}>
+            {fileName ? `📄 ${fileName}` : '選擇檔案'}
+          </button>
+
+          {/* Preview */}
+          {rows !== null && (
+            <div>
+              <div style={{ fontWeight: 900, fontSize: 14, marginBottom: 10, color: '#111827' }}>
+                預覽（共 {rows.length} 題）
+              </div>
+              {rows.length === 0 ? (
+                <div style={{ color: '#FF3B30', fontWeight: 700, fontSize: 13 }}>找不到有效題目，請確認欄位名稱正確。</div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {rows.slice(0, 20).map((r, i) => (
+                    <div key={i} style={{ background: '#F9FAFB', borderRadius: 12, padding: '10px 14px', display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                      <span style={{ background: typeColor[r.type] || '#9CA3AF', color: '#fff', borderRadius: 99, padding: '2px 8px', fontSize: 11, fontWeight: 900, whiteSpace: 'nowrap', marginTop: 2 }}>
+                        {r.type}
+                      </span>
+                      <div style={{ flex: 1, fontSize: 13, fontWeight: 700, color: '#111827', lineHeight: 1.4 }}>{r.question_text}</div>
+                      <span style={{ fontSize: 11, color: '#9CA3AF', fontWeight: 900, whiteSpace: 'nowrap' }}>{r.points}分</span>
+                    </div>
+                  ))}
+                  {rows.length > 20 && <div style={{ fontSize: 12, color: '#9CA3AF', fontWeight: 700, textAlign: 'center' }}>…還有 {rows.length - 20} 題</div>}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Results */}
+          {results && (
+            <div style={{ background: results.fail > 0 ? '#FFF7ED' : '#F0FDF4', borderRadius: 14, padding: '12px 16px', fontWeight: 700, fontSize: 14, color: results.fail > 0 ? '#92400E' : '#166534' }}>
+              ✅ 成功匯入 {results.ok} 題{results.fail > 0 ? `　❌ 失敗 ${results.fail} 題` : ''}
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div style={{ padding: '14px 24px', borderTop: '1px solid rgba(17,24,39,0.08)', display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+          <button onClick={onClose} style={btnGhost}>取消</button>
+          <button
+            onClick={doImport}
+            style={btnPrimary}
+            disabled={!rows?.length || importing || !!results}
+          >
+            {importing ? `匯入中…` : `匯入 ${rows?.length ?? 0} 題`}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Main Page ─────────────────────────────────────────────────────────────────
 export default function TeacherQuestionBank() {
   const [view, setView] = useState('list'); // 'list' | 'edit'
@@ -543,6 +739,9 @@ export default function TeacherQuestionBank() {
 
   // AI
   const [aiOpen, setAiOpen] = useState(false);
+
+  // Excel import
+  const [importOpen, setImportOpen] = useState(false);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -625,6 +824,9 @@ export default function TeacherQuestionBank() {
           </div>
           <div style={{ display: 'flex', gap: 10 }}>
             <button onClick={openNew} style={btnGhost}>＋ 新增題目</button>
+            <button onClick={() => setImportOpen(true)} style={{ ...btnGhost }}>
+              📥 Excel 匯入
+            </button>
             <button onClick={() => setAiOpen(true)} style={{ ...btnPrimary, background: '#7C3AED' }}>
               ✨ AI 產生題目
             </button>
@@ -706,6 +908,14 @@ export default function TeacherQuestionBank() {
           <AiModal
             onClose={() => setAiOpen(false)}
             onSave={refresh}
+          />
+        )}
+
+        {/* Excel Import Modal */}
+        {importOpen && (
+          <ExcelImportModal
+            onClose={() => setImportOpen(false)}
+            onDone={() => { setImportOpen(false); refresh(); }}
           />
         )}
       </div>
