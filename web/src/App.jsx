@@ -289,10 +289,12 @@ function Placeholder({ name }) {
 }
 
 function AppRoutes({ user }) {
+  // Students can't read class-wide data, so their home is their own homework.
+  const home = user?.role === 'student' ? <StudentHomework /> : <Dashboard />;
   return (
     <Routes>
-      <Route path="/" element={<Dashboard />} />
-      <Route path="/dashboard" element={<Dashboard />} />
+      <Route path="/" element={home} />
+      <Route path="/dashboard" element={home} />
       <Route path="/classroom" element={<PlaceholderTab title="班級管理" />} />
       <Route path="/assignments" element={<PlaceholderTab title="作業批改" />} />
       <Route path="/progress" element={<PlaceholderTab title="進度追蹤" />} />

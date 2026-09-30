@@ -14,8 +14,9 @@ service cloud.firestore {
     }
 
     function userRole() {
+      // Case-insensitive, and safe when the role field is missing.
       return isSignedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid))
-        ? userDoc().role
+        ? string(userDoc().get('role', '')).lower()
         : null;
     }
 
@@ -40,7 +41,12 @@ service cloud.firestore {
     }
 
     function allowedSubmissionKeys() {
-      return ['classroomId', 'studentId', 'studentUid', 'assignmentTitle', 'topic', 'score', 'status', 'feedback', 'submittedAt', 'updatedAt'];
+      return ['id', 'assignmentId', 'answers', 'classroomId', 'studentId', 'studentUid', 'assignmentTitle', 'topic', 'score', 'status', 'feedback', 'submittedAt', 'updatedAt'];
+    }
+
+    // What a student may change when re-submitting their own, not-yet-marked homework.
+    function studentResubmitKeys() {
+      return ['id', 'assignmentId', 'answers', 'assignmentTitle', 'topic', 'status', 'submittedAt', 'updatedAt'];
     }
 
     function allowedProgressKeys() {
@@ -103,7 +109,15 @@ service cloud.firestore {
     match /submissions/{submissionId} {
       allow read: if isTeacherLike() || (isSignedIn() && resource.data.studentUid == request.auth.uid);
       allow create: if (isSignedIn() && request.resource.data.studentUid == request.auth.uid) || isTeacherLike();
-      allow update: if isTeacherLike() && request.resource.data.diff(resource.data).changedKeys().hasOnly(allowedSubmissionKeys());
+      allow update: if (isTeacherLike() && request.resource.data.diff(resource.data).changedKeys().hasOnly(allowedSubmissionKeys()))
+        || (
+          isSignedIn()
+          && resource.data.studentUid == request.auth.uid
+          && request.resource.data.studentUid == request.auth.uid
+          && resource.data.get('status', 'submitted') == 'submitted'
+          && request.resource.data.status == 'submitted'
+          && request.resource.data.diff(resource.data).changedKeys().hasOnly(studentResubmitKeys())
+        );
       allow delete: if isAdmin();
     }
 

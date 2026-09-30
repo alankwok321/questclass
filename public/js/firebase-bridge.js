@@ -130,13 +130,23 @@ window.QuestClassFirebase = {
     const nextProfile = this._profileDocFromUser(user, profile);
 
     try {
+      if (profile) {
+        // Existing profile: the rules only let a user change these keys on their own doc.
+        // (Re-sending createdAt/email/role here was rejected as "insufficient permissions".)
+        const selfUpdate = {
+          photoURL: nextProfile.photoURL,
+          lastLoginAt: nextProfile.lastLoginAt,
+          updatedAt: sdk.serverTimestamp()
+        };
+        await sdk.setDoc(sdk.doc(db, 'users', user.uid), selfUpdate, { merge: true });
+        return { ...profile, photoURL: selfUpdate.photoURL, lastLoginAt: selfUpdate.lastLoginAt };
+      }
       await sdk.setDoc(sdk.doc(db, 'users', user.uid), {
         ...nextProfile,
-        role: profile?.role || nextProfile.role,
-        createdAt: profile?.createdAt || sdk.serverTimestamp(),
+        createdAt: sdk.serverTimestamp(),
         updatedAt: sdk.serverTimestamp()
-      }, { merge: true });
-      return { ...(profile || {}), ...nextProfile };
+      });
+      return { ...nextProfile };
     } catch {
       return profile;
     }
@@ -252,11 +262,17 @@ window.QuestClassFirebase = {
       lastLoginAt: existing?.lastLoginAt || new Date().toISOString()
     };
     try {
-      await sdk.setDoc(ref, {
-        ...payload,
-        role: existing?.role || this._normalizeUser(authUser, existing).role,
-        createdAt: existing?.createdAt || sdk.serverTimestamp()
-      }, { merge: true });
+      if (existing) {
+        // Only self-editable keys; email/role/createdAt are left as they are.
+        const { email, ...selfPayload } = payload;
+        await sdk.setDoc(ref, selfPayload, { merge: true });
+      } else {
+        await sdk.setDoc(ref, {
+          ...payload,
+          role: this._normalizeUser(authUser, existing).role,
+          createdAt: sdk.serverTimestamp()
+        });
+      }
       const profile = await this._loadProfile(authUser.uid);
       this._initResult = { ok: true, mode: this.mode(), user: this._normalizeUser(authUser, profile) };
       return this._initResult;
@@ -421,13 +437,20 @@ window.QuestClassFirebase = {
       targetClass,
       targetStudentUids,
 
-      // On update, preserve createdBy/createdAt if they already exist.
-      createdBy: isUpdate ? (payload.createdBy || check.authUser.uid) : check.authUser.uid,
-      createdAt: isUpdate ? (payload.createdAt || sdk.serverTimestamp()) : sdk.serverTimestamp(),
       updatedAt: sdk.serverTimestamp(),
     };
 
     try {
+      const existing = isUpdate ? this._docData(await sdk.getDoc(docRef)) : null;
+      if (existing) {
+        // Leave createdBy/createdAt untouched (re-sending them as strings broke the rules check).
+        if (String(me.role || '').toLowerCase() !== 'admin' && existing.createdBy && existing.createdBy !== check.authUser.uid) {
+          return { ok: false, error: '只有建立這份作業的老師或管理員可以修改。' };
+        }
+      } else {
+        assignment.createdBy = check.authUser.uid;
+        assignment.createdAt = sdk.serverTimestamp();
+      }
       await sdk.setDoc(docRef, assignment, { merge: true });
       return { ok: true, assignmentId: docRef.id, updated: isUpdate };
     } catch (error) {
@@ -531,6 +554,11 @@ window.QuestClassFirebase = {
 
     try {
       const ref = sdk.doc(db, 'homeworkAssignments', assignmentId);
+      const existing = this._docData(await sdk.getDoc(ref));
+      if (!existing) return { ok: false, error: '找不到這份作業' };
+      if (String(me.role || '').toLowerCase() !== 'admin' && existing.createdBy && existing.createdBy !== check.authUser.uid) {
+        return { ok: false, error: '只有建立這份作業的老師或管理員可以更改狀態。' };
+      }
       // We keep this minimal to avoid accidentally overwriting other fields.
       await sdk.setDoc(ref, { status, updatedAt: sdk.serverTimestamp() }, { merge: true });
       return { ok: true, assignmentId, status };
@@ -587,12 +615,19 @@ window.QuestClassFirebase = {
       choices: Array.isArray(payload.choices) ? payload.choices : [],
       correctChoiceIds: Array.isArray(payload.correctChoiceIds) ? payload.correctChoiceIds : [],
 
-      createdBy: isUpdate ? (payload.createdBy || check.authUser.uid) : check.authUser.uid,
-      createdAt: isUpdate ? (payload.createdAt || sdk.serverTimestamp()) : sdk.serverTimestamp(),
       updatedAt: sdk.serverTimestamp(),
     };
 
     try {
+      const existing = isUpdate ? this._docData(await sdk.getDoc(docRef)) : null;
+      if (existing) {
+        if (String(me.role || '').toLowerCase() !== 'admin' && existing.createdBy && existing.createdBy !== check.authUser.uid) {
+          return { ok: false, error: '只有建立這條題目的老師或管理員可以修改。' };
+        }
+      } else {
+        item.createdBy = check.authUser.uid;
+        item.createdAt = sdk.serverTimestamp();
+      }
       await sdk.setDoc(docRef, item, { merge: true });
       return { ok: true, questionId: docRef.id, updated: isUpdate };
     } catch (error) {
@@ -691,9 +726,14 @@ window.QuestClassFirebase = {
     if (!check.ok) return { ok: false, error: check.error, students: [] };
     const { db, sdk } = check.ready;
     try {
-      const classroomSnap = await sdk.getDoc(sdk.doc(db, 'classrooms', classroomId));
-      const classroom = this._docData(classroomSnap);
-      if (!classroom) return { ok: false, error: 'Classroom not found', students: [] };
+      let classroom = null;
+      try {
+        classroom = this._docData(await sdk.getDoc(sdk.doc(db, 'classrooms', classroomId)));
+      } catch {
+        classroom = null;
+      }
+      // users/{uid}.classroomIds is the source of truth; a classroom doc is optional.
+      if (!classroom) classroom = { id: String(classroomId), name: String(classroomId) };
 
       // New: single source of truth = users/{uid} with classroomIds + studentProfile
       const snap = await sdk.getDocs(
@@ -851,6 +891,9 @@ window.QuestClassFirebase = {
   async getTeacherDashboard(classroomId = null) {
     const check = await this._requireSignedIn();
     if (!check.ok) return { ok: false, error: check.error };
+    if (!['teacher', 'admin'].includes(String(check.me?.role || '').toLowerCase())) {
+      return { ok: false, error: '教師儀表板只供老師和管理員使用。' };
+    }
     const classroomsResult = await this.listClassrooms();
     if (!classroomsResult.ok) return { ok: false, error: classroomsResult.error || 'Classroom list failed' };
     const classrooms = classroomsResult.classrooms || [];
@@ -859,8 +902,13 @@ window.QuestClassFirebase = {
     const studentResult = await this.listStudentsForClassroom(targetClassroomId);
     if (!studentResult.ok) return { ok: false, error: studentResult.error || 'Student list failed' };
     const { db, sdk } = check.ready;
-    const submissionsSnap = await sdk.getDocs(sdk.query(sdk.collection(db, 'submissions'), sdk.where('classroomId', '==', targetClassroomId), sdk.limit(25)));
-    const submissions = submissionsSnap.docs.map((doc) => this._docData(doc)).filter(Boolean);
+    let submissions = [];
+    try {
+      const submissionsSnap = await sdk.getDocs(sdk.query(sdk.collection(db, 'submissions'), sdk.where('classroomId', '==', targetClassroomId), sdk.limit(25)));
+      submissions = submissionsSnap.docs.map((doc) => this._docData(doc)).filter(Boolean);
+    } catch {
+      submissions = [];
+    }
     const students = studentResult.students || [];
     const avgMastery = students.length ? Math.round(students.reduce((sum, item) => sum + Number(item.studentProfile?.mastery || 0), 0) / students.length) : 0;
     const focusCount = students.filter((item) => Number(item.studentProfile?.mastery || 0) < 75).length;
