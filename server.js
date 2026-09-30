@@ -189,7 +189,16 @@ async function resolveProviderConfig(body = {}, allowedRoles = null) {
   };
 }
 
-async function callChatCompletion({ system, user, apiKey, apiBaseUrl, model, temperature = 0.7, responseFormat }) {
+// Keep the last few turns so the assistant remembers the conversation (bounded for cost).
+function sanitizeHistory(history) {
+  if (!Array.isArray(history)) return [];
+  return history
+    .filter((m) => m && (m.role === 'user' || m.role === 'assistant') && String(m.content || '').trim())
+    .slice(-12)
+    .map((m) => ({ role: m.role, content: String(m.content).slice(0, 2000) }));
+}
+
+async function callChatCompletion({ system, user, history = [], apiKey, apiBaseUrl, model, temperature = 0.7, responseFormat }) {
   if (!apiKey) return { ok: false, status: 400, error: 'AI provider is not configured. Set an API key first.' };
 
   const base = String(apiBaseUrl || '').replace(/\/+$/, '');
@@ -212,6 +221,7 @@ async function callChatCompletion({ system, user, apiKey, apiBaseUrl, model, tem
           response_format: responseFormat,
           messages: [
             ...(system ? [{ role: 'system', content: system }] : []),
+            ...history,
             { role: 'user', content: user },
           ],
         }),
@@ -479,8 +489,10 @@ app.post('/api/chat', async (req, res) => {
   if (!message?.trim()) return res.status(400).json({ error: 'Message required' });
 
   let cfg;
+  let actorRole = '';
   try {
     cfg = await resolveProviderConfig(req.body || {}, AI_ROLES.chat);
+    if (req.body?.idToken) actorRole = (await verifyUserFromToken(req.body.idToken))?.role || '';
   } catch (e) {
     return res.status(e.status || 401).json({ error: e.message || 'Invalid auth token' });
   }
@@ -542,15 +554,31 @@ app.post('/api/chat', async (req, res) => {
     });
   }
 
-  const defaultSystem = [
-    'You are an elite AI teacher and learning coach.',
-    'Reply in Traditional Chinese.',
-    'Be concise, supportive, and pedagogically strong.',
-    'Prefer Socratic guidance over direct answers unless the student explicitly asks for the final answer.',
-    'If useful, give 1 next step, 1 hint, and 1 quick check question.'
+  const isStaff = actorRole === 'teacher' || actorRole === 'admin';
+  const studentSystem = [
+    'You are QuestClass AI 助教, a friendly learning coach for Hong Kong school students.',
+    'Reply in Traditional Chinese (Hong Kong usage).',
+    'Be concise, warm and encouraging. Use short paragraphs or short lists.',
+    'Prefer Socratic guidance: give a hint and one guiding question before the full answer, unless the student explicitly asks for the final answer.',
+    'Never just hand over homework answers; help the student reason.',
+    'Keep content age-appropriate.'
+  ].join(' ');
+  const staffSystem = [
+    'You are QuestClass AI 助教, an assistant for Hong Kong school teachers.',
+    'Reply in Traditional Chinese (Hong Kong usage) unless asked otherwise.',
+    'Be direct and practical: lesson ideas, questions, marking comments, differentiation, parent messages.',
+    'Give complete answers (no Socratic questioning). Use short lists and clear headings where helpful.',
+    'Match the Hong Kong curriculum and the grade level mentioned.'
   ].join(' ');
 
-  const system = String(req.body?.system || '').trim() || defaultSystem;
+  // Custom system prompts (used by the question generators) are for staff only, so students
+  // can't rewrite the assistant's instructions. Without Firebase (demo) they are allowed.
+  const firebaseOn = getFirebaseRuntimeConfig().enabled;
+  const customSystem = String(req.body?.system || '').trim();
+  const system = customSystem && (isStaff || !firebaseOn)
+    ? customSystem
+    : (isStaff ? staffSystem : studentSystem);
+  const history = sanitizeHistory(req.body?.history);
 
   const contextText = studentContext
     ? `Student profile:\n${JSON.stringify({
@@ -571,8 +599,12 @@ app.post('/api/chat', async (req, res) => {
       }, null, 2)}`
     : 'Student profile: unavailable';
 
-  const user = `Student: ${studentName}\nTopic: ${topic}\nTeaching mode: ${mode}\n${contextText}\nStudent message: ${message}\nUse the student profile to personalize explanation difficulty and examples. Respond in Traditional Chinese.`;
-  const result = await callChatCompletion({ ...cfg, system, user, temperature: 0.8 });
+  const pageNote = req.body?.page ? `\n(The user is on the "${String(req.body.page).slice(0, 40)}" page.)` : '';
+  // The assistant bubble sends plain messages with history; the generators still use the tagged format.
+  const user = req.body?.assistant
+    ? `${String(message).slice(0, 4000)}${pageNote}`
+    : `Student: ${studentName}\nTopic: ${topic}\nTeaching mode: ${mode}\n${contextText}\nStudent message: ${message}\nUse the student profile to personalize explanation difficulty and examples. Respond in Traditional Chinese.`;
+  const result = await callChatCompletion({ ...cfg, system, user, history, temperature: req.body?.format === 'json' ? 0.5 : 0.7 });
   if (!result.ok) return res.status(result.status).json({ error: result.error });
   // If caller wants JSON, try to parse and return it.
   if (String(req.body?.format || '').toLowerCase() === 'json') {

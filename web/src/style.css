@@ -354,6 +354,74 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   .landingRoles { grid-template-columns: minmax(0, 1fr); }
 }
 
+/* Floating AI assistant */
+.qaBubble {
+  position: fixed; right: 24px; bottom: 24px; z-index: 900;
+  width: 56px; height: 56px; border-radius: 999px; border: 0; cursor: pointer;
+  display: grid; place-items: center; color: #fff;
+  background: linear-gradient(135deg, #5E5CE6, #0071E3);
+  box-shadow: 0 8px 24px rgba(0,113,227,0.35), 0 2px 6px rgba(0,0,0,0.12);
+  transition: transform 150ms ease, box-shadow 150ms ease;
+}
+.qaBubble:hover { transform: scale(1.05); }
+.qaBubbleOpen { background: #1D1D1F; box-shadow: 0 6px 18px rgba(0,0,0,0.25); }
+
+.qaPanel {
+  position: fixed; right: 24px; bottom: 92px; z-index: 900;
+  width: 380px; height: min(600px, calc(100dvh - 120px));
+  display: flex; flex-direction: column; overflow: hidden;
+  background: rgba(255,255,255,0.96);
+  backdrop-filter: saturate(180%) blur(24px); -webkit-backdrop-filter: saturate(180%) blur(24px);
+  border: 1px solid rgba(0,0,0,0.08); border-radius: 22px;
+  box-shadow: 0 24px 60px rgba(0,0,0,0.18), 0 4px 14px rgba(0,0,0,0.08);
+  animation: qaIn 180ms ease-out;
+}
+@keyframes qaIn { from { opacity: 0; transform: translateY(12px) scale(0.98); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .qaPanel { animation: none; } .qaBubble { transition: none; } }
+
+.qaHeader { display: flex; align-items: center; gap: 10px; padding: 14px 12px 12px 16px; border-bottom: 1px solid var(--line); }
+.qaAvatar { width: 34px; height: 34px; border-radius: 999px; display: grid; place-items: center; color: #fff; background: linear-gradient(135deg, #5E5CE6, #0071E3); flex-shrink: 0; }
+.qaTitle { font-size: 15px; font-weight: 700; }
+.qaSub { font-size: 12px; color: var(--muted); }
+.qaIconBtn { width: 36px; height: 36px; border-radius: 999px; border: 0; background: transparent; color: var(--muted); display: grid; place-items: center; cursor: pointer; }
+.qaIconBtn:hover { background: var(--fill); color: var(--text); }
+
+.qaBody { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 10px; }
+.qaMsg { max-width: 86%; padding: 10px 14px; font-size: 14.5px; line-height: 1.55; white-space: pre-wrap; word-break: break-word; }
+.qaMsgBot { align-self: flex-start; background: var(--fill); color: var(--text); border-radius: 18px 18px 18px 6px; white-space: normal; }
+.qaMsgUser { align-self: flex-end; background: var(--primary); color: #fff; border-radius: 18px 18px 6px 18px; }
+.qaMsgError { align-self: flex-start; background: var(--danger-tint); color: var(--danger); border-radius: 18px 18px 18px 6px; }
+.qaPara, .qaHeading { margin: 0; }
+.qaPara + .qaPara, .qaList + .qaPara, .qaPara + .qaList { margin-top: 6px; }
+.qaHeading { font-weight: 700; margin-top: 4px; }
+.qaList { margin: 4px 0; padding-left: 20px; }
+.qaList li + li { margin-top: 3px; }
+
+.qaChips { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
+.qaChip { border: 1px solid var(--field-border); background: #fff; color: var(--link); border-radius: 999px; padding: 8px 14px; font-size: 13.5px; cursor: pointer; text-align: left; }
+.qaChip:hover { background: var(--primary-tint); }
+
+.qaTyping { display: inline-flex; gap: 4px; align-items: center; padding: 14px 16px; }
+.qaTyping span { width: 7px; height: 7px; border-radius: 999px; background: #8E8E93; animation: qaDot 1s infinite ease-in-out; }
+.qaTyping span:nth-child(2) { animation-delay: 0.15s; }
+.qaTyping span:nth-child(3) { animation-delay: 0.3s; }
+@keyframes qaDot { 0%, 80%, 100% { opacity: 0.3; transform: translateY(0); } 40% { opacity: 1; transform: translateY(-3px); } }
+
+.qaComposer { display: flex; align-items: flex-end; gap: 8px; padding: 10px 12px 12px; border-top: 1px solid var(--line); }
+.qaComposer textarea {
+  flex: 1; resize: none; max-height: 120px; min-height: 40px; padding: 10px 14px;
+  border: 1px solid var(--field-border); border-radius: 20px; background: #fff; font-size: 14.5px; line-height: 1.4; outline: none;
+  field-sizing: content;
+}
+.qaSend { width: 40px; height: 40px; border-radius: 999px; border: 0; background: var(--primary); color: #fff; display: grid; place-items: center; cursor: pointer; flex-shrink: 0; }
+.qaSend:disabled { background: #B8B8BD; cursor: not-allowed; }
+
+@media (max-width: 720px) {
+  .qaPanel { right: 0; bottom: 0; width: 100vw; height: 100dvh; border-radius: 0; border: 0; }
+  .qaBubble { right: 16px; bottom: 16px; }
+  .qaBubbleOpen { display: none; }
+}
+
 /* lucide icon size helpers used by some components */
 .w-4 { width: 16px; }
 .h-4 { height: 16px; }

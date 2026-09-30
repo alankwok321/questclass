@@ -8,7 +8,6 @@ import {
   MessageSquare,
   Bell,
   Search,
-  Sparkles,
   Library,
   Settings,
   ClipboardCheck,
@@ -27,12 +26,12 @@ import StudentHomework from './pages/StudentHomework.jsx';
 
 import './style.css';
 import Teacher from './pages/Teacher.jsx';
-import ChatPage from './pages/Chat.jsx';
 import AdminPage from './pages/Admin.jsx';
 import Dashboard from './pages/Dashboard.jsx';
 import PlaceholderTab from './pages/PlaceholderTab.jsx';
 import Landing from './pages/Landing.jsx';
 import ParentPage from './pages/Parent.jsx';
+import AssistantBubble from './components/AssistantBubble.jsx';
 import { ToastProvider, useToast } from './components/Toast.jsx';
 import { firebaseEnabled, firebaseInit, signInWithGoogle, signOut } from './services/firebase.js';
 import { ROLE_LABELS, canAccess, homePathFor, isBlockedAccount, normalizeRole } from './permissions.js';
@@ -63,7 +62,6 @@ const NAV_GROUPS = [
   {
     label: '更多',
     items: [
-      { to: '/chat', label: 'AI 助教', icon: Sparkles },
       { to: '/analytics', label: '分析', icon: Activity },
       { to: '/admin', label: '管理後台', icon: Settings },
     ],
@@ -78,7 +76,6 @@ const TITLES = [
   ['/parents', '家長通知'],
   ['/parent', '我的孩子'],
   ['/admin', '管理後台'],
-  ['/chat', 'AI 助教'],
   ['/analytics', '分析'],
   ['/classroom', '班級管理'],
   ['/assignments', '作業批改'],
@@ -117,6 +114,15 @@ function RoleGate({ role, children }) {
   if (p === '/') return <Navigate to={home} replace />;
   if (!canAccess(role, p)) return <Navigate to={home} replace />;
   return children;
+}
+
+// The AI assistant is now the floating bubble; old /chat links open it and go home.
+function OpenAssistant({ role }) {
+  useEffect(() => {
+    window.__qc_openAssistant = true; // read by the bubble if it mounts after this effect
+    window.dispatchEvent(new Event('qc:open-assistant'));
+  }, []);
+  return <Navigate to={homePathFor(role)} replace />;
 }
 
 function Shell({ user, onLogout, children }) {
@@ -211,6 +217,8 @@ function Shell({ user, onLogout, children }) {
 
         <div className="content">{children}</div>
       </main>
+
+      {canAccess(role, '/chat') ? <AssistantBubble user={user} pageTitle={title} /> : null}
     </div>
   );
 }
@@ -235,7 +243,7 @@ function AppRoutes({ user }) {
       <Route path="/teacher-homework-old/*" element={<TeacherHomeworkLayout />} />
 
       <Route path="/teacher" element={<Teacher />} />
-      <Route path="/chat" element={<ChatPage />} />
+      <Route path="/chat" element={<OpenAssistant role={normalizeRole(user?.role)} />} />
       <Route path="/admin" element={<AdminPage user={user} />} />
       <Route path="/analytics" element={<PlaceholderTab title="分析" />} />
 
