@@ -124,7 +124,13 @@ function canManageStudent(user, targetUid) {
   return user.uid === targetUid;
 }
 
-async function resolveProviderConfig(body = {}) {
+// Same page permissions as web/src/permissions.js, applied to the AI endpoints.
+const AI_ROLES = {
+  chat: ['admin', 'teacher', 'student'],
+  lessonLoop: ['admin', 'teacher'],
+};
+
+async function resolveProviderConfig(body = {}, allowedRoles = null) {
   let cfg = getProviderConfig(body);
   const firebaseOn = getFirebaseRuntimeConfig().enabled;
 
@@ -149,6 +155,11 @@ async function resolveProviderConfig(body = {}) {
   if (!actor) return cfg;
   if (actor.accountStatus === 'suspended') {
     const err = new Error('此帳號已停用');
+    err.status = 403;
+    throw err;
+  }
+  if (allowedRoles && !allowedRoles.includes(actor.role)) {
+    const err = new Error('你的角色不能使用這個 AI 功能');
     err.status = 403;
     throw err;
   }
@@ -426,7 +437,7 @@ app.post('/api/chat', async (req, res) => {
 
   let cfg;
   try {
-    cfg = await resolveProviderConfig(req.body || {});
+    cfg = await resolveProviderConfig(req.body || {}, AI_ROLES.chat);
   } catch (e) {
     return res.status(e.status || 401).json({ error: e.message || 'Invalid auth token' });
   }
@@ -543,7 +554,7 @@ app.post('/api/teacher/lesson-loop', async (req, res) => {
   const { topic = 'general', weakness = '', studentName = 'student', grade = '' } = req.body || {};
   let cfg;
   try {
-    cfg = await resolveProviderConfig(req.body || {});
+    cfg = await resolveProviderConfig(req.body || {}, AI_ROLES.lessonLoop);
   } catch (e) {
     return res.status(e.status || 401).json({ error: e.message || 'Invalid auth token' });
   }
@@ -576,7 +587,7 @@ const legacyPageMap = {};
 
 // Every client-side route in web/src/App.jsx; keep in sync when adding pages.
 const spaRoutes = new Set(['/', '/dashboard', '/teacher', '/student', '/admin', '/chat', '/analytics', '/teacher-homework', '/student-homework',
-  '/teacher-question-bank', '/classroom', '/assignments', '/progress', '/reports', '/parents', '/teacher-homework-legacy']);
+  '/teacher-question-bank', '/classroom', '/assignments', '/progress', '/reports', '/parents', '/parent', '/teacher-homework-legacy']);
 const spaRoutePrefixes = ['/teacher-homework', '/student-homework', '/teacher-question-bank', '/teacher-homework-old'];
 
 app.get('*', (req, res) => {

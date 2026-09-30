@@ -28,8 +28,17 @@ service cloud.firestore {
       return userRole() == 'admin';
     }
 
+    // A parent may read data about the students linked to them in users/{parent}.childUids.
+    function isParentOf(studentUid) {
+      return userRole() == 'parent' && studentUid in userDoc().get('childUids', []);
+    }
+
+    function validRole(r) {
+      return r in ['student', 'teacher', 'admin', 'parent'];
+    }
+
     function allowedUserKeys() {
-      return ['name', 'email', 'role', 'requestedRole', 'learnerStage', 'roleNote', 'photoURL', 'createdAt', 'updatedAt', 'lastLoginAt', 'accountStatus', 'adminNote', 'disabledReason', 'resolvedAt', 'issueFlag', 'studentId', 'classroomIds', 'class'];
+      return ['name', 'email', 'role', 'requestedRole', 'learnerStage', 'roleNote', 'photoURL', 'createdAt', 'updatedAt', 'lastLoginAt', 'accountStatus', 'adminNote', 'disabledReason', 'resolvedAt', 'issueFlag', 'studentId', 'classroomIds', 'class', 'childUids'];
     }
 
     function allowedStudentKeys() {
@@ -58,13 +67,16 @@ service cloud.firestore {
     }
 
     match /users/{userId} {
-      allow read: if isSelf(userId) || isTeacherLike();
+      allow read: if isSelf(userId) || isTeacherLike() || isParentOf(userId);
 
+      // Self-registration always starts as a student; only an admin can grant other roles.
+      // (Previously a new user could create their own doc with role "admin".)
       allow create: if isSelf(userId)
         && request.resource.data.keys().hasOnly(allowedUserKeys())
         && request.resource.data.email == request.auth.token.email
-        && request.resource.data.role in ['student', 'teacher', 'admin']
-        && request.resource.data.requestedRole in ['', 'student', 'teacher', 'admin']
+        && request.resource.data.role == 'student'
+        && !('childUids' in request.resource.data)
+        && request.resource.data.requestedRole in ['', 'student', 'teacher', 'admin', 'parent']
         && (!('accountStatus' in request.resource.data) || request.resource.data.accountStatus in ['active', 'review', 'suspended'])
         && (!('issueFlag' in request.resource.data) || request.resource.data.issueFlag is bool);
 
@@ -73,13 +85,14 @@ service cloud.firestore {
           && request.resource.data.diff(resource.data).changedKeys().hasOnly(allowedUserKeys())
           && request.resource.data.role == resource.data.role
           && request.resource.data.email == resource.data.email
-          && (!('requestedRole' in request.resource.data) || request.resource.data.requestedRole in ['', 'student', 'teacher', 'admin'])
+          && (!('requestedRole' in request.resource.data) || request.resource.data.requestedRole in ['', 'student', 'teacher', 'admin', 'parent'])
           && selfProfileKeysAreSafe()
         ) || (
           isAdmin()
           && request.resource.data.diff(resource.data).changedKeys().hasOnly(allowedUserKeys())
-          && (!('requestedRole' in request.resource.data) || request.resource.data.requestedRole in ['', 'student', 'teacher', 'admin'])
-          && (!('role' in request.resource.data) || request.resource.data.role in ['student', 'teacher', 'admin'])
+          && (!('requestedRole' in request.resource.data) || request.resource.data.requestedRole in ['', 'student', 'teacher', 'admin', 'parent'])
+          && (!('role' in request.resource.data) || validRole(request.resource.data.role))
+          && (!('childUids' in request.resource.data) || request.resource.data.childUids is list)
           && (!('accountStatus' in request.resource.data) || request.resource.data.accountStatus in ['active', 'review', 'suspended'])
           && (!('issueFlag' in request.resource.data) || request.resource.data.issueFlag is bool)
         );
@@ -107,7 +120,9 @@ service cloud.firestore {
     }
 
     match /submissions/{submissionId} {
-      allow read: if isTeacherLike() || (isSignedIn() && resource.data.studentUid == request.auth.uid);
+      allow read: if isTeacherLike()
+        || (isSignedIn() && resource.data.studentUid == request.auth.uid)
+        || isParentOf(resource.data.studentUid);
       allow create: if (isSignedIn() && request.resource.data.studentUid == request.auth.uid) || isTeacherLike();
       allow update: if (isTeacherLike() && request.resource.data.diff(resource.data).changedKeys().hasOnly(allowedSubmissionKeys()))
         || (

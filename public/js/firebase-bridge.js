@@ -64,7 +64,9 @@ window.QuestClassFirebase = {
     if (!user) return null;
     const email = user.email || '';
     const normalizedProfileRole = typeof profile?.role === 'string' ? profile.role.trim().toLowerCase() : '';
-    const derivedRole = email.includes('teacher') ? 'teacher' : 'student';
+    // New accounts are students until an admin changes the role. (Guessing "teacher" from the
+    // email address let anyone with "teacher" in their Gmail name get teacher pages.)
+    const derivedRole = 'student';
     const role = normalizedProfileRole || derivedRole;
     const name = profile?.name || user.displayName || email.split('@')[0] || 'QuestClass User';
     return {
@@ -76,6 +78,8 @@ window.QuestClassFirebase = {
       requestedRole: profile?.requestedRole || '',
       learnerStage: profile?.learnerStage || '',
       roleNote: profile?.roleNote || '',
+      accountStatus: String(profile?.accountStatus || 'active').toLowerCase(),
+      childUids: Array.isArray(profile?.childUids) ? profile.childUids : [],
       profileRole: normalizedProfileRole || '',
       derivedRole,
       profile: profile || null
@@ -88,7 +92,8 @@ window.QuestClassFirebase = {
       name: normalized.name,
       email: normalized.email,
       role: profile?.role || normalized.role,
-      requestedRole: profile?.requestedRole || '',
+      // Hint for the admin only; it grants nothing.
+      requestedRole: profile?.requestedRole || (normalized.email.includes('teacher') ? 'teacher' : ''),
       learnerStage: profile?.learnerStage || '',
       roleNote: profile?.roleNote || '',
       photoURL: normalized.photoURL || '',
@@ -319,7 +324,7 @@ window.QuestClassFirebase = {
     const adminCheck = await this._requireAdmin();
     if (!adminCheck.ok) return { ok: false, error: adminCheck.error };
     const { db, sdk } = adminCheck.ready;
-    const nextRole = ['student', 'teacher', 'admin'].includes(String(input.role || '').trim()) ? String(input.role).trim() : null;
+    const nextRole = ['student', 'teacher', 'admin', 'parent'].includes(String(input.role || '').trim()) ? String(input.role).trim() : null;
     const nextStatus = ['active', 'review', 'suspended'].includes(String(input.accountStatus || '').trim()) ? String(input.accountStatus).trim() : 'active';
     const payload = {
       updatedAt: sdk.serverTimestamp(),
@@ -331,6 +336,10 @@ window.QuestClassFirebase = {
       const raw = Array.isArray(input.classroomIds) ? input.classroomIds.join(',') : String(input.classroomIds || '');
       const ids = raw.split(',').map(s => s.trim()).filter(Boolean);
       payload.classroomIds = ids;
+    }
+    if ('childUids' in input) {
+      payload.childUids = Array.from(new Set((Array.isArray(input.childUids) ? input.childUids : [])
+        .map((s) => String(s || '').trim()).filter(Boolean)));
     }
     if (nextRole) payload.role = nextRole;
     try {
@@ -484,38 +493,86 @@ window.QuestClassFirebase = {
     const { db, sdk } = check.ready;
     const uid = check.authUser.uid;
 
-    // Fetch current user's profile for class-based filtering.
-    // A student belongs to their `class` field and to every id in `classroomIds`
-    // (the admin page only sets classroomIds, so matching `class` alone never worked).
-    const myClasses = new Set();
+    let me = null;
     try {
       const userSnap = await sdk.getDoc(sdk.doc(db, 'users', uid));
-      if (userSnap.exists()) {
-        const u = userSnap.data() || {};
-        const norm = (v) => String(v || '').trim().toLowerCase();
-        if (norm(u.class)) myClasses.add(norm(u.class));
-        (Array.isArray(u.classroomIds) ? u.classroomIds : []).forEach((c) => { if (norm(c)) myClasses.add(norm(c)); });
-      }
+      me = userSnap.exists() ? userSnap.data() : null;
     } catch (_) { /* ignore */ }
 
     try {
-      const col = sdk.collection(db, 'homeworkAssignments');
-      const q = sdk.query(col, sdk.where('status', '==', 'published'), sdk.limit(limit));
-      const snap = await sdk.getDocs(q);
-      const all = snap.docs.map((doc) => this._docData(doc)).filter(Boolean);
-
-      // Filter by target
-      const items = all.filter(a => {
-        const t = a.targetType || 'all';
-        if (t === 'all') return true;
-        if (t === 'class') return Boolean(a.targetClass) && myClasses.has(String(a.targetClass).trim().toLowerCase());
-        if (t === 'students') return Array.isArray(a.targetStudentUids) && a.targetStudentUids.includes(uid);
-        return true; // unknown type → show
-      }).sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
-
-      return { ok: true, items };
+      const all = await this._publishedHomework(limit);
+      return { ok: true, items: this._homeworkFor(all, uid, me) };
     } catch (error) {
       return { ok: false, error: error?.message || 'My homework list failed', items: [] };
+    }
+  },
+
+  async _publishedHomework(limit = 50) {
+    const { db, sdk } = await this._ensure();
+    const q = sdk.query(sdk.collection(db, 'homeworkAssignments'), sdk.where('status', '==', 'published'), sdk.limit(limit));
+    const snap = await sdk.getDocs(q);
+    return snap.docs.map((doc) => this._docData(doc)).filter(Boolean);
+  },
+
+  // Homework a given student should see. A student belongs to their `class` field and to every
+  // id in `classroomIds` (the admin page only sets classroomIds), matched case-insensitively.
+  _homeworkFor(all, uid, userDoc) {
+    const norm = (v) => String(v || '').trim().toLowerCase();
+    const classes = new Set();
+    if (norm(userDoc?.class)) classes.add(norm(userDoc.class));
+    (Array.isArray(userDoc?.classroomIds) ? userDoc.classroomIds : []).forEach((c) => { if (norm(c)) classes.add(norm(c)); });
+    return all.filter((a) => {
+      const t = a.targetType || 'all';
+      if (t === 'all') return true;
+      if (t === 'class') return Boolean(a.targetClass) && classes.has(norm(a.targetClass));
+      if (t === 'students') return Array.isArray(a.targetStudentUids) && a.targetStudentUids.includes(uid);
+      return true; // unknown type → show
+    }).sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
+  },
+
+  // Parent view: each linked child with their homework and submissions (read-only).
+  async getMyChildrenOverview() {
+    const check = await this._requireSignedIn();
+    if (!check.ok) return { ok: false, error: check.error, children: [] };
+    const { db, sdk } = check.ready;
+    const me = check.me || {};
+    const role = String(me.role || '').toLowerCase();
+    if (!['parent', 'admin'].includes(role)) return { ok: false, error: '只有家長可以查看這一頁。', children: [] };
+
+    const childUids = Array.isArray(me.childUids) ? me.childUids.filter(Boolean) : [];
+    if (!childUids.length) return { ok: true, children: [] };
+
+    try {
+      const all = await this._publishedHomework(100);
+      const children = [];
+      for (const childUid of childUids) {
+        let child = null;
+        try {
+          child = this._docData(await sdk.getDoc(sdk.doc(db, 'users', childUid)));
+        } catch {
+          child = null;
+        }
+        if (!child) continue;
+        let submissions = [];
+        try {
+          const snap = await sdk.getDocs(sdk.query(sdk.collection(db, 'submissions'), sdk.where('studentUid', '==', childUid), sdk.limit(100)));
+          submissions = snap.docs.map((d) => this._docData(d)).filter(Boolean)
+            .sort((a, b) => String(b.submittedAt || '').localeCompare(String(a.submittedAt || '')));
+        } catch {
+          submissions = [];
+        }
+        children.push({
+          uid: childUid,
+          name: child.name || '',
+          classroomIds: child.classroomIds || [],
+          studentProfile: child.studentProfile || {},
+          homework: this._homeworkFor(all, childUid, child),
+          submissions,
+        });
+      }
+      return { ok: true, children };
+    } catch (error) {
+      return { ok: false, error: error?.message || '載入子女資料失敗', children: [] };
     }
   },
 

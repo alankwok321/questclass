@@ -65,6 +65,10 @@ export async function listSubmissionsForAssignment(assignmentId, limit = 200) {
   return await window.QuestClassFirebase?.listSubmissionsForAssignment?.(assignmentId, limit);
 }
 
+export async function getMyChildrenOverview() {
+  return await window.QuestClassFirebase?.getMyChildrenOverview?.();
+}
+
 export async function listStudents(limit = 200) {
   return await window.QuestClassFirebase?.listStudents?.(limit);
 }

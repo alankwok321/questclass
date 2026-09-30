@@ -33,6 +33,8 @@ export default function AdminPage({ user }) {
   const [accountRole, setAccountRole] = useState('');
   const [accountStatus, setAccountStatus] = useState('active');
   const [adminNote, setAdminNote] = useState('');
+  const [childUids, setChildUids] = useState([]);
+  const [childSearch, setChildSearch] = useState('');
 
 
   const refresh = async () => {
@@ -72,6 +74,8 @@ export default function AdminPage({ user }) {
     setAccountRole(selectedUser.role || '');
     setAccountStatus(selectedUser.accountStatus || 'active');
     setAdminNote(selectedUser.adminNote || '');
+    setChildUids(Array.isArray(selectedUser.childUids) ? selectedUser.childUids : []);
+    setChildSearch('');
     setClassroomIdsText(Array.isArray(selectedUser.classroomIds) ? selectedUser.classroomIds.join(', ') : String(selectedUser.classroomIds || ''));
 
     // Load per-user AI config from Firestore when selection changes
@@ -105,7 +109,9 @@ export default function AdminPage({ user }) {
         role: accountRole,
         accountStatus,
         adminNote,
-        classroomIds: classroomIdsText
+        classroomIds: classroomIdsText,
+        // Only parents keep child links; changing the role away from parent clears them.
+        childUids: accountRole === 'parent' ? childUids : []
       });
       if (!res?.ok) throw new Error(res?.error || 'update failed');
 
@@ -206,7 +212,8 @@ export default function AdminPage({ user }) {
               >
                 <div style={{ fontWeight: 700, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{u.name || u.email || u.uid}</div>
                 <div style={{ marginTop: 2, color: '#6E6E73', fontWeight: 600, fontSize: 11, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  role: {u.role || '—'} · status: {u.accountStatus || 'active'}
+                  {ROLE_NAMES[String(u.role || '').toLowerCase()] || u.role || '—'} · {STATUS_NAMES[u.accountStatus || 'active'] || u.accountStatus}
+                  {u.requestedRole && u.requestedRole !== u.role ? ` · 申請：${ROLE_NAMES[u.requestedRole] || u.requestedRole}` : ''}
                 </div>
               </button>
             ))}
@@ -229,18 +236,19 @@ export default function AdminPage({ user }) {
                   <label style={{ display: 'grid', gap: 6 }}>
                     <div style={label}>角色</div>
                     <select value={accountRole} onChange={(e) => setAccountRole(e.target.value)} style={selectStyle}>
-                      <option value="student">student</option>
-                      <option value="teacher">teacher</option>
-                      <option value="admin">admin</option>
+                      <option value="student">學生</option>
+                      <option value="teacher">老師</option>
+                      <option value="parent">家長</option>
+                      <option value="admin">管理員</option>
                     </select>
                   </label>
 
                   <label style={{ display: 'grid', gap: 6 }}>
                     <div style={label}>狀態</div>
                     <select value={accountStatus} onChange={(e) => setAccountStatus(e.target.value)} style={selectStyle}>
-                      <option value="active">active</option>
-                      <option value="review">review</option>
-                      <option value="suspended">suspended</option>
+                      <option value="active">啟用</option>
+                      <option value="review">待審核</option>
+                      <option value="suspended">停用</option>
                     </select>
                   </label>
                 </div>
@@ -249,6 +257,32 @@ export default function AdminPage({ user }) {
                   <div style={label}>管理備註</div>
                   <input value={adminNote} onChange={(e) => setAdminNote(e.target.value)} style={inputStyle} placeholder="notes..." />
                 </label>
+
+                {accountRole === 'parent' ? (
+                  <div style={{ display: 'grid', gap: 6 }}>
+                    <div style={label}>連結子女（家長只可查看已連結子女的作業和成績）</div>
+                    <input value={childSearch} onChange={(e) => setChildSearch(e.target.value)} style={inputStyle} placeholder="搜尋學生姓名或電郵" aria-label="搜尋學生" />
+                    <div style={{ maxHeight: 200, overflow: 'auto', border: '1px solid #E8E8ED', borderRadius: 10 }}>
+                      {users
+                        .filter((u) => String(u.role || '').toLowerCase() === 'student')
+                        .filter((u) => {
+                          const q = childSearch.trim().toLowerCase();
+                          return !q || String(u.name || '').toLowerCase().includes(q) || String(u.email || '').toLowerCase().includes(q);
+                        })
+                        .map((u) => {
+                          const on = childUids.includes(u.uid);
+                          return (
+                            <label key={u.uid} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderBottom: '1px solid #F0F0F3', cursor: 'pointer', background: on ? 'rgba(0,113,227,0.06)' : 'transparent' }}>
+                              <input type="checkbox" checked={on} onChange={() => setChildUids((prev) => (on ? prev.filter((x) => x !== u.uid) : [...prev, u.uid]))} />
+                              <span style={{ fontSize: 14, fontWeight: 500 }}>{u.name || u.email || u.uid}</span>
+                              <span style={{ fontSize: 12, color: '#6E6E73', marginLeft: 'auto' }}>{u.email || ''}</span>
+                            </label>
+                          );
+                        })}
+                    </div>
+                    <div style={{ fontSize: 12, color: '#6E6E73' }}>已連結 {childUids.length} 位子女</div>
+                  </div>
+                ) : null}
 
                 <label style={{ display: 'grid', gap: 6 }}>
                   <div style={label}>Classroom IDs（逗號分隔）</div>
@@ -292,6 +326,8 @@ export default function AdminPage({ user }) {
 }
 
 const label = { fontWeight: 700, fontSize: 13, color: '#6E6E73' };
+const ROLE_NAMES = { admin: '管理員', teacher: '老師', student: '學生', parent: '家長' };
+const STATUS_NAMES = { active: '啟用', review: '待審核', suspended: '停用' };
 
 const inputStyle = {
   width: '100%',
