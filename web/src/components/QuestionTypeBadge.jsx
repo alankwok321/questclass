@@ -42,20 +42,35 @@ export function formatTypeLabel(type) {
   return labels[t] || t || '—';
 }
 
+// Tinted badge colours per question type (text colours meet 4.5:1 on their tint).
+const TYPE_COLORS = {
+  MULTIPLE_CHOICE: { bg: '#E8F0FC', fg: '#0058B0' },
+  TRUE_FALSE: { bg: '#E3F5E8', fg: '#1E7B34' },
+  FILL_IN_BLANK: { bg: '#FFF1E0', fg: '#A45200' },
+  SHORT_ANSWER: { bg: '#EFEAFD', fg: '#5B3FC4' },
+  LONG_ANSWER: { bg: '#FCE8F1', fg: '#A3245E' },
+  MATCHING: { bg: '#E0F4F5', fg: '#0B6E75' },
+};
+
+export function getTypeColors(type) {
+  return TYPE_COLORS[String(type || '').toUpperCase()] || { bg: '#F2F2F5', fg: '#3A3A3C' };
+}
+
 export default function QuestionTypeBadge({ type }) {
+  const c = getTypeColors(type);
   return (
     <span
       style={{
         display: 'inline-flex',
         alignItems: 'center',
-        gap: 6,
-        padding: '6px 10px',
-        borderRadius: 999,
-        background: 'rgba(0,122,255,0.10)',
-        color: '#0B5FFF',
-        fontWeight: 900,
+        gap: 5,
+        padding: '3px 9px',
+        borderRadius: 6,
+        background: c.bg,
+        color: c.fg,
+        fontWeight: 600,
         fontSize: 12,
-        border: '1px solid rgba(17,24,39,0.10)',
+        lineHeight: 1.5,
       }}
     >
       {getTypeIcon(type)}

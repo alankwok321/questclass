@@ -1,23 +1,31 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
 
+// Apple-style segmented control built from router links.
 export default function TabBar({ tabs = [] }) {
   return (
-    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+    <div
+      role="tablist"
+      style={{ display: 'inline-flex', flexWrap: 'wrap', padding: 2, borderRadius: 9, background: '#E3E3E8' }}
+    >
       {tabs.map((t) => (
         <NavLink
           key={t.to}
           to={t.to}
           end={t.end}
+          role="tab"
           style={({ isActive }) => ({
             textDecoration: 'none',
-            padding: '8px 12px',
-            borderRadius: 999,
-            fontWeight: 900,
-            fontSize: 12,
-            border: '1px solid rgba(17,24,39,0.10)',
-            background: isActive ? 'rgba(0,122,255,0.12)' : '#F2F2F7',
-            color: isActive ? '#0B5FFF' : '#111827',
+            display: 'inline-flex',
+            alignItems: 'center',
+            height: 32,
+            padding: '0 14px',
+            borderRadius: 7,
+            fontWeight: isActive ? 600 : 500,
+            fontSize: 13,
+            background: isActive ? '#FFFFFF' : 'transparent',
+            boxShadow: isActive ? '0 1px 3px rgba(0,0,0,0.12)' : 'none',
+            color: '#1D1D1F',
           })}
         >
           {t.label}

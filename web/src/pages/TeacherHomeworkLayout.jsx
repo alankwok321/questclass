@@ -27,8 +27,8 @@ export default function TeacherHomeworkLayout() {
       <div className="card">
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
           <div>
-            <div style={{ fontWeight: 900, fontSize: 16 }}>作業</div>
-            <div style={{ color: '#6B7280', fontWeight: 800, fontSize: 12, marginTop: 4 }}>
+            <div style={{ fontWeight: 700, fontSize: 16 }}>作業</div>
+            <div style={{ color: '#6E6E73', fontWeight: 600, fontSize: 12, marginTop: 4 }}>
               Teams 風格：左側清單常駐，右側顯示詳情/編輯。
             </div>
           </div>

@@ -36,7 +36,7 @@ export default function TeacherHomeworkList({ status = 'published', compact = fa
     <div className="card">
       {!hideTitle ? (
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
-          <div style={{ fontWeight: 900 }}>{title}</div>
+          <div style={{ fontWeight: 700 }}>{title}</div>
           <button type="button" style={btnGhost} onClick={refresh} disabled={loading}>
             {loading ? '更新中…' : '重新整理'}
           </button>
@@ -71,10 +71,10 @@ export default function TeacherHomeworkList({ status = 'published', compact = fa
                   }}
                   title={a.title || a.id}
                 >
-                  <div style={{ fontWeight: 900, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <div style={{ fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {a.title || '（未命名作業）'}
                   </div>
-                  <div style={{ marginTop: 4, color: '#6B7280', fontWeight: 800, fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <div style={{ marginTop: 4, color: '#6E6E73', fontWeight: 600, fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     dueAt: {a.dueAt || '—'} · Q: {(a.questions || []).length}
                   </div>
                 </button>
@@ -115,7 +115,7 @@ export default function TeacherHomeworkList({ status = 'published', compact = fa
           ))}
         </div>
       ) : (
-        <div style={{ color: '#6B7280', fontWeight: 700 }}>{loading ? '載入中…' : '目前沒有作業'}</div>
+        <div style={{ color: '#6E6E73', fontWeight: 500 }}>{loading ? '載入中…' : '目前沒有作業'}</div>
       )}
     </div>
   );
@@ -124,26 +124,26 @@ export default function TeacherHomeworkList({ status = 'published', compact = fa
 const cardRow = {
   padding: 12,
   borderRadius: 18,
-  border: '1px solid rgba(17,24,39,0.10)',
-  background: '#F9FAFB',
+  border: '1px solid rgba(0,0,0,0.10)',
+  background: '#FAFAFC',
 };
 
 const btnPrimary = {
   border: 0,
-  background: '#007AFF',
+  background: '#0071E3',
   color: 'white',
   padding: '10px 14px',
   borderRadius: 999,
-  fontWeight: 900,
+  fontWeight: 600,
   cursor: 'pointer',
 };
 
 const btnGhost = {
-  border: '1px solid rgba(17,24,39,0.10)',
-  background: '#F2F2F7',
-  color: '#111827',
+  border: 0,
+  background: '#E3E3E8',
+  color: '#1D1D1F',
   padding: '10px 14px',
   borderRadius: 999,
-  fontWeight: 900,
+  fontWeight: 500,
   cursor: 'pointer',
 };

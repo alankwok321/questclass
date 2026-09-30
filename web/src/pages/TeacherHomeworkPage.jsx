@@ -28,25 +28,25 @@ function stripUndefined(obj) {
 
 // ── Shared styles ──────────────────────────────────────────────────────────────
 const btnPrimary = {
-  border: 0, background: '#007AFF', color: '#fff',
-  padding: '10px 18px', borderRadius: 999, fontWeight: 900, fontSize: 13,
+  border: 0, background: '#0071E3', color: '#fff',
+  padding: '10px 18px', borderRadius: 999, fontWeight: 600, fontSize: 13,
   cursor: 'pointer', whiteSpace: 'nowrap',
 };
 const btnGhost = {
-  border: '1px solid rgba(17,24,39,0.10)', background: '#F2F2F7', color: '#111827',
-  padding: '10px 18px', borderRadius: 999, fontWeight: 900, fontSize: 13,
+  border: 0, background: '#E3E3E8', color: '#1D1D1F',
+  padding: '10px 18px', borderRadius: 999, fontWeight: 500, fontSize: 13,
   cursor: 'pointer', whiteSpace: 'nowrap',
 };
 const inputStyle = {
   width: '100%', padding: '10px 14px',
-  border: '1px solid rgba(17,24,39,0.10)', borderRadius: 14,
-  fontSize: 14, fontWeight: 700, outline: 'none',
-  background: '#F2F2F7', fontFamily: 'inherit', color: '#111827',
+  border: '1px solid #D2D2D7', borderRadius: 10,
+  fontSize: 14, fontWeight: 500, outline: 'none',
+  background: '#FFFFFF', fontFamily: 'inherit', color: '#1D1D1F',
   boxSizing: 'border-box',
 };
 const labelStyle = {
   display: 'flex', flexDirection: 'column', gap: 6,
-  fontSize: 13, fontWeight: 800, color: '#6B7280',
+  fontSize: 13, fontWeight: 600, color: '#6E6E73',
 };
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -62,26 +62,26 @@ function QuestionCard({ q, index, onRemove }) {
   const text = q.question_text || q.prompt || '';
   return (
     <div style={{
-      background: '#F9FAFB', border: '1px solid rgba(17,24,39,0.08)',
+      background: '#FAFAFC', border: '1px solid rgba(0,0,0,0.08)',
       borderRadius: 16, padding: '12px 14px',
       display: 'flex', gap: 12, alignItems: 'flex-start',
     }}>
-      <div style={{ color: '#9CA3AF', fontSize: 12, fontWeight: 900, minWidth: 22, paddingTop: 3 }}>
+      <div style={{ color: '#86868B', fontSize: 12, fontWeight: 700, minWidth: 22, paddingTop: 3 }}>
         {index + 1}
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: 'flex', gap: 8, marginBottom: 6, alignItems: 'center', flexWrap: 'wrap' }}>
           <QuestionTypeBadge type={q.type} />
-          <span style={{ fontSize: 12, color: '#9CA3AF', fontWeight: 700 }}>{q.points || 1} 分</span>
-          {q.topic && <span style={{ fontSize: 12, color: '#9CA3AF', fontWeight: 700 }}>· {q.topic}</span>}
+          <span style={{ fontSize: 12, color: '#86868B', fontWeight: 500 }}>{q.points || 1} 分</span>
+          {q.topic && <span style={{ fontSize: 12, color: '#86868B', fontWeight: 500 }}>· {q.topic}</span>}
         </div>
-        <div style={{ fontSize: 14, fontWeight: 700, color: text ? '#111827' : '#9CA3AF' }}>
+        <div style={{ fontSize: 14, fontWeight: 500, color: text ? '#1D1D1F' : '#86868B' }}>
           {text || '（未填寫題目）'}
         </div>
       </div>
       <button
         onClick={onRemove}
-        style={{ ...btnGhost, padding: '4px 10px', fontSize: 16, lineHeight: 1, color: '#FF3B30' }}
+        style={{ ...btnGhost, padding: '4px 10px', fontSize: 16, lineHeight: 1, color: '#D70015' }}
       >×</button>
     </div>
   );
@@ -158,23 +158,23 @@ function QuestionBankPicker({ alreadyIds, onAdd, onClose }) {
       zIndex: 1000, backdropFilter: 'blur(4px)',
     }}>
       <div style={{
-        background: '#F9FAFB', borderRadius: 28,
+        background: '#FAFAFC', borderRadius: 20,
         width: 960, maxWidth: '96vw', maxHeight: '90vh',
         boxShadow: '0 24px 60px rgba(0,0,0,0.18)',
-        border: '1px solid rgba(17,24,39,0.08)',
+        border: '1px solid rgba(0,0,0,0.08)',
         display: 'flex', flexDirection: 'column', overflow: 'hidden',
       }}>
 
         {/* ── Header ── */}
         <div style={{
-          padding: '16px 20px', borderBottom: '1px solid rgba(17,24,39,0.08)',
+          padding: '16px 20px', borderBottom: '1px solid rgba(0,0,0,0.08)',
           background: '#fff',
           display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
         }}>
           <div>
-            <div style={{ fontWeight: 900, fontSize: 16, color: '#111827' }}>從題庫選題</div>
-            <div style={{ color: '#6B7280', fontWeight: 700, fontSize: 12, marginTop: 2 }}>
-              已選 <strong style={{ color: '#007AFF' }}>{selectedItems.length}</strong> 題
+            <div style={{ fontWeight: 700, fontSize: 16, color: '#1D1D1F' }}>從題庫選題</div>
+            <div style={{ color: '#6E6E73', fontWeight: 500, fontSize: 12, marginTop: 2 }}>
+              已選 <strong style={{ color: '#0071E3' }}>{selectedItems.length}</strong> 題
             </div>
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
@@ -187,7 +187,7 @@ function QuestionBankPicker({ alreadyIds, onAdd, onClose }) {
 
         {/* ── Filters ── */}
         <div style={{
-          padding: '12px 16px', borderBottom: '1px solid rgba(17,24,39,0.08)',
+          padding: '12px 16px', borderBottom: '1px solid rgba(0,0,0,0.08)',
           background: '#fff',
           display: 'grid', gridTemplateColumns: '1fr auto auto', gap: 8,
         }}>
@@ -213,15 +213,15 @@ function QuestionBankPicker({ alreadyIds, onAdd, onClose }) {
         <div style={{ flex: 1, overflow: 'hidden', display: 'grid', gridTemplateColumns: '380px 1fr', gap: 0 }}>
 
           {/* Left: question list */}
-          <div style={{ borderRight: '1px solid rgba(17,24,39,0.08)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-            <div style={{ padding: '10px 14px', borderBottom: '1px solid rgba(17,24,39,0.08)', fontWeight: 900, fontSize: 13, background: '#fff', color: '#111827' }}>
+          <div style={{ borderRight: '1px solid rgba(0,0,0,0.08)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+            <div style={{ padding: '10px 14px', borderBottom: '1px solid rgba(0,0,0,0.08)', fontWeight: 700, fontSize: 13, background: '#fff', color: '#1D1D1F' }}>
               題目（{filtered.length}）
             </div>
             <div style={{ flex: 1, overflowY: 'auto' }}>
               {loading ? (
-                <div style={{ padding: 32, textAlign: 'center', color: '#9CA3AF', fontWeight: 700 }}>載入中…</div>
+                <div style={{ padding: 32, textAlign: 'center', color: '#86868B', fontWeight: 500 }}>載入中…</div>
               ) : filtered.length === 0 ? (
-                <div style={{ padding: 40, textAlign: 'center', color: '#9CA3AF', fontWeight: 700 }}>
+                <div style={{ padding: 40, textAlign: 'center', color: '#86868B', fontWeight: 500 }}>
                   {items.length === 0 ? '題庫暫無題目' : '找不到符合條件的題目'}
                 </div>
               ) : filtered.map(it => {
@@ -235,11 +235,11 @@ function QuestionBankPicker({ alreadyIds, onAdd, onClose }) {
                     onClick={() => setPreviewId(it.id)}
                     style={{
                       width: '100%', textAlign: 'left', border: 0,
-                      borderLeft: isActive ? '4px solid #007AFF' : '4px solid transparent',
-                      background: isActive ? 'rgba(0,122,255,0.06)' : 'transparent',
+                      borderLeft: isActive ? '4px solid #0071E3' : '4px solid transparent',
+                      background: isActive ? 'rgba(0,113,227,0.06)' : 'transparent',
                       padding: '11px 14px', cursor: 'pointer',
                       display: 'grid', gap: 5,
-                      borderBottom: '1px solid rgba(17,24,39,0.06)',
+                      borderBottom: '1px solid rgba(0,0,0,0.06)',
                     }}
                   >
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -248,20 +248,20 @@ function QuestionBankPicker({ alreadyIds, onAdd, onClose }) {
                         checked={isChecked}
                         onChange={() => {}}
                         onClick={e => { e.stopPropagation(); setChecked(c => ({ ...c, [it.id]: !isChecked })); }}
-                        style={{ accentColor: '#007AFF', flexShrink: 0, width: 15, height: 15 }}
+                        style={{ accentColor: '#0071E3', flexShrink: 0, width: 15, height: 15 }}
                       />
                       <div style={{
-                        fontWeight: 900, fontSize: 13, color: '#111827', lineHeight: 1.4,
+                        fontWeight: 700, fontSize: 13, color: '#1D1D1F', lineHeight: 1.4,
                         overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                         opacity: alreadyAdded ? 0.4 : 1, flex: 1,
                       }}>
                         {it.question_text || it.prompt || '（無題幹）'}
-                        {alreadyAdded && <span style={{ marginLeft: 6, color: '#9CA3AF', fontSize: 11 }}>已加入</span>}
+                        {alreadyAdded && <span style={{ marginLeft: 6, color: '#86868B', fontSize: 11 }}>已加入</span>}
                       </div>
                     </div>
                     <div style={{ display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'space-between', paddingLeft: 23 }}>
                       <QuestionTypeBadge type={it.type} />
-                      <span style={{ color: '#6B7280', fontWeight: 900, fontSize: 11 }}>
+                      <span style={{ color: '#6E6E73', fontWeight: 700, fontSize: 11 }}>
                         {it.topic || '—'} · {it.points ?? '—'} 分
                       </span>
                     </div>
@@ -275,23 +275,23 @@ function QuestionBankPicker({ alreadyIds, onAdd, onClose }) {
           <div style={{ overflowY: 'auto', padding: 16, background: '#fff' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
               <div>
-                <div style={{ fontWeight: 900, fontSize: 14 }}>預覽（教師視角）</div>
-                <div style={{ marginTop: 4, color: '#6B7280', fontWeight: 800, fontSize: 12 }}>
+                <div style={{ fontWeight: 700, fontSize: 14 }}>預覽（教師視角）</div>
+                <div style={{ marginTop: 4, color: '#6E6E73', fontWeight: 600, fontSize: 12 }}>
                   {preview ? `id: ${preview.id}` : '從左側選擇題目'}
                 </div>
               </div>
               {preview && (
                 <div style={{ textAlign: 'right' }}>
-                  <div style={{ fontWeight: 900 }}>{preview.points ?? '—'} 分</div>
+                  <div style={{ fontWeight: 700 }}>{preview.points ?? '—'} 分</div>
                   <div style={{ marginTop: 4 }}><QuestionTypeBadge type={preview.type} /></div>
                 </div>
               )}
             </div>
             <div style={{ marginTop: 12 }}>
-              <div style={{ fontWeight: 900, fontSize: 18 }}>
+              <div style={{ fontWeight: 700, fontSize: 18 }}>
                 {preview?.question_text || preview?.prompt || '（未選取）'}
               </div>
-              <div style={{ marginTop: 6, color: '#6B7280', fontWeight: 900, fontSize: 12 }}>
+              <div style={{ marginTop: 6, color: '#6E6E73', fontWeight: 700, fontSize: 12 }}>
                 topic: {preview?.topic || '—'}
               </div>
               <QuestionPreview q={preview} />
@@ -353,13 +353,13 @@ function AiModal({ form, onClose, onAdd }) {
       zIndex: 1000, backdropFilter: 'blur(4px)',
     }}>
       <div style={{
-        background: '#fff', borderRadius: 28, padding: 28,
+        background: '#fff', borderRadius: 20, padding: 28,
         width: 420, maxWidth: '92vw',
         boxShadow: '0 24px 60px rgba(0,0,0,0.15)',
-        border: '1px solid rgba(17,24,39,0.08)',
+        border: '1px solid rgba(0,0,0,0.08)',
       }}>
-        <div style={{ fontWeight: 900, fontSize: 18, marginBottom: 4 }}>✨ AI 產生題目</div>
-        <div style={{ color: '#6B7280', fontWeight: 700, fontSize: 13, marginBottom: 22 }}>
+        <div style={{ fontWeight: 700, fontSize: 18, marginBottom: 4 }}>✨ AI 產生題目</div>
+        <div style={{ color: '#6E6E73', fontWeight: 500, fontSize: 13, marginBottom: 22 }}>
           輸入主題，AI 將自動生成適合的作業題目
         </div>
         <div style={{ display: 'grid', gap: 16 }}>
@@ -370,10 +370,10 @@ function AiModal({ form, onClose, onAdd }) {
               placeholder={form.title || '例如：分數、二次大戰…'} />
           </label>
           <label style={labelStyle}>
-            題目數量：<strong style={{ color: '#111827' }}>{aiForm.count} 題</strong>
+            題目數量：<strong style={{ color: '#1D1D1F' }}>{aiForm.count} 題</strong>
             <input type="range" min="1" max="20" value={aiForm.count}
               onChange={e => setAiForm(f => ({ ...f, count: Number(e.target.value) }))}
-              style={{ width: '100%', marginTop: 4, accentColor: '#007AFF' }} />
+              style={{ width: '100%', marginTop: 4, accentColor: '#0071E3' }} />
           </label>
           <label style={labelStyle}>
             年級程度
@@ -386,7 +386,7 @@ function AiModal({ form, onClose, onAdd }) {
         </div>
         <div style={{ marginTop: 24, display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
           <button onClick={onClose} style={btnGhost} disabled={loading}>取消</button>
-          <button onClick={generate} style={{ ...btnPrimary, background: '#7C3AED' }} disabled={loading}>
+          <button onClick={generate} style={{ ...btnPrimary, background: '#5E5CE6' }} disabled={loading}>
             {loading ? '產生中…' : '產生題目'}
           </button>
         </div>
@@ -420,11 +420,11 @@ function SubmissionsView({ assignment, onBack }) {
   function getAnswerDisplay(q, answers) {
     const ans = answers?.find(a => a.questionId === q.id);
     const val = ans?.value;
-    if (val == null || val === '') return <span style={{ color: '#9CA3AF', fontWeight: 700 }}>（未作答）</span>;
+    if (val == null || val === '') return <span style={{ color: '#86868B', fontWeight: 500 }}>（未作答）</span>;
     const type = (q.type || '').toUpperCase();
 
     if (type === 'TRUE_FALSE') {
-      return <span style={{ fontWeight: 800, color: val ? '#15803D' : '#B91C1C' }}>{val ? '✓ 正確 (True)' : '✗ 錯誤 (False)'}</span>;
+      return <span style={{ fontWeight: 600, color: val ? '#1E7B34' : '#D70015' }}>{val ? '✓ 正確 (True)' : '✗ 錯誤 (False)'}</span>;
     }
     if (type === 'MULTIPLE_CHOICE') {
       const opts = q.options || [];
@@ -434,12 +434,12 @@ function SubmissionsView({ assignment, onBack }) {
         ? val === q.correct_answer
         : chosen?.is_correct;
       return (
-        <span style={{ fontWeight: 800, color: isCorrect === true ? '#15803D' : isCorrect === false ? '#B91C1C' : '#111827' }}>
+        <span style={{ fontWeight: 600, color: isCorrect === true ? '#1E7B34' : isCorrect === false ? '#D70015' : '#1D1D1F' }}>
           {isCorrect === true ? '✓ ' : isCorrect === false ? '✗ ' : ''}{label}
         </span>
       );
     }
-    return <span style={{ fontWeight: 800, color: '#111827' }}>{String(val)}</span>;
+    return <span style={{ fontWeight: 600, color: '#1D1D1F' }}>{String(val)}</span>;
   }
 
   return (
@@ -449,14 +449,14 @@ function SubmissionsView({ assignment, onBack }) {
       </div>
 
       <div className="qcCard" style={{ padding: '20px 24px' }}>
-        <div style={{ fontWeight: 900, fontSize: 17, color: '#111827', marginBottom: 2 }}>
+        <div style={{ fontWeight: 700, fontSize: 17, color: '#1D1D1F', marginBottom: 2 }}>
           📊 提交記錄
         </div>
-        <div style={{ color: '#6B7280', fontWeight: 700, fontSize: 13, marginBottom: 2 }}>
+        <div style={{ color: '#6E6E73', fontWeight: 500, fontSize: 13, marginBottom: 2 }}>
           {assignment.title || '（未命名作業）'}
         </div>
         {assignment.dueAt && (
-          <div style={{ color: '#9CA3AF', fontWeight: 700, fontSize: 12, marginBottom: 0 }}>
+          <div style={{ color: '#86868B', fontWeight: 500, fontSize: 12, marginBottom: 0 }}>
             截止：{new Date(assignment.dueAt).toLocaleDateString('zh-HK')}
           </div>
         )}
@@ -466,29 +466,29 @@ function SubmissionsView({ assignment, onBack }) {
         {/* Stats bar */}
         <div style={{
           display: 'flex', gap: 24, flexWrap: 'wrap', marginBottom: 20,
-          paddingBottom: 16, borderBottom: '1px solid rgba(17,24,39,0.08)',
+          paddingBottom: 16, borderBottom: '1px solid rgba(0,0,0,0.08)',
         }}>
           <div>
-            <div style={{ fontWeight: 900, fontSize: 22, color: '#007AFF' }}>{submissions.length}</div>
-            <div style={{ fontWeight: 700, fontSize: 12, color: '#6B7280' }}>已提交</div>
+            <div style={{ fontWeight: 700, fontSize: 22, color: '#0071E3' }}>{submissions.length}</div>
+            <div style={{ fontWeight: 500, fontSize: 12, color: '#6E6E73' }}>已提交</div>
           </div>
           <div>
-            <div style={{ fontWeight: 900, fontSize: 22, color: '#111827' }}>{questions.length}</div>
-            <div style={{ fontWeight: 700, fontSize: 12, color: '#6B7280' }}>題目數</div>
+            <div style={{ fontWeight: 700, fontSize: 22, color: '#1D1D1F' }}>{questions.length}</div>
+            <div style={{ fontWeight: 500, fontSize: 12, color: '#6E6E73' }}>題目數</div>
           </div>
         </div>
 
         {loadError ? (
-          <div style={{ textAlign: 'center', padding: '32px 0', color: '#EF4444', fontWeight: 700, fontSize: 13 }}>
+          <div style={{ textAlign: 'center', padding: '32px 0', color: '#D70015', fontWeight: 500, fontSize: 13 }}>
             ⚠️ 載入失敗：{loadError}
           </div>
         ) : loading ? (
-          <div style={{ textAlign: 'center', padding: '40px 0', color: '#9CA3AF', fontWeight: 700 }}>載入中…</div>
+          <div style={{ textAlign: 'center', padding: '40px 0', color: '#86868B', fontWeight: 500 }}>載入中…</div>
         ) : submissions.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '56px 0', color: '#9CA3AF' }}>
+          <div style={{ textAlign: 'center', padding: '56px 0', color: '#86868B' }}>
             <div style={{ fontSize: 40, marginBottom: 12 }}>📭</div>
-            <div style={{ fontWeight: 800, fontSize: 15, marginBottom: 4 }}>尚無學生提交</div>
-            <div style={{ fontWeight: 700, fontSize: 13 }}>學生提交作業後會顯示在這裡</div>
+            <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 4 }}>尚無學生提交</div>
+            <div style={{ fontWeight: 500, fontSize: 13 }}>學生提交作業後會顯示在這裡</div>
           </div>
         ) : (
           <div style={{ display: 'grid', gap: 10 }}>
@@ -498,8 +498,8 @@ function SubmissionsView({ assignment, onBack }) {
               const answeredCount = (sub.answers || []).filter(a => a.value != null && a.value !== '').length;
               return (
                 <div key={sub.id} style={{
-                  border: '1px solid rgba(17,24,39,0.10)', borderRadius: 18,
-                  background: '#F9FAFB', overflow: 'hidden',
+                  border: '1px solid rgba(0,0,0,0.10)', borderRadius: 18,
+                  background: '#FAFAFC', overflow: 'hidden',
                 }}>
                   {/* Row header */}
                   <button
@@ -513,46 +513,46 @@ function SubmissionsView({ assignment, onBack }) {
                   >
                     <div style={{
                       width: 36, height: 36, borderRadius: 999, flexShrink: 0,
-                      background: 'linear-gradient(135deg,#007AFF,#60A5FA)',
+                      background: 'linear-gradient(135deg,#0071E3,#60A5FA)',
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      color: '#fff', fontWeight: 900, fontSize: 14,
+                      color: '#fff', fontWeight: 700, fontSize: 14,
                     }}>
                       {(sub.studentName || '?')[0].toUpperCase()}
                     </div>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontWeight: 900, fontSize: 14, color: '#111827' }}>
+                      <div style={{ fontWeight: 700, fontSize: 14, color: '#1D1D1F' }}>
                         {sub.studentName || '未知學生'}
                       </div>
-                      <div style={{ fontSize: 12, fontWeight: 700, color: '#6B7280', marginTop: 2 }}>
+                      <div style={{ fontSize: 12, fontWeight: 500, color: '#6E6E73', marginTop: 2 }}>
                         提交於 {submittedAt} · 作答 {answeredCount}/{questions.length} 題
                       </div>
                     </div>
-                    <div style={{ color: '#9CA3AF', fontSize: 18, fontWeight: 900, flexShrink: 0 }}>
+                    <div style={{ color: '#86868B', fontSize: 18, fontWeight: 700, flexShrink: 0 }}>
                       {isOpen ? '▲' : '▼'}
                     </div>
                   </button>
 
                   {/* Expanded answers */}
                   {isOpen && (
-                    <div style={{ borderTop: '1px solid rgba(17,24,39,0.08)', padding: '14px 16px', background: '#fff' }}>
+                    <div style={{ borderTop: '1px solid rgba(0,0,0,0.08)', padding: '14px 16px', background: '#fff' }}>
                       {questions.length === 0 ? (
-                        <div style={{ color: '#9CA3AF', fontWeight: 700, fontSize: 13 }}>此作業沒有題目</div>
+                        <div style={{ color: '#86868B', fontWeight: 500, fontSize: 13 }}>此作業沒有題目</div>
                       ) : (
                         <div style={{ display: 'grid', gap: 12 }}>
                           {questions.map((q, idx) => {
                             const text = q.question_text || q.prompt || '（未填寫題目）';
                             return (
                               <div key={q.id || idx} style={{
-                                background: '#F9FAFB', border: '1px solid rgba(17,24,39,0.07)',
+                                background: '#FAFAFC', border: '1px solid rgba(0,0,0,0.07)',
                                 borderRadius: 14, padding: '12px 14px',
                               }}>
                                 <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 6 }}>
-                                  <span style={{ fontSize: 12, fontWeight: 900, color: '#9CA3AF' }}>{idx + 1}.</span>
+                                  <span style={{ fontSize: 12, fontWeight: 700, color: '#86868B' }}>{idx + 1}.</span>
                                   <QuestionTypeBadge type={q.type} />
-                                  <span style={{ fontSize: 12, color: '#9CA3AF', fontWeight: 700 }}>{q.points || 1} 分</span>
+                                  <span style={{ fontSize: 12, color: '#86868B', fontWeight: 500 }}>{q.points || 1} 分</span>
                                 </div>
-                                <div style={{ fontSize: 13, fontWeight: 800, color: '#111827', marginBottom: 8 }}>{text}</div>
-                                <div style={{ fontSize: 12, fontWeight: 700, color: '#6B7280', marginBottom: 4 }}>學生答案</div>
+                                <div style={{ fontSize: 13, fontWeight: 600, color: '#1D1D1F', marginBottom: 8 }}>{text}</div>
+                                <div style={{ fontSize: 12, fontWeight: 500, color: '#6E6E73', marginBottom: 4 }}>學生答案</div>
                                 <div style={{ fontSize: 13 }}>{getAnswerDisplay(q, sub.answers)}</div>
                               </div>
                             );
@@ -591,13 +591,13 @@ function StudentPicker({ selectedUids, onChange }) {
     else onChange([...selectedUids, uid]);
   }
 
-  if (loading) return <div style={{ color: '#9CA3AF', fontWeight: 700, fontSize: 13 }}>載入學生名單…</div>;
-  if (students.length === 0) return <div style={{ color: '#9CA3AF', fontWeight: 700, fontSize: 13 }}>目前沒有學生帳戶</div>;
+  if (loading) return <div style={{ color: '#86868B', fontWeight: 500, fontSize: 13 }}>載入學生名單…</div>;
+  if (students.length === 0) return <div style={{ color: '#86868B', fontWeight: 500, fontSize: 13 }}>目前沒有學生帳戶</div>;
 
   return (
     <div style={{
-      border: '1px solid rgba(17,24,39,0.10)', borderRadius: 14,
-      maxHeight: 220, overflowY: 'auto', background: '#F9FAFB',
+      border: '1px solid rgba(0,0,0,0.10)', borderRadius: 14,
+      maxHeight: 220, overflowY: 'auto', background: '#FAFAFC',
     }}>
       {students.map(s => {
         const uid = s.uid || s.id;
@@ -608,14 +608,14 @@ function StudentPicker({ selectedUids, onChange }) {
           <label key={uid} style={{
             display: 'flex', alignItems: 'center', gap: 12,
             padding: '10px 14px', cursor: 'pointer',
-            borderBottom: '1px solid rgba(17,24,39,0.06)',
-            background: checked ? 'rgba(0,122,255,0.06)' : 'transparent',
+            borderBottom: '1px solid rgba(0,0,0,0.06)',
+            background: checked ? 'rgba(0,113,227,0.06)' : 'transparent',
           }}>
             <input type="checkbox" checked={checked} onChange={() => toggle(uid)}
-              style={{ accentColor: '#007AFF', width: 15, height: 15 }} />
+              style={{ accentColor: '#0071E3', width: 15, height: 15 }} />
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontWeight: 800, fontSize: 13, color: '#111827' }}>{name}</div>
-              {cls && <div style={{ fontWeight: 700, fontSize: 11, color: '#9CA3AF' }}>班別：{cls}</div>}
+              <div style={{ fontWeight: 600, fontSize: 13, color: '#1D1D1F' }}>{name}</div>
+              {cls && <div style={{ fontWeight: 500, fontSize: 11, color: '#86868B' }}>班別：{cls}</div>}
             </div>
           </label>
         );
@@ -731,14 +731,14 @@ export default function TeacherHomeworkPage() {
       <div style={{ display: 'grid', gap: 20, gridTemplateColumns: 'minmax(0, 1fr)' }}>
         <div className="qcCard" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', padding: '18px 24px' }}>
           <div>
-            <div style={{ fontWeight: 900, fontSize: 16, color: '#111827' }}>出作業</div>
-            <div style={{ color: '#6B7280', fontWeight: 700, fontSize: 12, marginTop: 2 }}>建立及管理班級作業</div>
+            <div style={{ fontWeight: 700, fontSize: 16, color: '#1D1D1F' }}>出作業</div>
+            <div style={{ color: '#6E6E73', fontWeight: 500, fontSize: 12, marginTop: 2 }}>建立及管理班級作業</div>
           </div>
           <button onClick={openNew} style={btnPrimary}>＋ 新增作業</button>
         </div>
 
         <div className="qcCard" style={{ padding: '18px 24px' }}>
-          <div style={{ display: 'flex', gap: 4, marginBottom: 20, borderBottom: '1px solid rgba(17,24,39,0.08)' }}>
+          <div style={{ display: 'flex', gap: 4, marginBottom: 20, borderBottom: '1px solid rgba(0,0,0,0.08)' }}>
             {[
               { key: 'published', label: '已指派' },
               { key: 'draft',     label: '草稿' },
@@ -746,17 +746,17 @@ export default function TeacherHomeworkPage() {
             ].map(t => (
               <button key={t.key} onClick={() => setTab(t.key)} style={{
                 padding: '8px 16px', border: 'none', background: 'none', cursor: 'pointer',
-                fontSize: 13, fontWeight: tab === t.key ? 900 : 700,
-                color: tab === t.key ? '#007AFF' : '#6B7280',
-                borderBottom: `2px solid ${tab === t.key ? '#007AFF' : 'transparent'}`,
+                fontSize: 13, fontWeight: tab === t.key ? 600 : 500,
+                color: tab === t.key ? '#0071E3' : '#6E6E73',
+                borderBottom: `2px solid ${tab === t.key ? '#0071E3' : 'transparent'}`,
                 marginBottom: -1, transition: 'all 150ms',
               }}>
                 {t.label}
                 <span style={{
                   marginLeft: 6,
-                  background: tab === t.key ? 'rgba(0,122,255,0.12)' : 'rgba(17,24,39,0.06)',
-                  color: tab === t.key ? '#007AFF' : '#6B7280',
-                  borderRadius: 999, padding: '1px 8px', fontSize: 11, fontWeight: 900,
+                  background: tab === t.key ? 'rgba(0,113,227,0.12)' : 'rgba(0,0,0,0.06)',
+                  color: tab === t.key ? '#0071E3' : '#6E6E73',
+                  borderRadius: 999, padding: '1px 8px', fontSize: 11, fontWeight: 700,
                 }}>{byTab[t.key].length}</span>
               </button>
             ))}
@@ -768,12 +768,12 @@ export default function TeacherHomeworkPage() {
           </div>
 
           {loading ? (
-            <div style={{ textAlign: 'center', padding: '48px 0', color: '#9CA3AF', fontWeight: 700 }}>載入中…</div>
+            <div style={{ textAlign: 'center', padding: '48px 0', color: '#86868B', fontWeight: 500 }}>載入中…</div>
           ) : byTab[tab].length === 0 ? (
-            <div style={{ textAlign: 'center', padding: '56px 0', color: '#9CA3AF' }}>
+            <div style={{ textAlign: 'center', padding: '56px 0', color: '#86868B' }}>
               <div style={{ fontSize: 40, marginBottom: 12 }}>📋</div>
-              <div style={{ fontWeight: 800, fontSize: 15, marginBottom: 4 }}>目前沒有作業</div>
-              <div style={{ fontWeight: 700, fontSize: 13 }}>
+              <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 4 }}>目前沒有作業</div>
+              <div style={{ fontWeight: 500, fontSize: 13 }}>
                 {tab === 'draft' ? '點擊右上角「新增作業」開始建立' :
                  tab === 'published' ? '指派作業後會顯示在這裡' : '封存的作業會顯示在這裡'}
               </div>
@@ -785,15 +785,15 @@ export default function TeacherHomeworkPage() {
                   <div key={a.id} style={{
                     display: 'flex', alignItems: 'center', gap: 14,
                     padding: '14px 16px', borderRadius: 18,
-                    border: '1px solid rgba(17,24,39,0.12)', background: '#F9FAFB',
+                    border: '1px solid rgba(0,0,0,0.12)', background: '#FAFAFC',
                     minWidth: 0, width: '100%', boxSizing: 'border-box',
                     overflow: 'hidden',
                   }}>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontWeight: 900, fontSize: 14, marginBottom: 4, color: '#111827' }}>
+                      <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 4, color: '#1D1D1F' }}>
                         {a.title || '（未命名作業）'}
                       </div>
-                      <div style={{ fontSize: 12, fontWeight: 700, color: '#6B7280', display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                      <div style={{ fontSize: 12, fontWeight: 500, color: '#6E6E73', display: 'flex', gap: 12, flexWrap: 'wrap' }}>
                         {a.dueAt && <span>📅 截止：{new Date(a.dueAt).toLocaleDateString('zh-HK')}</span>}
                         {a.questions?.length > 0 && <span>❓ {a.questions.length} 題</span>}
                         {(!a.targetType || a.targetType === 'all') && <span>👥 全部學生</span>}
@@ -829,10 +829,10 @@ export default function TeacherHomeworkPage() {
       </div>
 
       <div className="qcCard" style={{ padding: '24px 28px' }}>
-        <div style={{ fontWeight: 900, fontSize: 18, marginBottom: 4, color: '#111827' }}>
+        <div style={{ fontWeight: 700, fontSize: 18, marginBottom: 4, color: '#1D1D1F' }}>
           {editId ? '編輯作業' : '新增作業'}
         </div>
-        <div style={{ color: '#6B7280', fontWeight: 700, fontSize: 13, marginBottom: 24 }}>
+        <div style={{ color: '#6E6E73', fontWeight: 500, fontSize: 13, marginBottom: 24 }}>
           填寫作業內容，完成後可儲存草稿或直接指派給學生
         </div>
 
@@ -864,9 +864,9 @@ export default function TeacherHomeworkPage() {
 
           {/* Target section */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <div style={{ fontSize: 13, fontWeight: 800, color: '#6B7280' }}>指派對象</div>
+            <div style={{ fontSize: 13, fontWeight: 600, color: '#6E6E73' }}>指派對象</div>
             <div style={{
-              background: '#F9FAFB', border: '1px solid rgba(17,24,39,0.10)',
+              background: '#FAFAFC', border: '1px solid rgba(0,0,0,0.10)',
               borderRadius: 14, padding: '14px 16px', display: 'grid', gap: 10,
             }}>
               {[
@@ -878,8 +878,8 @@ export default function TeacherHomeworkPage() {
                   <input type="radio" name="targetType" value={opt.val}
                     checked={form.targetType === opt.val}
                     onChange={() => setForm(f => ({ ...f, targetType: opt.val }))}
-                    style={{ accentColor: '#007AFF', width: 15, height: 15 }} />
-                  <span style={{ fontSize: 13, fontWeight: 800, color: '#111827' }}>{opt.label}</span>
+                    style={{ accentColor: '#0071E3', width: 15, height: 15 }} />
+                  <span style={{ fontSize: 13, fontWeight: 600, color: '#1D1D1F' }}>{opt.label}</span>
                 </label>
               ))}
               {form.targetType === 'class' && (
@@ -892,8 +892,8 @@ export default function TeacherHomeworkPage() {
               )}
               {form.targetType === 'students' && (
                 <div style={{ marginTop: 4 }}>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: '#6B7280', marginBottom: 6 }}>
-                    已選 <strong style={{ color: '#007AFF' }}>{(form.targetStudentUids || []).length}</strong> 位學生
+                  <div style={{ fontSize: 12, fontWeight: 500, color: '#6E6E73', marginBottom: 6 }}>
+                    已選 <strong style={{ color: '#0071E3' }}>{(form.targetStudentUids || []).length}</strong> 位學生
                   </div>
                   <StudentPicker
                     selectedUids={form.targetStudentUids || []}
@@ -905,14 +905,14 @@ export default function TeacherHomeworkPage() {
           </div>
         </div>
 
-        <div style={{ borderTop: '1px solid rgba(17,24,39,0.08)', margin: '24px 0' }} />
+        <div style={{ borderTop: '1px solid rgba(0,0,0,0.08)', margin: '24px 0' }} />
 
         {/* Questions header */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14, flexWrap: 'wrap', gap: 10 }}>
-          <div style={{ fontWeight: 900, fontSize: 15, color: '#111827' }}>
+          <div style={{ fontWeight: 700, fontSize: 15, color: '#1D1D1F' }}>
             題目
             {questions.length > 0 && (
-              <span style={{ marginLeft: 8, color: '#6B7280', fontWeight: 700, fontSize: 13 }}>
+              <span style={{ marginLeft: 8, color: '#6E6E73', fontWeight: 500, fontSize: 13 }}>
                 共 {questions.length} 題 · {totalPts} 分
               </span>
             )}
@@ -924,7 +924,7 @@ export default function TeacherHomeworkPage() {
             >
               📚 從題庫選題
             </button>
-            <button onClick={() => setAiOpen(true)} style={{ ...btnPrimary, background: '#7C3AED' }}>
+            <button onClick={() => setAiOpen(true)} style={{ ...btnPrimary, background: '#5E5CE6' }}>
               ✨ AI 產生題目
             </button>
           </div>
@@ -933,12 +933,12 @@ export default function TeacherHomeworkPage() {
         {/* Questions list */}
         {questions.length === 0 ? (
           <div style={{
-            textAlign: 'center', padding: '40px 0', background: '#F9FAFB',
-            borderRadius: 18, border: '2px dashed rgba(17,24,39,0.10)', color: '#9CA3AF',
+            textAlign: 'center', padding: '40px 0', background: '#FAFAFC',
+            borderRadius: 18, border: '2px dashed rgba(0,0,0,0.10)', color: '#86868B',
           }}>
             <div style={{ fontSize: 36, marginBottom: 10 }}>📝</div>
-            <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 4, color: '#6B7280' }}>尚未新增題目</div>
-            <div style={{ fontWeight: 700, fontSize: 12 }}>點擊「從題庫選題」或「AI 產生題目」來新增題目</div>
+            <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4, color: '#6E6E73' }}>尚未新增題目</div>
+            <div style={{ fontWeight: 500, fontSize: 12 }}>點擊「從題庫選題」或「AI 產生題目」來新增題目</div>
           </div>
         ) : (
           <div style={{ display: 'grid', gap: 8, gridTemplateColumns: 'minmax(0, 1fr)' }}>
@@ -951,7 +951,7 @@ export default function TeacherHomeworkPage() {
 
         {/* Footer */}
         <div style={{
-          marginTop: 24, paddingTop: 18, borderTop: '1px solid rgba(17,24,39,0.08)',
+          marginTop: 24, paddingTop: 18, borderTop: '1px solid rgba(0,0,0,0.08)',
           display: 'flex', gap: 10, justifyContent: 'flex-end', alignItems: 'center', flexWrap: 'wrap',
         }}>
           <button onClick={() => setView('list')} style={btnGhost} disabled={saving}>取消</button>

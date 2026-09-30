@@ -273,8 +273,8 @@ export default function TeacherHomeworkEditor({ mode = 'new' }) {
       <div className="card">
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
           <div>
-            <div style={{ fontWeight: 900 }}>{isEdit ? '編輯作業' : '新增作業'}</div>
-            <div style={{ marginTop: 4, color: '#6B7280', fontWeight: 800, fontSize: 12 }}>
+            <div style={{ fontWeight: 700 }}>{isEdit ? '編輯作業' : '新增作業'}</div>
+            <div style={{ marginTop: 4, color: '#6E6E73', fontWeight: 600, fontSize: 12 }}>
               Teams 風格：Details → Questions → Preview。按「指派」會直接發布。
             </div>
           </div>
@@ -290,7 +290,7 @@ export default function TeacherHomeworkEditor({ mode = 'new' }) {
 
       {/* Details */}
       <div className="card">
-        <div style={{ fontWeight: 900, marginBottom: 10 }}>Details</div>
+        <div style={{ fontWeight: 700, marginBottom: 10 }}>Details</div>
         <div style={{ display: 'grid', gap: 10 }}>
           <label style={{ display: 'grid', gap: 6 }}>
             <div style={labelStyle}>標題</div>
@@ -308,10 +308,10 @@ export default function TeacherHomeworkEditor({ mode = 'new' }) {
           </label>
 
           <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-            <div style={{ fontWeight: 900, fontSize: 12, color: '#6B7280' }}>總分：</div>
-            <div style={{ fontWeight: 900 }}>{totalPoints}</div>
-            <div style={{ fontWeight: 900, fontSize: 12, color: '#6B7280' }}>狀態：</div>
-            <div style={{ fontWeight: 900 }}>{form.status}</div>
+            <div style={{ fontWeight: 700, fontSize: 12, color: '#6E6E73' }}>總分：</div>
+            <div style={{ fontWeight: 700 }}>{totalPoints}</div>
+            <div style={{ fontWeight: 700, fontSize: 12, color: '#6E6E73' }}>狀態：</div>
+            <div style={{ fontWeight: 700 }}>{form.status}</div>
           </div>
         </div>
       </div>
@@ -360,7 +360,7 @@ export default function TeacherHomeworkEditor({ mode = 'new' }) {
               </select>
             </label>
 
-            <div style={{ color: '#6B7280', fontWeight: 800, fontSize: 12, lineHeight: 1.6, paddingTop: 22 }}>
+            <div style={{ color: '#6E6E73', fontWeight: 600, fontSize: 12, lineHeight: 1.6, paddingTop: 22 }}>
               產題只會傳 <strong>target_level</strong> 給 AI（例如 S3）。不再使用 target_forms。
             </div>
           </div>
@@ -371,8 +371,8 @@ export default function TeacherHomeworkEditor({ mode = 'new' }) {
       <div className="card">
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
           <div>
-            <div style={{ fontWeight: 900 }}>Questions</div>
-            <div style={{ marginTop: 6, color: '#6B7280', fontWeight: 800, fontSize: 12 }}>
+            <div style={{ fontWeight: 700 }}>Questions</div>
+            <div style={{ marginTop: 6, color: '#6E6E73', fontWeight: 600, fontSize: 12 }}>
               作業題目：{questionRefs.length} · 題庫：{bankItems.length}
             </div>
           </div>
@@ -415,9 +415,9 @@ export default function TeacherHomeworkEditor({ mode = 'new' }) {
         {questionsTab === 'assignment' ? (
           <div style={{ display: 'grid', gridTemplateColumns: '380px 1fr', gap: 16, alignItems: 'start' }}>
             {/* Left: assignment question list */}
-            <div style={{ border: '1px solid rgba(17,24,39,0.10)', borderRadius: 20, overflow: 'hidden', background: '#F9FAFB' }}>
-              <div style={{ padding: 14, borderBottom: '1px solid rgba(17,24,39,0.10)' }}>
-                <div style={{ fontWeight: 900, fontSize: 14 }}>作業題目清單</div>
+            <div style={{ border: '1px solid rgba(0,0,0,0.10)', borderRadius: 20, overflow: 'hidden', background: '#FAFAFC' }}>
+              <div style={{ padding: 14, borderBottom: '1px solid rgba(0,0,0,0.10)' }}>
+                <div style={{ fontWeight: 700, fontSize: 14 }}>作業題目清單</div>
               </div>
 
               {questionRefs.length ? (
@@ -437,8 +437,8 @@ export default function TeacherHomeworkEditor({ mode = 'new' }) {
                             width: '100%',
                             textAlign: 'left',
                             border: 0,
-                            borderLeft: active ? '4px solid #0B5FFF' : '4px solid transparent',
-                            background: active ? 'rgba(0,122,255,0.08)' : 'transparent',
+                            borderLeft: active ? '4px solid #0066CC' : '4px solid transparent',
+                            background: active ? 'rgba(0,113,227,0.08)' : 'transparent',
                             padding: 12,
                             display: 'grid',
                             gap: 6,
@@ -446,26 +446,26 @@ export default function TeacherHomeworkEditor({ mode = 'new' }) {
                           }}
                         >
                           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-                            <div style={{ fontWeight: 900, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            <div style={{ fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                               {idx + 1}. {q?.question_text || q?.prompt || '（未載入）'}
                             </div>
-                            <div style={{ fontWeight: 900, fontSize: 12, color: '#6B7280' }}>{r.pointsOverride ?? q?.points ?? '—'}分</div>
+                            <div style={{ fontWeight: 700, fontSize: 12, color: '#6E6E73' }}>{r.pointsOverride ?? q?.points ?? '—'}分</div>
                           </div>
                           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
                             <QuestionTypeBadge type={q?.type} />
-                            <div style={{ fontWeight: 900, fontSize: 12, color: '#6B7280' }}>{q?.topic || '—'}</div>
+                            <div style={{ fontWeight: 700, fontSize: 12, color: '#6E6E73' }}>{q?.topic || '—'}</div>
                           </div>
                         </button>
                       );
                     })}
                 </div>
               ) : (
-                <div style={{ padding: 12, color: '#6B7280', fontWeight: 700 }}>
+                <div style={{ padding: 12, color: '#6E6E73', fontWeight: 500 }}>
                   尚未加入題目。請切到「題庫」加入題目。
                 </div>
               )}
 
-              <div style={{ padding: 12, borderTop: '1px solid rgba(17,24,39,0.10)', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <div style={{ padding: 12, borderTop: '1px solid rgba(0,0,0,0.10)', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 {selectedQuestionId ? (
                   <button type="button" style={btnGhostSm} onClick={() => {
                     const sorted = questionRefs.slice().sort((a, b) => Number(a.order || 0) - Number(b.order || 0));
@@ -524,27 +524,27 @@ export default function TeacherHomeworkEditor({ mode = 'new' }) {
             </div>
 
             {/* Right: teacher preview */}
-            <div style={{ border: '1px solid rgba(17,24,39,0.10)', borderRadius: 20, background: 'white', padding: 18 }}>
+            <div style={{ border: '1px solid rgba(0,0,0,0.10)', borderRadius: 20, background: 'white', padding: 18 }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
                 <div>
-                  <div style={{ fontWeight: 900, fontSize: 14 }}>教師預覽 / 正確答案</div>
-                  <div style={{ marginTop: 8, color: '#6B7280', fontWeight: 800, fontSize: 12, lineHeight: 1.6 }}>
+                  <div style={{ fontWeight: 700, fontSize: 14 }}>教師預覽 / 正確答案</div>
+                  <div style={{ marginTop: 8, color: '#6E6E73', fontWeight: 600, fontSize: 12, lineHeight: 1.6 }}>
                     題型預覽（不做四彩卡），讓你快速檢查資料是否正確。
                   </div>
                 </div>
                 {selectedQuestionId ? (
-                  <div style={{ color: '#6B7280', fontWeight: 900, fontSize: 12 }}>id: {selectedQuestionId}</div>
+                  <div style={{ color: '#6E6E73', fontWeight: 700, fontSize: 12 }}>id: {selectedQuestionId}</div>
                 ) : null}
               </div>
 
               <div style={{ marginTop: 12 }}>
-                <div style={{ fontWeight: 900, fontSize: 18 }}>
+                <div style={{ fontWeight: 700, fontSize: 18 }}>
                   {selectedQuestion?.question_text || selectedQuestion?.prompt || '（從左側選擇題目）'}
                 </div>
                 <div style={{ marginTop: 8, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
                   <QuestionTypeBadge type={selectedQuestion?.type} />
-                  <span style={{ color: '#6B7280', fontWeight: 900, fontSize: 12 }}>topic: {selectedQuestion?.topic || '—'}</span>
-                  <span style={{ color: '#6B7280', fontWeight: 900, fontSize: 12 }}>points: {selectedPoints ?? '—'}</span>
+                  <span style={{ color: '#6E6E73', fontWeight: 700, fontSize: 12 }}>topic: {selectedQuestion?.topic || '—'}</span>
+                  <span style={{ color: '#6E6E73', fontWeight: 700, fontSize: 12 }}>points: {selectedPoints ?? '—'}</span>
                 </div>
 
                 <QuestionPreview q={selectedQuestion} />
@@ -577,7 +577,7 @@ export default function TeacherHomeworkEditor({ mode = 'new' }) {
               </select>
             </div>
 
-            <div style={{ border: '1px solid rgba(17,24,39,0.10)', borderRadius: 20, overflow: 'hidden', background: '#F9FAFB' }}>
+            <div style={{ border: '1px solid rgba(0,0,0,0.10)', borderRadius: 20, overflow: 'hidden', background: '#FAFAFC' }}>
               <div style={{ maxHeight: 520, overflow: 'auto' }}>
                 {(bankItems || [])
                   .filter((q) => {
@@ -594,13 +594,13 @@ export default function TeacherHomeworkEditor({ mode = 'new' }) {
                   .map((q) => {
                     const already = questionRefs.some((r) => r.questionId === q.id);
                     return (
-                      <div key={q.id} style={{ padding: 12, borderBottom: '1px solid rgba(17,24,39,0.08)', display: 'flex', gap: 10, alignItems: 'center' }}>
+                      <div key={q.id} style={{ padding: 12, borderBottom: '1px solid rgba(0,0,0,0.08)', display: 'flex', gap: 10, alignItems: 'center' }}>
                         <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontWeight: 900, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{q.question_text || q.prompt}</div>
+                          <div style={{ fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{q.question_text || q.prompt}</div>
                           <div style={{ marginTop: 6, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
                             <QuestionTypeBadge type={q.type} />
-                            <span style={{ color: '#6B7280', fontWeight: 900, fontSize: 12 }}>{q.topic || '—'}</span>
-                            <span style={{ color: '#6B7280', fontWeight: 900, fontSize: 12 }}>{q.points ?? '—'}分</span>
+                            <span style={{ color: '#6E6E73', fontWeight: 700, fontSize: 12 }}>{q.topic || '—'}</span>
+                            <span style={{ color: '#6E6E73', fontWeight: 700, fontSize: 12 }}>{q.points ?? '—'}分</span>
                           </div>
                         </div>
                         <button type="button" style={already ? btnGhostSm : btnPrimary} onClick={() => {
@@ -620,9 +620,9 @@ export default function TeacherHomeworkEditor({ mode = 'new' }) {
         )}
 
         {questions.length ? (
-          <div style={{ marginTop: 14, paddingTop: 14, borderTop: '1px solid rgba(17,24,39,0.10)' }}>
-            <div style={{ fontWeight: 900, marginBottom: 8 }}>Legacy embedded questions（相容舊資料）: {questions.length}</div>
-            <div style={{ color: '#6B7280', fontWeight: 800, fontSize: 12 }}>
+          <div style={{ marginTop: 14, paddingTop: 14, borderTop: '1px solid rgba(0,0,0,0.10)' }}>
+            <div style={{ fontWeight: 700, marginBottom: 8 }}>Legacy embedded questions（相容舊資料）: {questions.length}</div>
+            <div style={{ color: '#6E6E73', fontWeight: 600, fontSize: 12 }}>
               你目前已選擇「Kahoot 題庫模式」，新題會存到 questionBank 並以 questionRefs 引用。
             </div>
           </div>
@@ -631,89 +631,89 @@ export default function TeacherHomeworkEditor({ mode = 'new' }) {
 
       {/* Preview */}
       <div className="card">
-        <div style={{ fontWeight: 900, marginBottom: 10 }}>Preview（學生視角）</div>
-        <div style={{ color: '#6B7280', fontWeight: 800, fontSize: 12, marginBottom: 10 }}>
+        <div style={{ fontWeight: 700, marginBottom: 10 }}>Preview（學生視角）</div>
+        <div style={{ color: '#6E6E73', fontWeight: 600, fontSize: 12, marginBottom: 10 }}>
           這裡先做最小預覽：標題/說明/題目列表。之後可做成與 StudentHomework 完全一致的 render。
         </div>
 
-        <div style={{ fontWeight: 900 }}>{form.title || '（未命名作業）'}</div>
+        <div style={{ fontWeight: 700 }}>{form.title || '（未命名作業）'}</div>
         {form.description ? (
-          <div style={{ marginTop: 6, color: '#374151', fontWeight: 800, lineHeight: 1.7 }}>{form.description}</div>
+          <div style={{ marginTop: 6, color: '#374151', fontWeight: 600, lineHeight: 1.7 }}>{form.description}</div>
         ) : null}
 
         <div style={{ marginTop: 12, display: 'grid', gap: 8 }}>
           {questions.map((q, idx) => (
-            <div key={q.id || idx} style={{ padding: 10, borderRadius: 14, border: '1px solid rgba(17,24,39,0.10)', background: '#F9FAFB' }}>
-              <div style={{ fontWeight: 900 }}>{idx + 1}. {q.prompt || '（未填題目）'}</div>
-              <div style={{ marginTop: 4, color: '#6B7280', fontWeight: 800, fontSize: 12 }}>({q.type}) points: {q.points ?? '—'}</div>
+            <div key={q.id || idx} style={{ padding: 10, borderRadius: 14, border: '1px solid rgba(0,0,0,0.10)', background: '#FAFAFC' }}>
+              <div style={{ fontWeight: 700 }}>{idx + 1}. {q.prompt || '（未填題目）'}</div>
+              <div style={{ marginTop: 4, color: '#6E6E73', fontWeight: 600, fontSize: 12 }}>({q.type}) points: {q.points ?? '—'}</div>
             </div>
           ))}
         </div>
 
-        {loading ? <div style={{ marginTop: 10, color: '#6B7280', fontWeight: 700 }}>載入中…</div> : null}
+        {loading ? <div style={{ marginTop: 10, color: '#6E6E73', fontWeight: 500 }}>載入中…</div> : null}
       </div>
     </div>
   );
 }
 
-const labelStyle = { fontWeight: 900, fontSize: 12, color: '#6B7280' };
+const labelStyle = { fontWeight: 700, fontSize: 13, color: '#6E6E73' };
 
 
 
 const inputStyle = {
   width: '100%',
   padding: '10px 12px',
-  borderRadius: 14,
-  border: '1px solid rgba(17,24,39,0.10)',
-  background: '#F2F2F7',
+  borderRadius: 10,
+  border: '1px solid #D2D2D7',
+  background: '#FFFFFF',
   outline: 'none',
-  fontWeight: 800,
+  fontWeight: 600,
 };
 
 const selectStyle = {
   width: '100%',
   padding: '10px 12px',
-  borderRadius: 14,
-  border: '1px solid rgba(17,24,39,0.10)',
-  background: '#F2F2F7',
+  borderRadius: 10,
+  border: '1px solid #D2D2D7',
+  background: '#FFFFFF',
   outline: 'none',
-  fontWeight: 800,
+  fontWeight: 600,
 };
 
 const qCard = {
   padding: 12,
   borderRadius: 18,
-  border: '1px solid rgba(17,24,39,0.10)',
-  background: '#F9FAFB',
+  border: '1px solid rgba(0,0,0,0.10)',
+  background: '#FAFAFC',
 };
 
 const btnPrimary = {
   border: 0,
-  background: '#007AFF',
+  background: '#0071E3',
   color: 'white',
   padding: '10px 14px',
   borderRadius: 999,
-  fontWeight: 900,
+  fontWeight: 600,
   cursor: 'pointer',
 };
 
 const btnGhost = {
-  border: '1px solid rgba(17,24,39,0.10)',
-  background: '#F2F2F7',
-  color: '#111827',
+  border: 0,
+  background: '#E3E3E8',
+  color: '#1D1D1F',
   padding: '10px 14px',
   borderRadius: 999,
-  fontWeight: 900,
+  fontWeight: 500,
   cursor: 'pointer',
 };
 
 const btnGhostSm = {
-  border: '1px solid rgba(17,24,39,0.10)',
-  background: '#F2F2F7',
-  color: '#111827',
+  border: 0,
+  background: '#E3E3E8',
+  color: '#1D1D1F',
   padding: '6px 10px',
   borderRadius: 999,
-  fontWeight: 900,
+  fontWeight: 500,
   fontSize: 11,
   cursor: 'pointer',
 };
@@ -721,9 +721,9 @@ const btnGhostSm = {
 const btnDanger = {
   border: 0,
   background: 'rgba(255,59,48,0.12)',
-  color: '#B91C1C',
+  color: '#D70015',
   padding: '8px 12px',
   borderRadius: 999,
-  fontWeight: 900,
+  fontWeight: 600,
   cursor: 'pointer',
 };

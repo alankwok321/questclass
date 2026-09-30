@@ -39,8 +39,8 @@ export default function TeacherHomeworkDetail() {
     return (
       <div className="card" style={{ height: 420, display: 'grid', placeItems: 'center' }}>
         <div style={{ textAlign: 'center' }}>
-          <div style={{ fontWeight: 900, fontSize: 16 }}>從左側清單選擇一份作業</div>
-          <div style={{ marginTop: 8, color: '#6B7280', fontWeight: 800, fontSize: 12 }}>
+          <div style={{ fontWeight: 700, fontSize: 16 }}>從左側清單選擇一份作業</div>
+          <div style={{ marginTop: 8, color: '#6E6E73', fontWeight: 600, fontSize: 12 }}>
             你也可以按「＋新增作業」建立新作業。
           </div>
         </div>
@@ -52,8 +52,8 @@ export default function TeacherHomeworkDetail() {
     <div className="card">
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
         <div>
-          <div style={{ fontWeight: 900, fontSize: 16 }}>{item?.title || (loading ? '載入中…' : '找不到作業')}</div>
-          <div style={{ marginTop: 6, color: '#6B7280', fontWeight: 800, fontSize: 12 }}>
+          <div style={{ fontWeight: 700, fontSize: 16 }}>{item?.title || (loading ? '載入中…' : '找不到作業')}</div>
+          <div style={{ marginTop: 6, color: '#6E6E73', fontWeight: 600, fontSize: 12 }}>
             id: {id} · dueAt: {item?.dueAt || '—'} · status: {item?.status || '—'}
           </div>
         </div>
@@ -69,23 +69,23 @@ export default function TeacherHomeworkDetail() {
       </div>
 
       {item?.description ? (
-        <div style={{ marginTop: 12, color: '#374151', fontWeight: 800, lineHeight: 1.7 }}>
+        <div style={{ marginTop: 12, color: '#374151', fontWeight: 600, lineHeight: 1.7 }}>
           {item.description}
         </div>
       ) : null}
 
-      <div style={{ marginTop: 16, fontWeight: 900 }}>題目（{questions.length}）</div>
+      <div style={{ marginTop: 16, fontWeight: 700 }}>題目（{questions.length}）</div>
       <div style={{ marginTop: 10, display: 'grid', gap: 10 }}>
         {questions.map((q, idx) => (
           <div key={q.id || idx} style={qCard}>
-            <div style={{ fontWeight: 900 }}>{idx + 1}. ({q.type}) {q.prompt}</div>
-            <div style={{ marginTop: 6, color: '#6B7280', fontWeight: 800, fontSize: 12 }}>
+            <div style={{ fontWeight: 700 }}>{idx + 1}. ({q.type}) {q.prompt}</div>
+            <div style={{ marginTop: 6, color: '#6E6E73', fontWeight: 600, fontSize: 12 }}>
               points: {q.points ?? '—'}
             </div>
           </div>
         ))}
         {!questions.length ? (
-          <div style={{ color: '#6B7280', fontWeight: 700 }}>{loading ? '載入中…' : '沒有題目'}</div>
+          <div style={{ color: '#6E6E73', fontWeight: 500 }}>{loading ? '載入中…' : '沒有題目'}</div>
         ) : null}
       </div>
     </div>
@@ -95,16 +95,16 @@ export default function TeacherHomeworkDetail() {
 const qCard = {
   padding: 12,
   borderRadius: 18,
-  border: '1px solid rgba(17,24,39,0.10)',
-  background: '#F9FAFB'
+  border: '1px solid rgba(0,0,0,0.10)',
+  background: '#FAFAFC'
 };
 
 const btnGhost = {
-  border: '1px solid rgba(17,24,39,0.10)',
-  background: '#F2F2F7',
-  color: '#111827',
+  border: 0,
+  background: '#E3E3E8',
+  color: '#1D1D1F',
   padding: '10px 14px',
   borderRadius: 999,
-  fontWeight: 900,
+  fontWeight: 500,
   cursor: 'pointer',
 };

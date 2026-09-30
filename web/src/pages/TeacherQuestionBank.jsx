@@ -29,30 +29,30 @@ function stripUndef(obj) {
 
 // ── Styles (matching TeacherHomeworkPage) ─────────────────────────────────────
 const btnPrimary = {
-  border: 0, background: '#007AFF', color: '#fff',
-  padding: '10px 18px', borderRadius: 999, fontWeight: 900, fontSize: 13,
+  border: 0, background: '#0071E3', color: '#fff',
+  padding: '10px 18px', borderRadius: 999, fontWeight: 600, fontSize: 13,
   cursor: 'pointer', whiteSpace: 'nowrap',
 };
 const btnGhost = {
-  border: '1px solid rgba(17,24,39,0.10)', background: '#F2F2F7', color: '#111827',
-  padding: '10px 18px', borderRadius: 999, fontWeight: 900, fontSize: 13,
+  border: 0, background: '#E3E3E8', color: '#1D1D1F',
+  padding: '10px 18px', borderRadius: 999, fontWeight: 500, fontSize: 13,
   cursor: 'pointer', whiteSpace: 'nowrap',
 };
 const btnDanger = {
-  border: '1px solid rgba(255,59,48,0.20)', background: 'rgba(255,59,48,0.06)', color: '#FF3B30',
-  padding: '10px 18px', borderRadius: 999, fontWeight: 900, fontSize: 13,
+  border: '1px solid rgba(255,59,48,0.20)', background: 'rgba(255,59,48,0.06)', color: '#D70015',
+  padding: '10px 18px', borderRadius: 999, fontWeight: 600, fontSize: 13,
   cursor: 'pointer', whiteSpace: 'nowrap',
 };
 const inputStyle = {
   width: '100%', padding: '10px 14px',
-  border: '1px solid rgba(17,24,39,0.10)', borderRadius: 14,
-  fontSize: 14, fontWeight: 700, outline: 'none',
-  background: '#F2F2F7', fontFamily: 'inherit', color: '#111827',
+  border: '1px solid #D2D2D7', borderRadius: 10,
+  fontSize: 14, fontWeight: 500, outline: 'none',
+  background: '#FFFFFF', fontFamily: 'inherit', color: '#1D1D1F',
   boxSizing: 'border-box',
 };
 const labelStyle = {
   display: 'flex', flexDirection: 'column', gap: 6,
-  fontSize: 13, fontWeight: 800, color: '#6B7280',
+  fontSize: 13, fontWeight: 600, color: '#6E6E73',
 };
 
 const EMPTY_ITEM = {
@@ -155,7 +155,7 @@ function QuestionEditForm({ item, onChange }) {
                     opts[i] = { ...opts[i], is_correct: !opts[i].is_correct };
                     onChange({ ...item, options: opts });
                   }}>✔</button>
-                <div style={{ fontWeight: 900, width: 20, flexShrink: 0, color: '#6B7280' }}>
+                <div style={{ fontWeight: 700, width: 20, flexShrink: 0, color: '#6E6E73' }}>
                   {opt.id || String.fromCharCode(65 + i)}
                 </div>
                 <input value={opt.text || ''} style={{ ...inputStyle, flex: 1 }}
@@ -165,7 +165,7 @@ function QuestionEditForm({ item, onChange }) {
                     opts[i] = { ...opts[i], text: e.target.value };
                     onChange({ ...item, options: opts });
                   }} />
-                <button type="button" style={{ ...btnGhost, padding: '8px 12px', color: '#FF3B30', flexShrink: 0 }}
+                <button type="button" style={{ ...btnGhost, padding: '8px 12px', color: '#D70015', flexShrink: 0 }}
                   onClick={() => onChange({ ...item, options: (item.options||[]).filter((_, j) => j !== i) })}>
                   ×
                 </button>
@@ -188,7 +188,7 @@ function QuestionEditForm({ item, onChange }) {
           <div style={{ display: 'grid', gap: 8 }}>
             {(item.blanks || []).map((blank, i) => (
               <div key={i} style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-                <span style={{ fontWeight: 900, color: '#6B7280', width: 60, flexShrink: 0 }}>
+                <span style={{ fontWeight: 700, color: '#6E6E73', width: 60, flexShrink: 0 }}>
                   空格 {blank.position || i + 1}
                 </span>
                 <input
@@ -225,7 +225,7 @@ function QuestionEditForm({ item, onChange }) {
                     pairs[i] = { ...pairs[i], match: e.target.value };
                     onChange({ ...item, pairs });
                   }} />
-                <button type="button" style={{ ...btnGhost, padding: '8px 12px', color: '#FF3B30' }}
+                <button type="button" style={{ ...btnGhost, padding: '8px 12px', color: '#D70015' }}
                   onClick={() => onChange({ ...item, pairs: (item.pairs||[]).filter((_, j) => j !== i) })}>
                   ×
                 </button>
@@ -355,22 +355,22 @@ function AiModal({ onClose, onSave }) {
   return (
     <div style={OVERLAY}>
       <div style={{
-        background: '#F9FAFB', borderRadius: 28,
+        background: '#FAFAFC', borderRadius: 20,
         width: step === 1 ? 500 : 980, maxWidth: '96vw', maxHeight: '92vh',
         boxShadow: '0 24px 60px rgba(0,0,0,0.18)',
-        border: '1px solid rgba(17,24,39,0.08)',
+        border: '1px solid rgba(0,0,0,0.08)',
         display: 'flex', flexDirection: 'column', overflow: 'hidden',
       }}>
 
         {/* Header */}
         <div style={{
           padding: '16px 22px', background: '#fff',
-          borderBottom: '1px solid rgba(17,24,39,0.08)',
+          borderBottom: '1px solid rgba(0,0,0,0.08)',
           display: 'flex', justifyContent: 'space-between', alignItems: 'center',
         }}>
           <div>
-            <div style={{ fontWeight: 900, fontSize: 16, color: '#111827' }}>✨ AI 產生題目</div>
-            <div style={{ fontSize: 12, fontWeight: 700, color: '#6B7280', marginTop: 2 }}>
+            <div style={{ fontWeight: 700, fontSize: 16, color: '#1D1D1F' }}>✨ AI 產生題目</div>
+            <div style={{ fontSize: 12, fontWeight: 500, color: '#6E6E73', marginTop: 2 }}>
               {step === 1 ? '設定題目條件' : `已產生 ${candidates.length} 題，可編輯後加入題庫`}
             </div>
           </div>
@@ -396,24 +396,24 @@ function AiModal({ onClose, onSave }) {
               </label>
 
               <label style={labelStyle}>
-                題目數量：<strong style={{ color: '#111827', fontWeight: 900 }}>{count} 題</strong>
+                題目數量：<strong style={{ color: '#1D1D1F', fontWeight: 700 }}>{count} 題</strong>
                 <input type="range" min="1" max="15" value={count}
                   onChange={e => setCount(Number(e.target.value))}
-                  style={{ width: '100%', marginTop: 6, accentColor: '#7C3AED' }} />
+                  style={{ width: '100%', marginTop: 6, accentColor: '#5E5CE6' }} />
               </label>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                <div style={{ fontSize: 13, fontWeight: 800, color: '#6B7280' }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: '#6E6E73' }}>
                   題型（可多選）
                   {selectedTypes.length === 0 && (
-                    <span style={{ color: '#FF3B30', marginLeft: 8 }}>請至少選一種</span>
+                    <span style={{ color: '#D70015', marginLeft: 8 }}>請至少選一種</span>
                   )}
                 </div>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                   {SUPPORTED_TYPES.map(t => (
                     <button key={t} type="button"
                       style={types[t]
-                        ? { ...btnPrimary, background: '#7C3AED', padding: '8px 16px' }
+                        ? { ...btnPrimary, background: '#5E5CE6', padding: '8px 16px' }
                         : { ...btnGhost, padding: '8px 16px' }}
                       onClick={() => setTypes(prev => ({ ...prev, [t]: !prev[t] }))}>
                       {typeLabel(t)}
@@ -429,14 +429,14 @@ function AiModal({ onClose, onSave }) {
 
             {/* Left: question list */}
             <div style={{
-              borderRight: '1px solid rgba(17,24,39,0.08)',
+              borderRight: '1px solid rgba(0,0,0,0.08)',
               display: 'flex', flexDirection: 'column', overflow: 'hidden',
             }}>
               <div style={{
-                padding: '10px 14px', borderBottom: '1px solid rgba(17,24,39,0.08)',
-                background: '#fff', fontSize: 13, fontWeight: 900, color: '#111827',
+                padding: '10px 14px', borderBottom: '1px solid rgba(0,0,0,0.08)',
+                background: '#fff', fontSize: 13, fontWeight: 700, color: '#1D1D1F',
               }}>
-                已選 <span style={{ color: '#7C3AED' }}>{checkedCount}</span> / {candidates.length} 題
+                已選 <span style={{ color: '#5E5CE6' }}>{checkedCount}</span> / {candidates.length} 題
               </div>
               <div style={{ flex: 1, overflowY: 'auto' }}>
                 {candidates.map((q, i) => {
@@ -444,17 +444,17 @@ function AiModal({ onClose, onSave }) {
                   return (
                     <button key={i} type="button" onClick={() => setActiveIdx(i)} style={{
                       width: '100%', textAlign: 'left', border: 0,
-                      borderLeft: isActive ? '4px solid #7C3AED' : '4px solid transparent',
+                      borderLeft: isActive ? '4px solid #5E5CE6' : '4px solid transparent',
                       background: isActive ? 'rgba(124,58,237,0.06)' : 'transparent',
                       padding: '10px 14px', cursor: 'pointer',
-                      borderBottom: '1px solid rgba(17,24,39,0.06)', display: 'grid', gap: 5,
+                      borderBottom: '1px solid rgba(0,0,0,0.06)', display: 'grid', gap: 5,
                     }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
                         <input type="checkbox" checked={!!checked[i]} onChange={() => {}}
                           onClick={e => { e.stopPropagation(); setChecked(c => ({ ...c, [i]: !c[i] })); }}
-                          style={{ accentColor: '#7C3AED', flexShrink: 0, width: 15, height: 15 }} />
+                          style={{ accentColor: '#5E5CE6', flexShrink: 0, width: 15, height: 15 }} />
                         <div style={{
-                          fontWeight: 900, fontSize: 13, color: '#111827',
+                          fontWeight: 700, fontSize: 13, color: '#1D1D1F',
                           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1,
                         }}>
                           {q.question_text || '（無題幹）'}
@@ -462,7 +462,7 @@ function AiModal({ onClose, onSave }) {
                       </div>
                       <div style={{ paddingLeft: 23, display: 'flex', gap: 8, alignItems: 'center' }}>
                         <QuestionTypeBadge type={q.type} />
-                        {q.topic && <span style={{ fontSize: 11, color: '#6B7280', fontWeight: 700 }}>{q.topic}</span>}
+                        {q.topic && <span style={{ fontSize: 11, color: '#6E6E73', fontWeight: 500 }}>{q.topic}</span>}
                       </div>
                     </button>
                   );
@@ -474,7 +474,7 @@ function AiModal({ onClose, onSave }) {
             <div style={{ overflowY: 'auto', padding: '20px 24px', background: '#fff' }}>
               {candidates[activeIdx] ? (
                 <>
-                  <div style={{ fontSize: 12, fontWeight: 800, color: '#9CA3AF', marginBottom: 16 }}>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: '#86868B', marginBottom: 16 }}>
                     題目 {activeIdx + 1} / {candidates.length} — 點擊左側列表切換
                   </div>
                   <QuestionEditForm
@@ -485,7 +485,7 @@ function AiModal({ onClose, onSave }) {
                   />
                 </>
               ) : (
-                <div style={{ color: '#9CA3AF', fontWeight: 700, padding: '40px 0', textAlign: 'center' }}>
+                <div style={{ color: '#86868B', fontWeight: 500, padding: '40px 0', textAlign: 'center' }}>
                   從左側選擇題目以編輯
                 </div>
               )}
@@ -496,7 +496,7 @@ function AiModal({ onClose, onSave }) {
         {/* Footer */}
         <div style={{
           padding: '14px 22px', background: '#fff',
-          borderTop: '1px solid rgba(17,24,39,0.08)',
+          borderTop: '1px solid rgba(0,0,0,0.08)',
           display: 'flex', gap: 10, justifyContent: 'flex-end', alignItems: 'center',
         }}>
           {step === 2 && (
@@ -507,14 +507,14 @@ function AiModal({ onClose, onSave }) {
           {step === 1 ? (
             <button
               onClick={generate}
-              style={{ ...btnPrimary, background: '#7C3AED' }}
+              style={{ ...btnPrimary, background: '#5E5CE6' }}
               disabled={generating || selectedTypes.length === 0}>
               {generating ? '產生中…' : '產生題目 →'}
             </button>
           ) : (
             <button
               onClick={saveSelected}
-              style={{ ...btnPrimary, background: '#7C3AED' }}
+              style={{ ...btnPrimary, background: '#5E5CE6' }}
               disabled={saving || checkedCount === 0}>
               {saving ? '儲存中…' : `加入題庫（${checkedCount}）`}
             </button>
@@ -619,17 +619,17 @@ function ExcelImportModal({ onClose, onDone }) {
     if (ok > 0) onDone();
   }
 
-  const typeColor = { TRUE_FALSE: '#34C759', MULTIPLE_CHOICE: '#007AFF', FILL_IN_BLANK: '#FF9500', SHORT_ANSWER: '#AF52DE', LONG_ANSWER: '#FF3B30' };
+  const typeColor = { TRUE_FALSE: '#34C759', MULTIPLE_CHOICE: '#0071E3', FILL_IN_BLANK: '#FF9500', SHORT_ANSWER: '#AF52DE', LONG_ANSWER: '#FF3B30' };
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, backdropFilter: 'blur(4px)' }}>
       <div style={{ background: '#fff', borderRadius: 24, width: 680, maxWidth: '96vw', maxHeight: '88vh', display: 'flex', flexDirection: 'column', boxShadow: '0 24px 60px rgba(0,0,0,0.18)', overflow: 'hidden' }}>
 
         {/* Header */}
-        <div style={{ padding: '18px 24px', borderBottom: '1px solid rgba(17,24,39,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ padding: '18px 24px', borderBottom: '1px solid rgba(0,0,0,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div>
-            <div style={{ fontWeight: 900, fontSize: 16 }}>📥 Excel 匯入題目</div>
-            <div style={{ fontSize: 12, color: '#6B7280', fontWeight: 700, marginTop: 2 }}>
+            <div style={{ fontWeight: 700, fontSize: 16 }}>📥 Excel 匯入題目</div>
+            <div style={{ fontSize: 12, color: '#6E6E73', fontWeight: 500, marginTop: 2 }}>
               支援 .xlsx / .xls / .csv
             </div>
           </div>
@@ -639,7 +639,7 @@ function ExcelImportModal({ onClose, onDone }) {
         <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
 
           {/* Format guide */}
-          <div style={{ background: '#F0F9FF', borderRadius: 14, padding: '12px 16px', fontSize: 12, color: '#0369A1', fontWeight: 700, lineHeight: 1.6 }}>
+          <div style={{ background: '#F0F9FF', borderRadius: 14, padding: '12px 16px', fontSize: 12, color: '#0369A1', fontWeight: 500, lineHeight: 1.6 }}>
             <strong>必填欄位：</strong> type、question_text<br />
             <strong>type 值：</strong> TRUE_FALSE、MULTIPLE_CHOICE、SHORT_ANSWER、FILL_IN_BLANK、LONG_ANSWER<br />
             <strong>選擇題：</strong> option_A/B/C/D 填選項，correct_answer 填 A/B/C/D<br />
@@ -674,23 +674,23 @@ function ExcelImportModal({ onClose, onDone }) {
           {/* Preview */}
           {rows !== null && (
             <div>
-              <div style={{ fontWeight: 900, fontSize: 14, marginBottom: 10, color: '#111827' }}>
+              <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 10, color: '#1D1D1F' }}>
                 預覽（共 {rows.length} 題）
               </div>
               {rows.length === 0 ? (
-                <div style={{ color: '#FF3B30', fontWeight: 700, fontSize: 13 }}>找不到有效題目，請確認欄位名稱正確。</div>
+                <div style={{ color: '#D70015', fontWeight: 500, fontSize: 13 }}>找不到有效題目，請確認欄位名稱正確。</div>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                   {rows.slice(0, 20).map((r, i) => (
-                    <div key={i} style={{ background: '#F9FAFB', borderRadius: 12, padding: '10px 14px', display: 'flex', gap: 10, alignItems: 'flex-start' }}>
-                      <span style={{ background: typeColor[r.type] || '#9CA3AF', color: '#fff', borderRadius: 99, padding: '2px 8px', fontSize: 11, fontWeight: 900, whiteSpace: 'nowrap', marginTop: 2 }}>
+                    <div key={i} style={{ background: '#FAFAFC', borderRadius: 12, padding: '10px 14px', display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                      <span style={{ background: typeColor[r.type] || '#86868B', color: '#fff', borderRadius: 99, padding: '2px 8px', fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap', marginTop: 2 }}>
                         {r.type}
                       </span>
-                      <div style={{ flex: 1, fontSize: 13, fontWeight: 700, color: '#111827', lineHeight: 1.4 }}>{r.question_text}</div>
-                      <span style={{ fontSize: 11, color: '#9CA3AF', fontWeight: 900, whiteSpace: 'nowrap' }}>{r.points}分</span>
+                      <div style={{ flex: 1, fontSize: 13, fontWeight: 500, color: '#1D1D1F', lineHeight: 1.4 }}>{r.question_text}</div>
+                      <span style={{ fontSize: 11, color: '#86868B', fontWeight: 700, whiteSpace: 'nowrap' }}>{r.points}分</span>
                     </div>
                   ))}
-                  {rows.length > 20 && <div style={{ fontSize: 12, color: '#9CA3AF', fontWeight: 700, textAlign: 'center' }}>…還有 {rows.length - 20} 題</div>}
+                  {rows.length > 20 && <div style={{ fontSize: 12, color: '#86868B', fontWeight: 500, textAlign: 'center' }}>…還有 {rows.length - 20} 題</div>}
                 </div>
               )}
             </div>
@@ -698,14 +698,14 @@ function ExcelImportModal({ onClose, onDone }) {
 
           {/* Results */}
           {results && (
-            <div style={{ background: results.fail > 0 ? '#FFF7ED' : '#F0FDF4', borderRadius: 14, padding: '12px 16px', fontWeight: 700, fontSize: 14, color: results.fail > 0 ? '#92400E' : '#166534' }}>
+            <div style={{ background: results.fail > 0 ? '#FFF7ED' : '#F0FDF4', borderRadius: 14, padding: '12px 16px', fontWeight: 500, fontSize: 14, color: results.fail > 0 ? '#92400E' : '#166534' }}>
               ✅ 成功匯入 {results.ok} 題{results.fail > 0 ? `　❌ 失敗 ${results.fail} 題` : ''}
             </div>
           )}
         </div>
 
         {/* Footer */}
-        <div style={{ padding: '14px 24px', borderTop: '1px solid rgba(17,24,39,0.08)', display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+        <div style={{ padding: '14px 24px', borderTop: '1px solid rgba(0,0,0,0.08)', display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
           <button onClick={onClose} style={btnGhost}>取消</button>
           <button
             onClick={doImport}
@@ -819,15 +819,15 @@ export default function TeacherQuestionBank() {
         {/* Header */}
         <div className="qcCard" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', padding: '18px 24px' }}>
           <div>
-            <div style={{ fontWeight: 900, fontSize: 16, color: '#111827' }}>題庫</div>
-            <div style={{ color: '#6B7280', fontWeight: 700, fontSize: 12, marginTop: 2 }}>管理班級的題目庫</div>
+            <div style={{ fontWeight: 700, fontSize: 16, color: '#1D1D1F' }}>題庫</div>
+            <div style={{ color: '#6E6E73', fontWeight: 500, fontSize: 12, marginTop: 2 }}>管理班級的題目庫</div>
           </div>
           <div style={{ display: 'flex', gap: 10 }}>
             <button onClick={openNew} style={btnGhost}>＋ 新增題目</button>
             <button onClick={() => setImportOpen(true)} style={{ ...btnGhost }}>
               📥 Excel 匯入
             </button>
-            <button onClick={() => setAiOpen(true)} style={{ ...btnPrimary, background: '#7C3AED' }}>
+            <button onClick={() => setAiOpen(true)} style={{ ...btnPrimary, background: '#5E5CE6' }}>
               ✨ AI 產生題目
             </button>
           </div>
@@ -851,9 +851,9 @@ export default function TeacherQuestionBank() {
         {/* Question list */}
         <div className="qcCard" style={{ padding: '18px 24px' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-            <div style={{ fontWeight: 900, fontSize: 15, color: '#111827' }}>
+            <div style={{ fontWeight: 700, fontSize: 15, color: '#1D1D1F' }}>
               題目
-              <span style={{ marginLeft: 8, color: '#6B7280', fontWeight: 700, fontSize: 13 }}>
+              <span style={{ marginLeft: 8, color: '#6E6E73', fontWeight: 500, fontSize: 13 }}>
                 {filtered.length} 題
               </span>
             </div>
@@ -863,11 +863,11 @@ export default function TeacherQuestionBank() {
           </div>
 
           {loading ? (
-            <div style={{ textAlign: 'center', padding: '48px 0', color: '#9CA3AF', fontWeight: 700 }}>載入中…</div>
+            <div style={{ textAlign: 'center', padding: '48px 0', color: '#86868B', fontWeight: 500 }}>載入中…</div>
           ) : filtered.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: '56px 0', color: '#9CA3AF' }}>
+            <div style={{ textAlign: 'center', padding: '56px 0', color: '#86868B' }}>
               <div style={{ fontSize: 40, marginBottom: 12 }}>📝</div>
-              <div style={{ fontWeight: 800, fontSize: 15, marginBottom: 4 }}>
+              <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 4 }}>
                 {items.length === 0 ? '題庫暫無題目' : '找不到符合條件的題目'}
               </div>
               {items.length === 0 && (
@@ -880,16 +880,16 @@ export default function TeacherQuestionBank() {
                 <div key={it.id} style={{
                   display: 'flex', alignItems: 'center', gap: 14,
                   padding: '14px 16px', borderRadius: 18,
-                  border: '1px solid rgba(17,24,39,0.12)', background: '#F9FAFB',
+                  border: '1px solid rgba(0,0,0,0.12)', background: '#FAFAFC',
                   minWidth: 0, width: '100%', boxSizing: 'border-box',
                   overflow: 'hidden',
                 }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontWeight: 900, fontSize: 14, marginBottom: 6, color: '#111827',
+                    <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 6, color: '#1D1D1F',
                       overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {it.question_text || '（未填寫題目）'}
                     </div>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: '#6B7280', display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+                    <div style={{ fontSize: 12, fontWeight: 500, color: '#6E6E73', display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
                       <QuestionTypeBadge type={it.type} />
                       {it.topic && <span>· {it.topic}</span>}
                       {it.target_level && <span>· {it.target_level}</span>}
@@ -930,10 +930,10 @@ export default function TeacherQuestionBank() {
       </div>
 
       <div className="qcCard" style={{ padding: '24px 28px' }}>
-        <div style={{ fontWeight: 900, fontSize: 18, marginBottom: 4, color: '#111827' }}>
+        <div style={{ fontWeight: 700, fontSize: 18, marginBottom: 4, color: '#1D1D1F' }}>
           {isNew ? '新增題目' : '編輯題目'}
         </div>
-        <div style={{ color: '#6B7280', fontWeight: 700, fontSize: 13, marginBottom: 24 }}>
+        <div style={{ color: '#6E6E73', fontWeight: 500, fontSize: 13, marginBottom: 24 }}>
           填寫題目內容後儲存到題庫
         </div>
 
@@ -942,7 +942,7 @@ export default function TeacherQuestionBank() {
         )}
 
         <div style={{
-          marginTop: 24, paddingTop: 18, borderTop: '1px solid rgba(17,24,39,0.08)',
+          marginTop: 24, paddingTop: 18, borderTop: '1px solid rgba(0,0,0,0.08)',
           display: 'flex', gap: 10, justifyContent: 'flex-end', alignItems: 'center', flexWrap: 'wrap',
         }}>
           {!isNew && (

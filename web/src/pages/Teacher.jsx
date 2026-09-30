@@ -70,18 +70,18 @@ export default function Teacher() {
   return (
     <div style={{ display: 'grid', gap: 16 }}>
       <div className="card">
-        <div style={{ fontWeight: 900, fontSize: 16, marginBottom: 12 }}>AI / Auth 設定</div>
+        <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 12 }}>AI / Auth 設定</div>
         <div style={{ display: 'grid', gap: 10 }}>
-          <label style={{ fontWeight: 800, fontSize: 12, color: '#6B7280' }}>API Base URL</label>
+          <label style={{ fontWeight: 600, fontSize: 12, color: '#6E6E73' }}>API Base URL</label>
           <input value={settings.apiBaseUrl || ''} onChange={(e) => setSettings(s => ({ ...s, apiBaseUrl: e.target.value }))} placeholder="https://openrouter.ai/api/v1" style={inputStyle} />
 
-          <label style={{ fontWeight: 800, fontSize: 12, color: '#6B7280' }}>Model</label>
+          <label style={{ fontWeight: 600, fontSize: 12, color: '#6E6E73' }}>Model</label>
           <input value={settings.apiModel || ''} onChange={(e) => setSettings(s => ({ ...s, apiModel: e.target.value }))} placeholder="openai/gpt-4.1-mini" style={inputStyle} />
 
-          <label style={{ fontWeight: 800, fontSize: 12, color: '#6B7280' }}>API Key</label>
+          <label style={{ fontWeight: 600, fontSize: 12, color: '#6E6E73' }}>API Key</label>
           <input type="password" value={settings.apiKey || ''} onChange={(e) => setSettings(s => ({ ...s, apiKey: e.target.value }))} placeholder="sk-..." style={inputStyle} />
 
-          <label style={{ fontWeight: 800, fontSize: 12, color: '#6B7280' }}>Student UID（由 admin/teacher 代設可填）</label>
+          <label style={{ fontWeight: 600, fontSize: 12, color: '#6E6E73' }}>Student UID（由 admin/teacher 代設可填）</label>
           <input value={settings.aiStudentUid || ''} onChange={(e) => setSettings(s => ({ ...s, aiStudentUid: e.target.value }))} placeholder="留空=自己" style={inputStyle} />
 
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 4 }}>
@@ -93,13 +93,13 @@ export default function Teacher() {
 
       <div className="card">
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-          <div style={{ fontWeight: 900, fontSize: 16 }}>AI 教學流程（lesson-loop）</div>
+          <div style={{ fontWeight: 700, fontSize: 16 }}>AI 教學流程（lesson-loop）</div>
           <button type="button" onClick={onRunLoop} disabled={loopLoading} style={btnPrimary}>
             {loopLoading ? '產生中...' : '產生 lesson loop'}
           </button>
         </div>
 
-        {loopErr ? (<div style={{ marginTop: 10, color: '#B91C1C', fontWeight: 800 }}>{loopErr}</div>) : null}
+        {loopErr ? (<div style={{ marginTop: 10, color: '#D70015', fontWeight: 600 }}>{loopErr}</div>) : null}
 
         <div style={{ display: 'grid', gap: 10, marginTop: 14 }}>
           <div>
@@ -133,31 +133,31 @@ export default function Teacher() {
 const inputStyle = {
   width: '100%',
   padding: '10px 12px',
-  borderRadius: 14,
-  border: '1px solid rgba(17,24,39,0.10)',
-  background: '#F2F2F7',
+  borderRadius: 10,
+  border: '1px solid #D2D2D7',
+  background: '#FFFFFF',
   outline: 'none',
-  fontWeight: 700,
+  fontWeight: 500,
 };
 
 const btnPrimary = {
   border: 0,
-  background: '#007AFF',
+  background: '#0071E3',
   color: 'white',
   padding: '10px 14px',
   borderRadius: 999,
-  fontWeight: 900,
+  fontWeight: 600,
   cursor: 'pointer',
 };
 
 const btnGhost = {
-  border: '1px solid rgba(17,24,39,0.10)',
-  background: '#F2F2F7',
-  color: '#007AFF',
+  border: 0,
+  background: '#E3E3E8',
+  color: '#0071E3',
   padding: '10px 14px',
   borderRadius: 999,
-  fontWeight: 900,
+  fontWeight: 500,
   cursor: 'pointer',
 };
 
-const sectionTitle = { fontWeight: 900, fontSize: 12, color: '#6B7280' };
+const sectionTitle = { fontWeight: 700, fontSize: 12, color: '#6E6E73' };

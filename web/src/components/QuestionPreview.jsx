@@ -2,7 +2,7 @@ import React from 'react';
 import { CheckCircle2 } from './QuestionTypeBadge.jsx';
 
 export default function QuestionPreview({ q }) {
-  if (!q) return <div style={{ color: '#6B7280', fontWeight: 700, padding: '12px 0' }}>未選擇題目</div>;
+  if (!q) return <div style={{ color: '#6E6E73', fontWeight: 500, padding: '12px 0' }}>未選擇題目</div>;
 
   const type = String(q.type || '').toUpperCase();
 
@@ -32,8 +32,8 @@ export default function QuestionPreview({ q }) {
           {options.map((opt) => (
             <div key={opt.id} style={mcRow(Boolean(opt.is_correct))}>
               <div style={optBadge(Boolean(opt.is_correct))}>{opt.id}</div>
-              <div style={{ fontWeight: 800, color: opt.is_correct ? '#065F46' : '#111827' }}>{opt.text}</div>
-              {opt.is_correct ? <CheckCircle2 className="w-5 h-5" style={{ marginLeft: 'auto', color: '#10B981' }} /> : null}
+              <div style={{ fontWeight: 600, color: opt.is_correct ? '#065F46' : '#1D1D1F' }}>{opt.text}</div>
+              {opt.is_correct ? <CheckCircle2 className="w-5 h-5" style={{ marginLeft: 'auto', color: '#34C759' }} /> : null}
             </div>
           ))}
         </div>
@@ -60,7 +60,7 @@ export default function QuestionPreview({ q }) {
               </React.Fragment>
             ))}
           </div>
-          <div style={{ color: '#6B7280', fontWeight: 800, fontSize: 12 }}>
+          <div style={{ color: '#6E6E73', fontWeight: 600, fontSize: 12 }}>
             允許答案：
             <ul>
               {blanks.map((b) => (
@@ -86,8 +86,8 @@ export default function QuestionPreview({ q }) {
             <div style={sectionLabel}>配對</div>
             {pairs.map((p, i) => (
               <div key={`m-${i}`} style={{ ...panel, borderColor: 'rgba(16,185,129,0.35)', background: 'rgba(16,185,129,0.08)' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 900, color: '#065F46' }}>
-                  <CheckCircle2 className="w-4 h-4" style={{ color: '#10B981' }} />
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 700, color: '#065F46' }}>
+                  <CheckCircle2 className="w-4 h-4" style={{ color: '#34C759' }} />
                   {p.match}
                 </div>
               </div>
@@ -101,7 +101,7 @@ export default function QuestionPreview({ q }) {
       return (
         <div style={{ marginTop: 10, display: 'grid', gap: 10 }}>
           <input readOnly value={String(q.ideal_answer || '')} style={shortAnswerInput} />
-          <div style={{ color: '#6B7280', fontWeight: 800, fontSize: 12 }}>
+          <div style={{ color: '#6E6E73', fontWeight: 600, fontSize: 12 }}>
             字數上限：{q.max_word_count ?? '—'}
           </div>
         </div>
@@ -112,10 +112,10 @@ export default function QuestionPreview({ q }) {
       return (
         <div style={{ marginTop: 10, display: 'grid', gap: 10 }}>
           <textarea readOnly rows={4} placeholder="學生將在此輸入…" style={essayBox} />
-          <div style={{ ...panel, borderLeft: '4px solid #F59E0B', background: 'rgba(245,158,11,0.10)' }}>
-            <div style={{ fontWeight: 900, color: '#92400E' }}>評分標準</div>
-            <div style={{ marginTop: 6, color: '#92400E', fontWeight: 800 }}>{String(q.grading_rubric || '')}</div>
-            <div style={{ marginTop: 6, color: '#B45309', fontWeight: 800, fontSize: 12 }}>
+          <div style={{ ...panel, background: '#FFF4E5' }}>
+            <div style={{ fontWeight: 700, color: '#92400E' }}>評分標準</div>
+            <div style={{ marginTop: 6, color: '#92400E', fontWeight: 600 }}>{String(q.grading_rubric || '')}</div>
+            <div style={{ marginTop: 6, color: '#B45309', fontWeight: 600, fontSize: 12 }}>
               字數上限：{q.max_word_count ?? '—'}
             </div>
           </div>
@@ -124,34 +124,34 @@ export default function QuestionPreview({ q }) {
     }
 
     default:
-      return <div style={{ marginTop: 10, color: '#6B7280', fontWeight: 700 }}>不支援的題型：{type}</div>;
+      return <div style={{ marginTop: 10, color: '#6E6E73', fontWeight: 500 }}>不支援的題型：{type}</div>;
   }
 }
 
 const panel = {
   padding: 12,
   borderRadius: 16,
-  border: '1px solid rgba(17,24,39,0.10)',
-  background: '#F9FAFB',
-  fontWeight: 800,
-  color: '#111827',
+  border: '1px solid rgba(0,0,0,0.10)',
+  background: '#FAFAFC',
+  fontWeight: 600,
+  color: '#1D1D1F',
   lineHeight: 1.7,
 };
 
 const sectionLabel = {
-  fontWeight: 900,
+  fontWeight: 700,
   fontSize: 12,
-  color: '#6B7280',
+  color: '#6E6E73',
 };
 
 const tfBtn = (active) => ({
   flex: 1,
   padding: '12px 12px',
   borderRadius: 16,
-  border: active ? '2px solid rgba(16,185,129,0.6)' : '1px solid rgba(17,24,39,0.10)',
+  border: active ? '2px solid rgba(16,185,129,0.6)' : '1px solid rgba(0,0,0,0.10)',
   background: active ? 'rgba(16,185,129,0.10)' : '#F2F2F7',
-  fontWeight: 900,
-  color: active ? '#065F46' : '#6B7280',
+  fontWeight: 700,
+  color: active ? '#065F46' : '#6E6E73',
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
@@ -161,8 +161,8 @@ const tfBtn = (active) => ({
 const mcRow = (correct) => ({
   padding: 12,
   borderRadius: 16,
-  border: correct ? '2px solid rgba(16,185,129,0.6)' : '1px solid rgba(17,24,39,0.10)',
-  background: correct ? 'rgba(16,185,129,0.08)' : '#F9FAFB',
+  border: correct ? '2px solid rgba(16,185,129,0.6)' : '1px solid rgba(0,0,0,0.10)',
+  background: correct ? 'rgba(16,185,129,0.08)' : '#FAFAFC',
   display: 'flex',
   alignItems: 'center',
   gap: 10,
@@ -172,11 +172,11 @@ const optBadge = (correct) => ({
   width: 30,
   height: 30,
   borderRadius: 999,
-  background: correct ? '#10B981' : 'rgba(17,24,39,0.08)',
-  color: correct ? 'white' : '#6B7280',
+  background: correct ? '#34C759' : 'rgba(0,0,0,0.08)',
+  color: correct ? 'white' : '#6E6E73',
   display: 'grid',
   placeItems: 'center',
-  fontWeight: 900,
+  fontWeight: 700,
 });
 
 const blankInput = {
@@ -187,7 +187,7 @@ const blankInput = {
   borderBottom: '2px solid rgba(16,185,129,0.6)',
   background: 'transparent',
   color: '#065F46',
-  fontWeight: 900,
+  fontWeight: 700,
   textAlign: 'center',
   outline: 'none',
 };
@@ -197,16 +197,16 @@ const shortAnswerInput = {
   borderRadius: 16,
   border: '2px solid rgba(16,185,129,0.25)',
   background: 'rgba(16,185,129,0.08)',
-  fontWeight: 900,
+  fontWeight: 700,
   color: '#065F46',
 };
 
 const essayBox = {
   padding: 12,
   borderRadius: 16,
-  border: '1px solid rgba(17,24,39,0.15)',
+  border: '1px solid rgba(0,0,0,0.15)',
   background: 'white',
-  fontWeight: 800,
-  color: '#111827',
+  fontWeight: 600,
+  color: '#1D1D1F',
   resize: 'none',
 };

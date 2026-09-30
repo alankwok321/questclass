@@ -3,12 +3,19 @@ import { BrowserRouter, NavLink, Route, Routes, useLocation } from 'react-router
 import {
   LayoutDashboard,
   Users,
-  BookOpen,
   TrendingUp,
   FileText,
   MessageSquare,
   Bell,
   Search,
+  Sparkles,
+  Library,
+  Settings,
+  House,
+  ClipboardCheck,
+  CirclePlus,
+  Wrench,
+  Star,
 } from 'lucide-react';
 
 import TeacherHomework from './pages/TeacherHomework.jsx';
@@ -28,6 +35,32 @@ import Dashboard from './pages/Dashboard.jsx';
 import PlaceholderTab from './pages/PlaceholderTab.jsx';
 import { ToastProvider, useToast } from './components/Toast.jsx';
 import { firebaseEnabled, firebaseInit, signInWithGoogle, signOut } from './services/firebase.js';
+
+const ROLE_LABELS = { admin: '管理員', teacher: '教師', student: '學生' };
+
+function NavItem({ to, label, icon: Icon, badge }) {
+  return (
+    <NavLink
+      to={to}
+      className={({ isActive }) => `navItem ${isActive ? 'navItemActive' : ''}`}
+      end={to === '/'}
+    >
+      <Icon size={18} strokeWidth={1.8} />
+      <span>{label}</span>
+      {badge ? <span style={{ marginLeft: 'auto', fontSize: 13, opacity: 0.75 }}>{badge}</span> : null}
+    </NavLink>
+  );
+}
+
+function NavGroup({ label, items }) {
+  if (!items.length) return null;
+  return (
+    <div className="navGroup">
+      <div className="navGroupLabel">{label}</div>
+      {items.map((item) => <NavItem key={item.to} {...item} />)}
+    </div>
+  );
+}
 
 function Shell({ user, setUser, fbReady, setFbReady, children }) {
   const location = useLocation();
@@ -52,42 +85,50 @@ function Shell({ user, setUser, fbReady, setFbReady, children }) {
 
   const title = useMemo(() => {
     const p = location.pathname;
-    if (p.startsWith('/teacher')) return '教師儀表板';
+    if (p.startsWith('/teacher-homework')) return '出作業';
+    if (p.startsWith('/teacher-question-bank')) return '題庫';
+    if (p.startsWith('/teacher')) return '教師工具';
+    if (p.startsWith('/student-homework')) return '我的作業';
     if (p.startsWith('/student')) return '學生首頁';
     if (p.startsWith('/admin')) return '管理後台';
-    if (p.startsWith('/chat')) return 'AI 聊天';
+    if (p.startsWith('/chat')) return 'AI 助教';
     if (p.startsWith('/analytics')) return '分析';
+    if (p.startsWith('/classroom')) return '班級管理';
+    if (p.startsWith('/assignments')) return '作業批改';
+    if (p.startsWith('/progress')) return '進度追蹤';
+    if (p.startsWith('/reports')) return '學習報告';
+    if (p.startsWith('/parents')) return '家長通知';
+    if (p === '/' || p.startsWith('/dashboard')) return '儀表板';
     return 'QuestClass';
   }, [location.pathname]);
 
-  const items = [
+  const role = user?.role || '';
+
+  const teachingItems = [
     { to: '/dashboard', label: '儀表板', icon: LayoutDashboard },
     { to: '/classroom', label: '班級管理', icon: Users },
-    { to: '/assignments', label: '作業批改', icon: BookOpen },
+    { to: '/assignments', label: '作業批改', icon: ClipboardCheck },
     { to: '/progress', label: '進度追蹤', icon: TrendingUp },
     { to: '/reports', label: '學習報告', icon: FileText },
     { to: '/parents', label: '家長通知', icon: MessageSquare },
   ];
 
-  const role = user?.role || '';
-
-  const teacherNavItems = [
-    { to: '/teacher-homework', label: '出作業', icon: BookOpen },
-    { to: '/teacher-question-bank', label: '題庫', icon: BookOpen },
-    { to: '/teacher', label: '教師工具', icon: LayoutDashboard },
+  const learningItems = [
+    ...(role === 'student' ? [{ to: '/student-homework', label: '我的作業', icon: Star }] : []),
+    ...(role === 'admin' ? [{ to: '/student-homework', label: '學生作業', icon: Star }] : []),
   ];
 
-  const extraItems = [
-    ...(role === 'student' ? [{ to: '/student-homework', label: '我的作業', icon: FileText }] : []),
-    ...(role === 'teacher' ? teacherNavItems : []),
-    ...(role === 'admin' ? [
-      { to: '/student-homework', label: '學生作業', icon: FileText },
-      ...teacherNavItems,
-      { to: '/admin', label: '系統管理', icon: FileText },
-    ] : []),
-    { to: '/chat', label: 'AI 聊天', icon: MessageSquare },
+  const prepItems = (role === 'teacher' || role === 'admin') ? [
+    { to: '/teacher-homework', label: '出作業', icon: CirclePlus },
+    { to: '/teacher-question-bank', label: '題庫', icon: Library },
+    { to: '/teacher', label: '教師工具', icon: Wrench },
+  ] : [];
+
+  const moreItems = [
+    { to: '/chat', label: 'AI 助教', icon: Sparkles },
     { to: '/analytics', label: '分析', icon: TrendingUp },
-    { to: '/', label: '首頁', icon: BookOpen },
+    ...(role === 'admin' ? [{ to: '/admin', label: '管理後台', icon: Settings }] : []),
+    { to: '/', label: '首頁', icon: House },
   ];
 
   const onLogin = async () => {
@@ -109,64 +150,73 @@ function Shell({ user, setUser, fbReady, setFbReady, children }) {
     toast.show('已登出');
   };
 
+  const initials = String(user?.name || '')
+    .replace(/\(.*\)/, '')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((w) => w[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase();
+
+  const eyebrow = user?.name
+    ? `${user.name.replace(/\s*\(.*\)\s*/, '')}${ROLE_LABELS[role] ? ` · ${ROLE_LABELS[role]}` : ''}`
+    : 'QuestClass';
+
   return (
     <div className="appShell">
       <aside className="sidebar">
-        <div className="brand">QuestClass</div>
-        <nav className="nav noScrollbar">
-          {items.map(({ to, label, icon: Icon }) => (
-            <NavLink
-              key={to}
-              to={to}
-              className={({ isActive }) => `navItem ${isActive ? 'navItemActive' : ''}`}
-              end={to === '/'}
-            >
-              <Icon size={20} />
-              <span>{label}</span>
-            </NavLink>
-          ))}
+        <div className="brand">
+          <div className="brandMark" aria-hidden="true">
+            <Star size={18} strokeWidth={2.2} />
+          </div>
+          QuestClass
+        </div>
 
-          <div className="sidebarDivider" />
-
-          {extraItems.map(({ to, label, icon: Icon }) => (
-            <NavLink
-              key={to}
-              to={to}
-              className={({ isActive }) => `navItem ${isActive ? 'navItemActive' : ''}`}
-              end={to === '/'}
-            >
-              <Icon size={20} />
-              <span>{label}</span>
-            </NavLink>
-          ))}
+        <nav className="nav noScrollbar" aria-label="主選單">
+          <NavGroup label="教學" items={teachingItems} />
+          <NavGroup label="學習" items={learningItems} />
+          <NavGroup label="備課" items={prepItems} />
+          <NavGroup label="更多" items={moreItems} />
         </nav>
 
         <div className="sidebarFooter">
-          <div className="profileCard" style={{ justifyContent: 'space-between', padding: 12 }}>
-            <div style={{ display: 'flex', gap: 10, alignItems: 'center', minWidth: 0, flex: 1 }}>
-              <img
-                src={user?.photoURL || '/web/user.svg'}
-                alt="user"
-                width={38}
-                height={38}
-                style={{
-                  width: 38,
-                  height: 38,
-                  borderRadius: 999,
-                  objectFit: 'cover',
-                  border: '1px solid rgba(17,24,39,0.10)',
-                  background: 'linear-gradient(135deg, #007AFF, #60A5FA)'
-                }}
-                onError={(e) => { e.currentTarget.src = '/web/user.svg'; }}
-              />
+          <div className="profileCard">
+            <div
+              aria-hidden="true"
+              style={{
+                width: 34,
+                height: 34,
+                borderRadius: 999,
+                flexShrink: 0,
+                overflow: 'hidden',
+                background: user ? '#0071E3' : '#8E8E93',
+                color: '#fff',
+                display: 'grid',
+                placeItems: 'center',
+                fontSize: 13,
+                fontWeight: 600,
+              }}
+            >
+              {user?.photoURL ? (
+                <img
+                  src={user.photoURL}
+                  alt=""
+                  width={34}
+                  height={34}
+                  style={{ width: 34, height: 34, objectFit: 'cover' }}
+                  onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                />
+              ) : (initials || '?')}
+            </div>
 
-              <div style={{ minWidth: 0, flex: 1 }}>
-                <div style={{ fontWeight: 900, fontSize: 14, lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {user?.name || '未登入'}
-                </div>
-                <div style={{ color: '#6B7280', fontWeight: 800, fontSize: 11, marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {user?.role ? `角色：${user.role}` : (fbReady ? '點右側登入' : 'Firebase 未設定')}
-                </div>
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <div style={{ fontWeight: 600, fontSize: 13, lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {user?.name || '未登入'}
+              </div>
+              <div style={{ color: '#6E6E73', fontSize: 12, marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {user?.role ? (ROLE_LABELS[user.role] || user.role) : (fbReady ? '尚未登入' : 'Firebase 未設定')}
               </div>
             </div>
 
@@ -175,17 +225,14 @@ function Shell({ user, setUser, fbReady, setFbReady, children }) {
               onClick={user ? onLogout : onLogin}
               disabled={!fbReady}
               title={user ? '登出' : '登入'}
+              className="qcBtn qcBtnSmall"
               style={{
-                border: '1px solid rgba(17,24,39,0.10)',
-                background: '#F2F2F7',
-                borderRadius: 999,
-                padding: '6px 10px',
-                fontWeight: 900,
-                fontSize: 11,
-                color: user ? '#111827' : '#007AFF',
-                cursor: fbReady ? 'pointer' : 'not-allowed',
-                whiteSpace: 'nowrap',
-                opacity: fbReady ? 1 : 0.6
+                height: 30,
+                padding: '0 12px',
+                background: user ? '#E3E3E8' : '#0071E3',
+                color: user ? '#1D1D1F' : '#fff',
+                fontSize: 12,
+                opacity: fbReady ? 1 : 0.5,
               }}
             >
               {user ? '登出' : '登入'}
@@ -196,40 +243,28 @@ function Shell({ user, setUser, fbReady, setFbReady, children }) {
 
       <main className="canvas">
         <header className="header">
-          <h1 className="hTitle">{title}</h1>
+          <div style={{ minWidth: 0 }}>
+            <div className="hEyebrow">{eyebrow}</div>
+            <h1 className="hTitle">{title}</h1>
+          </div>
           <div className="headerRight">
             <div className="searchWrap">
-              <Search size={18} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: '#9CA3AF' }} />
-              <input className="search" placeholder="搜尋..." />
+              <Search size={16} style={{ position: 'absolute', left: 13, top: '50%', transform: 'translateY(-50%)', color: '#86868B' }} aria-hidden="true" />
+              <input className="search" placeholder="搜尋" aria-label="搜尋" />
             </div>
 
-
-            <button
-              type="button"
-              aria-label="notifications"
-              style={{
-                border: 0,
-                background: '#F2F2F7',
-                borderRadius: 999,
-                width: 38,
-                height: 38,
-                display: 'grid',
-                placeItems: 'center',
-                color: '#6B7280',
-                position: 'relative',
-              }}
-            >
-              <Bell size={18} />
+            <button type="button" aria-label="通知" className="iconButton">
+              <Bell size={18} strokeWidth={1.8} />
               <span
                 style={{
                   position: 'absolute',
-                  right: 7,
-                  top: 7,
-                  width: 10,
-                  height: 10,
+                  right: 9,
+                  top: 9,
+                  width: 8,
+                  height: 8,
                   borderRadius: 999,
                   background: '#FF3B30',
-                  border: '2px solid #F2F2F7',
+                  border: '1.5px solid #fff',
                 }}
               />
             </button>

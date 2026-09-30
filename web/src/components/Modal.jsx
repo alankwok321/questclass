@@ -7,7 +7,7 @@ export default function Modal({ open, title, children, onClose, footer }) {
     <div style={backdrop} onMouseDown={onClose}>
       <div style={dialog} onMouseDown={(e) => e.stopPropagation()}>
         <div style={header}>
-          <div style={{ fontWeight: 900, fontSize: 14 }}>{title}</div>
+          <div style={{ fontWeight: 700, fontSize: 14 }}>{title}</div>
           <button type="button" style={closeBtn} onClick={onClose}>×</button>
         </div>
         <div style={body}>{children}</div>
@@ -20,7 +20,7 @@ export default function Modal({ open, title, children, onClose, footer }) {
 const backdrop = {
   position: 'fixed',
   inset: 0,
-  background: 'rgba(17,24,39,0.55)',
+  background: 'rgba(0,0,0,0.55)',
   display: 'grid',
   placeItems: 'center',
   padding: 16,
@@ -32,7 +32,7 @@ const dialog = {
   maxHeight: 'min(82vh, 900px)',
   background: 'white',
   borderRadius: 18,
-  border: '1px solid rgba(17,24,39,0.10)',
+  border: '1px solid rgba(0,0,0,0.10)',
   overflow: 'hidden',
   display: 'grid',
   gridTemplateRows: 'auto 1fr auto',
@@ -40,7 +40,7 @@ const dialog = {
 
 const header = {
   padding: '12px 14px',
-  borderBottom: '1px solid rgba(17,24,39,0.10)',
+  borderBottom: '1px solid rgba(0,0,0,0.10)',
   display: 'flex',
   justifyContent: 'space-between',
   alignItems: 'center',
@@ -54,7 +54,7 @@ const body = {
 
 const footerStyle = {
   padding: 14,
-  borderTop: '1px solid rgba(17,24,39,0.10)',
+  borderTop: '1px solid rgba(0,0,0,0.10)',
   display: 'flex',
   justifyContent: 'flex-end',
   gap: 10,
@@ -65,11 +65,11 @@ const closeBtn = {
   width: 34,
   height: 34,
   borderRadius: 999,
-  border: '1px solid rgba(17,24,39,0.10)',
+  border: '1px solid rgba(0,0,0,0.10)',
   background: '#F2F2F7',
-  color: '#111827',
+  color: '#1D1D1F',
   cursor: 'pointer',
-  fontWeight: 900,
+  fontWeight: 700,
   fontSize: 18,
   lineHeight: '32px',
 };

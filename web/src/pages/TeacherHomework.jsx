@@ -121,27 +121,27 @@ export default function TeacherHomework() {
     <div style={{ display: 'grid', gap: 16 }}>
       <div className="card">
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 10 }}>
-          <div style={{ fontWeight: 900 }}>指派作業</div>
+          <div style={{ fontWeight: 700 }}>指派作業</div>
           <button type="button" style={btnGhost} onClick={() => setDebugOpen(v => !v)}>
             {debugOpen ? '隱藏 Debug' : '顯示 Debug'}
           </button>
         </div>
 
         {debugOpen ? (
-          <div style={{ marginBottom: 12, padding: 12, borderRadius: 18, border: '1px solid rgba(17,24,39,0.10)', background: '#F9FAFB' }}>
+          <div style={{ marginBottom: 12, padding: 12, borderRadius: 18, border: '1px solid rgba(0,0,0,0.10)', background: '#FAFAFC' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 8 }}>
-              <div style={{ fontWeight: 900 }}>Debug</div>
+              <div style={{ fontWeight: 700 }}>Debug</div>
               <button type="button" style={btnPrimary} onClick={onRunDebug} disabled={debug.running}>
                 {debug.running ? '檢查中…' : 'Run debug'}
               </button>
             </div>
-            {debug.error ? <div style={{ color: '#B91C1C', fontWeight: 900 }}>{debug.error}</div> : null}
+            {debug.error ? <div style={{ color: '#D70015', fontWeight: 700 }}>{debug.error}</div> : null}
             {debug.result ? (
-              <pre style={{ margin: 0, padding: 10, borderRadius: 14, border: '1px solid rgba(17,24,39,0.10)', background: 'white', overflow: 'auto', fontSize: 12 }}>
+              <pre style={{ margin: 0, padding: 10, borderRadius: 14, border: '1px solid rgba(0,0,0,0.10)', background: 'white', overflow: 'auto', fontSize: 12 }}>
                 {JSON.stringify(debug.result, null, 2)}
               </pre>
             ) : (
-              <div style={{ color: '#6B7280', fontWeight: 700, fontSize: 12 }}>按 Run debug 會檢查：idToken、有無 aiProviderConfigs、以及 /api/chat debug 回應（不顯示 key）。</div>
+              <div style={{ color: '#6E6E73', fontWeight: 500, fontSize: 12 }}>按 Run debug 會檢查：idToken、有無 aiProviderConfigs、以及 /api/chat debug 回應（不顯示 key）。</div>
             )}
           </div>
         ) : null}
@@ -210,25 +210,25 @@ export default function TeacherHomework() {
       </div>
 
       <div className="card">
-        <div style={{ fontWeight: 900, marginBottom: 10 }}>題目（{questions.length}）</div>
+        <div style={{ fontWeight: 700, marginBottom: 10 }}>題目（{questions.length}）</div>
         {questions.length ? (
           <div style={{ display: 'grid', gap: 10 }}>
             {questions.map((q, idx) => (
-              <div key={q.id || idx} style={{ padding: 12, borderRadius: 18, border: '1px solid rgba(17,24,39,0.10)', background: '#F9FAFB' }}>
-                <div style={{ fontWeight: 900 }}>{idx + 1}. {q.question || q.prompt || ''}</div>
-                <div style={{ marginTop: 6, color: '#6B7280', fontWeight: 700 }}>Answer: {q.answer || q.solution || '—'}</div>
-                <div style={{ marginTop: 6, color: '#6B7280', fontWeight: 800, fontSize: 12 }}>points: {q.points ?? '—'}</div>
+              <div key={q.id || idx} style={{ padding: 12, borderRadius: 18, border: '1px solid rgba(0,0,0,0.10)', background: '#FAFAFC' }}>
+                <div style={{ fontWeight: 700 }}>{idx + 1}. {q.question || q.prompt || ''}</div>
+                <div style={{ marginTop: 6, color: '#6E6E73', fontWeight: 500 }}>Answer: {q.answer || q.solution || '—'}</div>
+                <div style={{ marginTop: 6, color: '#6E6E73', fontWeight: 600, fontSize: 12 }}>points: {q.points ?? '—'}</div>
               </div>
             ))}
           </div>
         ) : (
-          <div style={{ color: '#6B7280', fontWeight: 700 }}>尚未產生題目</div>
+          <div style={{ color: '#6E6E73', fontWeight: 500 }}>尚未產生題目</div>
         )}
       </div>
 
       <div className="card">
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 10 }}>
-          <div style={{ fontWeight: 900 }}>作業清單</div>
+          <div style={{ fontWeight: 700 }}>作業清單</div>
           <button type="button" style={btnGhost} onClick={() => refreshList()} disabled={listLoading}>
             {listLoading ? '更新中…' : '重新整理'}
           </button>
@@ -237,9 +237,9 @@ export default function TeacherHomework() {
           {items.length ? (
           <div style={{ display: 'grid', gap: 10 }}>
             {items.map((a) => (
-              <div key={a.id} style={{ padding: 12, borderRadius: 18, border: '1px solid rgba(17,24,39,0.10)', background: '#F9FAFB', display: 'grid', gap: 8 }}>
+              <div key={a.id} style={{ padding: 12, borderRadius: 18, border: '1px solid rgba(0,0,0,0.10)', background: '#FAFAFC', display: 'grid', gap: 8 }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
-                  <div style={{ fontWeight: 900 }}>{a.title || '（未命名作業）'}</div>
+                  <div style={{ fontWeight: 700 }}>{a.title || '（未命名作業）'}</div>
                   <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                     <button type="button" style={btnGhost} onClick={() => {
                       setEditingId(a.id);
@@ -264,56 +264,56 @@ export default function TeacherHomework() {
                   </div>
                 </div>
 
-                <div style={{ color: '#6B7280', fontWeight: 800, fontSize: 12 }}>
+                <div style={{ color: '#6E6E73', fontWeight: 600, fontSize: 12 }}>
                   id: {a.id || '—'} · dueAt: {a.dueAt || '—'} · status: {a.status || '—'} · questions: {(a.questions || []).length} · total: {a.totalPoints ?? '—'}
                 </div>
               </div>
             ))}
           </div>
         ) : (
-          <div style={{ color: '#6B7280', fontWeight: 700 }}>{listLoading ? '載入中…' : '目前沒有作業'}</div>
+          <div style={{ color: '#6E6E73', fontWeight: 500 }}>{listLoading ? '載入中…' : '目前沒有作業'}</div>
         )}
       </div>
     </div>
   );
 }
 
-const label = { fontWeight: 900, fontSize: 12, color: '#6B7280' };
+const label = { fontWeight: 700, fontSize: 13, color: '#6E6E73' };
 const inputStyle = {
   width: '100%',
   padding: '10px 12px',
-  borderRadius: 14,
-  border: '1px solid rgba(17,24,39,0.10)',
-  background: '#F2F2F7',
+  borderRadius: 10,
+  border: '1px solid #D2D2D7',
+  background: '#FFFFFF',
   outline: 'none',
-  fontWeight: 800,
+  fontWeight: 600,
 };
 const selectStyle = {
   width: '100%',
   padding: '10px 12px',
-  borderRadius: 14,
-  border: '1px solid rgba(17,24,39,0.10)',
-  background: '#F2F2F7',
+  borderRadius: 10,
+  border: '1px solid #D2D2D7',
+  background: '#FFFFFF',
   outline: 'none',
-  fontWeight: 800,
+  fontWeight: 600,
 };
 
 const btnPrimary = {
   border: 0,
-  background: '#007AFF',
+  background: '#0071E3',
   color: 'white',
   padding: '10px 14px',
   borderRadius: 999,
-  fontWeight: 900,
+  fontWeight: 600,
   cursor: 'pointer',
 };
 
 const btnGhost = {
-  border: '1px solid rgba(17,24,39,0.10)',
-  background: '#F2F2F7',
-  color: '#111827',
+  border: 0,
+  background: '#E3E3E8',
+  color: '#1D1D1F',
   padding: '10px 14px',
   borderRadius: 999,
-  fontWeight: 900,
+  fontWeight: 500,
   cursor: 'pointer',
 };

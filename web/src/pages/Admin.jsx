@@ -159,8 +159,8 @@ export default function AdminPage({ user }) {
   if (!user) {
     return (
       <div className="card">
-        <div style={{ fontWeight: 900, fontSize: 16 }}>Admin</div>
-        <div style={{ marginTop: 10, color: '#6B7280', fontWeight: 700 }}>請先登入。</div>
+        <div style={{ fontWeight: 700, fontSize: 16 }}>Admin</div>
+        <div style={{ marginTop: 10, color: '#6E6E73', fontWeight: 500 }}>請先登入。</div>
       </div>
     );
   }
@@ -168,8 +168,8 @@ export default function AdminPage({ user }) {
   if (!isAdmin(user)) {
     return (
       <div className="card">
-        <div style={{ fontWeight: 900, fontSize: 16 }}>Admin</div>
-        <div style={{ marginTop: 10, color: '#B91C1C', fontWeight: 800 }}>只有 admin 可使用此頁面。</div>
+        <div style={{ fontWeight: 700, fontSize: 16 }}>Admin</div>
+        <div style={{ marginTop: 10, color: '#D70015', fontWeight: 600 }}>只有 admin 可使用此頁面。</div>
       </div>
     );
   }
@@ -179,19 +179,19 @@ export default function AdminPage({ user }) {
       <div className="card">
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
           <div>
-            <div style={{ fontWeight: 900, fontSize: 16 }}>Admin 控制台</div>
-            <div style={{ color: '#6B7280', fontWeight: 700, marginTop: 4, fontSize: 13 }}>users / students（Firestore）</div>
+            <div style={{ fontWeight: 700, fontSize: 16 }}>Admin 控制台</div>
+            <div style={{ color: '#6E6E73', fontWeight: 500, marginTop: 4, fontSize: 13 }}>users / students（Firestore）</div>
           </div>
           <button type="button" onClick={refresh} disabled={loading} style={btnGhost}>
             {loading ? '刷新中…' : '重新整理'}
           </button>
         </div>
-        {err ? <div style={{ marginTop: 10, color: '#B91C1C', fontWeight: 800 }}>{err}</div> : null}
+        {err ? <div style={{ marginTop: 10, color: '#D70015', fontWeight: 600 }}>{err}</div> : null}
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '320px minmax(0, 1fr)', gap: 14 }}>
         <div className="card" style={{ padding: 12, overflow: 'hidden' }}>
-          <div style={{ fontWeight: 900, marginBottom: 10 }}>使用者</div>
+          <div style={{ fontWeight: 700, marginBottom: 10 }}>使用者</div>
           <div style={{ maxHeight: 520, overflow: 'auto', display: 'grid', gap: 8 }}>
             {users.map((u) => (
               <button
@@ -200,15 +200,15 @@ export default function AdminPage({ user }) {
                 onClick={() => setSelectedUid(u.uid)}
                 style={{
                   textAlign: 'left',
-                  border: '1px solid rgba(17,24,39,0.10)',
-                  background: u.uid === selectedUid ? 'rgba(0,122,255,0.10)' : '#F2F2F7',
+                  border: '1px solid rgba(0,0,0,0.10)',
+                  background: u.uid === selectedUid ? 'rgba(0,113,227,0.10)' : '#F2F2F7',
                   borderRadius: 16,
                   padding: 10,
                   cursor: 'pointer'
                 }}
               >
-                <div style={{ fontWeight: 900, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{u.name || u.email || u.uid}</div>
-                <div style={{ marginTop: 2, color: '#6B7280', fontWeight: 800, fontSize: 11, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                <div style={{ fontWeight: 700, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{u.name || u.email || u.uid}</div>
+                <div style={{ marginTop: 2, color: '#6E6E73', fontWeight: 600, fontSize: 11, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   role: {u.role || '—'} · status: {u.accountStatus || 'active'}
                 </div>
               </button>
@@ -218,14 +218,14 @@ export default function AdminPage({ user }) {
 
         <div style={{ display: 'grid', gap: 14 }}>
           <div className="card">
-            <div style={{ fontWeight: 900, marginBottom: 12 }}>帳號設定</div>
+            <div style={{ fontWeight: 700, marginBottom: 12 }}>帳號設定</div>
             {!selectedUser ? (
-              <div style={{ color: '#6B7280', fontWeight: 700 }}>尚未選擇使用者</div>
+              <div style={{ color: '#6E6E73', fontWeight: 500 }}>尚未選擇使用者</div>
             ) : (
               <div style={{ display: 'grid', gap: 10 }}>
                 <div style={{ display: 'grid', gap: 4 }}>
                   <div style={label}>UID</div>
-                  <div style={{ fontWeight: 800, color: '#374151', fontSize: 13 }}>{selectedUser.uid}</div>
+                  <div style={{ fontWeight: 600, color: '#374151', fontSize: 13 }}>{selectedUser.uid}</div>
                 </div>
 
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
@@ -259,7 +259,7 @@ export default function AdminPage({ user }) {
                 </label>
 
                 <div style={{ height: 6 }} />
-                <div style={{ fontWeight: 900, marginBottom: 6 }}>API 設定</div>
+                <div style={{ fontWeight: 700, marginBottom: 6 }}>API 設定</div>
 
                 <label style={{ display: 'grid', gap: 6 }}>
                   <div style={label}>API Base URL</div>
@@ -294,16 +294,16 @@ export default function AdminPage({ user }) {
   );
 }
 
-const label = { fontWeight: 900, fontSize: 12, color: '#6B7280' };
+const label = { fontWeight: 700, fontSize: 13, color: '#6E6E73' };
 
 const inputStyle = {
   width: '100%',
   padding: '10px 12px',
-  borderRadius: 14,
-  border: '1px solid rgba(17,24,39,0.10)',
-  background: '#F2F2F7',
+  borderRadius: 10,
+  border: '1px solid #D2D2D7',
+  background: '#FFFFFF',
   outline: 'none',
-  fontWeight: 800,
+  fontWeight: 600,
 };
 
 const selectStyle = {
@@ -313,20 +313,20 @@ const selectStyle = {
 
 const btnPrimary = {
   border: 0,
-  background: '#007AFF',
+  background: '#0071E3',
   color: 'white',
   padding: '10px 14px',
   borderRadius: 999,
-  fontWeight: 900,
+  fontWeight: 600,
   cursor: 'pointer',
 };
 
 const btnGhost = {
-  border: '1px solid rgba(17,24,39,0.10)',
-  background: '#F2F2F7',
-  color: '#111827',
+  border: 0,
+  background: '#E3E3E8',
+  color: '#1D1D1F',
   padding: '10px 14px',
   borderRadius: 999,
-  fontWeight: 900,
+  fontWeight: 500,
   cursor: 'pointer',
 };

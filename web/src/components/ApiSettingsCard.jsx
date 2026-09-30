@@ -35,7 +35,7 @@ export default function ApiSettingsCard({ title = 'API 設定（本機）' }) {
 
   return (
     <div className="card">
-      <div style={{ fontWeight: 900, marginBottom: 12 }}>{title}</div>
+      <div style={{ fontWeight: 700, marginBottom: 12 }}>{title}</div>
       <div style={{ display: 'grid', gap: 10 }}>
         <label style={{ display: 'grid', gap: 6 }}>
           <div style={label}>API Base URL</div>
@@ -50,7 +50,7 @@ export default function ApiSettingsCard({ title = 'API 設定（本機）' }) {
         <label style={{ display: 'grid', gap: 6 }}>
           <div style={label}>API Key</div>
           <input value={form.apiKey} onChange={(e) => setForm(s => ({ ...s, apiKey: e.target.value }))} style={inputStyle} placeholder="sk-..." type="password" />
-          <div style={{ color: '#6B7280', fontWeight: 800, fontSize: 11 }}>目前：{masked(form.apiKey) || '（空）'}</div>
+          <div style={{ color: '#6E6E73', fontWeight: 600, fontSize: 11 }}>目前：{masked(form.apiKey) || '（空）'}</div>
         </label>
 
         <label style={{ display: 'grid', gap: 6 }}>
@@ -63,40 +63,40 @@ export default function ApiSettingsCard({ title = 'API 設定（本機）' }) {
           <button type="button" onClick={onSave} style={btnPrimary}>儲存</button>
         </div>
 
-        {savedAt ? <div style={{ color: '#6B7280', fontWeight: 800, fontSize: 11 }}>已儲存：{savedAt}</div> : null}
+        {savedAt ? <div style={{ color: '#6E6E73', fontWeight: 600, fontSize: 11 }}>已儲存：{savedAt}</div> : null}
       </div>
     </div>
   );
 }
 
-const label = { fontWeight: 900, fontSize: 12, color: '#6B7280' };
+const label = { fontWeight: 700, fontSize: 13, color: '#6E6E73' };
 
 const inputStyle = {
   width: '100%',
   padding: '10px 12px',
-  borderRadius: 14,
-  border: '1px solid rgba(17,24,39,0.10)',
-  background: '#F2F2F7',
+  borderRadius: 10,
+  border: '1px solid #D2D2D7',
+  background: '#FFFFFF',
   outline: 'none',
-  fontWeight: 800,
+  fontWeight: 600,
 };
 
 const btnPrimary = {
   border: 0,
-  background: '#007AFF',
+  background: '#0071E3',
   color: 'white',
   padding: '10px 14px',
   borderRadius: 999,
-  fontWeight: 900,
+  fontWeight: 600,
   cursor: 'pointer',
 };
 
 const btnGhost = {
-  border: '1px solid rgba(17,24,39,0.10)',
-  background: '#F2F2F7',
-  color: '#111827',
+  border: 0,
+  background: '#E3E3E8',
+  color: '#1D1D1F',
   padding: '10px 14px',
   borderRadius: 999,
-  fontWeight: 900,
+  fontWeight: 500,
   cursor: 'pointer',
 };
