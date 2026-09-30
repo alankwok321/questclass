@@ -42,6 +42,8 @@ Set these as project environment variables in Vercel:
 - optional AI provider values (`OPENROUTER_API_KEY`, `OPENROUTER_BASE_URL`, `AI_MODEL`)
 - `FIREBASE_SERVICE_ACCOUNT_JSON`: the service-account JSON on one line. The server needs it to
   store per-user AI keys and run the admin tools. It is a server-only variable, never sent to the browser.
+- `ADMIN_EMAILS`: comma-separated Google accounts that become admin when they sign in
+  (e.g. `danielkwok.ai@gmail.com`). Needs `FIREBASE_SERVICE_ACCOUNT_JSON`.
 - `AI_CONFIG_ENCRYPTION_KEY`: any long random string; encrypts AI keys saved from the admin page.
 
 When Firebase is configured, only signed-in users can use the school's `OPENROUTER_API_KEY` in chat.

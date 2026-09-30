@@ -251,6 +251,49 @@ app.get('/api/runtime-config', (req, res) => {
   });
 });
 
+// Accounts listed in ADMIN_EMAILS (comma-separated) become admin when they sign in.
+// Needs FIREBASE_SERVICE_ACCOUNT_JSON so the server can write to Firestore.
+function adminEmails() {
+  return String(process.env.ADMIN_EMAILS || '')
+    .split(',').map((e) => e.trim().toLowerCase()).filter(Boolean);
+}
+
+app.post('/api/auth/sync-role', async (req, res) => {
+  try {
+    const { idToken } = req.body || {};
+    if (!idToken) return res.status(401).json({ error: 'Unauthorized' });
+    const list = adminEmails();
+    if (!list.length) return res.json({ ok: true, changed: false });
+
+    const { auth, db } = getFirebaseAdmin();
+    let decoded;
+    try {
+      decoded = await auth.verifyIdToken(idToken);
+    } catch {
+      return res.status(401).json({ error: 'Invalid auth token' });
+    }
+    const email = String(decoded.email || '').toLowerCase();
+    // Only a Google-verified address counts.
+    if (!email || decoded.email_verified !== true || !list.includes(email)) return res.json({ ok: true, changed: false });
+
+    const ref = db.collection('users').doc(decoded.uid);
+    const snap = await ref.get();
+    const current = snap.exists ? String(snap.data()?.role || '').toLowerCase() : '';
+    if (current === 'admin' && (snap.data()?.accountStatus || 'active') === 'active') return res.json({ ok: true, changed: false });
+
+    await ref.set({
+      role: 'admin',
+      accountStatus: 'active',
+      email: decoded.email,
+      updatedAt: FieldValue.serverTimestamp(),
+      ...(snap.exists ? {} : { name: decoded.name || email.split('@')[0], createdAt: FieldValue.serverTimestamp() }),
+    }, { merge: true });
+    return res.json({ ok: true, changed: true, role: 'admin' });
+  } catch (error) {
+    return res.status(500).json({ error: error?.message || 'role sync failed' });
+  }
+});
+
 app.post('/api/ai-config/get', async (req, res) => {
   try {
     const { idToken, uid } = req.body || {};

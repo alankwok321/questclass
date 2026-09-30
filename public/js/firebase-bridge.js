@@ -157,6 +157,23 @@ window.QuestClassFirebase = {
     }
   },
 
+  // Lets the server promote accounts listed in its ADMIN_EMAILS setting, then reloads the profile.
+  async _syncServerRole(user, profile) {
+    try {
+      const idToken = await user.getIdToken();
+      const res = await fetch('/api/auth/sync-role', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idToken }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data?.changed) return (await this._loadProfile(user.uid)) || profile;
+    } catch {
+      // Server unreachable: keep the profile as it is.
+    }
+    return profile;
+  },
+
   async init() {
     await this.ensureConfig();
     if (!this.enabled()) return { ok: false, mode: this.mode() };
@@ -171,6 +188,7 @@ window.QuestClassFirebase = {
         if (!user) return resolve({ ok: true, mode: this.mode(), user: null });
         let profile = await this._loadProfile(user.uid);
         profile = await this._ensureProfile(user, profile);
+        profile = await this._syncServerRole(user, profile);
         resolve({ ok: true, mode: this.mode(), user: this._normalizeUser(user, profile) });
       }, () => resolve({ ok: true, mode: this.mode(), user: null }));
     });
@@ -200,6 +218,7 @@ window.QuestClassFirebase = {
       const cred = await sdk.signInWithEmailAndPassword(auth, email, password);
       let profile = await this._loadProfile(cred.user.uid);
       profile = await this._ensureProfile(cred.user, profile);
+      profile = await this._syncServerRole(cred.user, profile);
       this._authReadyPromise = Promise.resolve(cred.user);
       this._initResult = { ok: true, mode: this.mode(), user: this._normalizeUser(cred.user, profile) };
       return this._initResult;
@@ -218,6 +237,7 @@ window.QuestClassFirebase = {
       const cred = await sdk.signInWithPopup(auth, provider);
       let profile = await this._loadProfile(cred.user.uid);
       profile = await this._ensureProfile(cred.user, profile);
+      profile = await this._syncServerRole(cred.user, profile);
       this._authReadyPromise = Promise.resolve(cred.user);
       this._initResult = { ok: true, mode: this.mode(), user: this._normalizeUser(cred.user, profile) };
       return this._initResult;
