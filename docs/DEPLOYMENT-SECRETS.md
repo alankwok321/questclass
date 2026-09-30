@@ -40,6 +40,15 @@ npm run seed:firestore
 Set these as project environment variables in Vercel:
 - all `FIREBASE_*` web config values
 - optional AI provider values (`OPENROUTER_API_KEY`, `OPENROUTER_BASE_URL`, `AI_MODEL`)
+- `FIREBASE_SERVICE_ACCOUNT_JSON`: the service-account JSON on one line. The server needs it to
+  store per-user AI keys and run the admin tools. It is a server-only variable, never sent to the browser.
+- `AI_CONFIG_ENCRYPTION_KEY`: any long random string; encrypts AI keys saved from the admin page.
+
+When Firebase is configured, only signed-in users can use the school's `OPENROUTER_API_KEY` in chat.
+
+### Firestore rules
+`firestore.rules` is not deployed by Vercel. After changing it run
+`firebase deploy --only firestore:rules`, or paste it into Firebase console → Firestore → Rules.
 
 Do **not** put admin service account JSON into browser-exposed env vars.
 

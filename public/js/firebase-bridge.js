@@ -484,11 +484,18 @@ window.QuestClassFirebase = {
     const { db, sdk } = check.ready;
     const uid = check.authUser.uid;
 
-    // Fetch current user's profile for class-based filtering
-    let myClass = '';
+    // Fetch current user's profile for class-based filtering.
+    // A student belongs to their `class` field and to every id in `classroomIds`
+    // (the admin page only sets classroomIds, so matching `class` alone never worked).
+    const myClasses = new Set();
     try {
       const userSnap = await sdk.getDoc(sdk.doc(db, 'users', uid));
-      if (userSnap.exists()) myClass = String(userSnap.data().class || '').trim();
+      if (userSnap.exists()) {
+        const u = userSnap.data() || {};
+        const norm = (v) => String(v || '').trim().toLowerCase();
+        if (norm(u.class)) myClasses.add(norm(u.class));
+        (Array.isArray(u.classroomIds) ? u.classroomIds : []).forEach((c) => { if (norm(c)) myClasses.add(norm(c)); });
+      }
     } catch (_) { /* ignore */ }
 
     try {
@@ -501,10 +508,10 @@ window.QuestClassFirebase = {
       const items = all.filter(a => {
         const t = a.targetType || 'all';
         if (t === 'all') return true;
-        if (t === 'class') return myClass && a.targetClass && myClass === a.targetClass;
+        if (t === 'class') return Boolean(a.targetClass) && myClasses.has(String(a.targetClass).trim().toLowerCase());
         if (t === 'students') return Array.isArray(a.targetStudentUids) && a.targetStudentUids.includes(uid);
         return true; // unknown type → show
-      }).sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+      }).sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
 
       return { ok: true, items };
     } catch (error) {
@@ -610,6 +617,9 @@ window.QuestClassFirebase = {
       grading_rubric: String(payload.grading_rubric || '').trim(),
       max_word_count: Number(payload.max_word_count || 0),
 
+      // soft delete (hard deletes are admin-only in the rules)
+      deleted: Boolean(payload.deleted),
+
       // backward-compatible aliases
       prompt: question_text,
       choices: Array.isArray(payload.choices) ? payload.choices : [],
@@ -679,7 +689,7 @@ window.QuestClassFirebase = {
         sdk.limit(limit)
       );
       const snap = await sdk.getDocs(q);
-      const items = snap.docs.map((d) => this._docData(d)).filter(Boolean);
+      const items = snap.docs.map((d) => this._docData(d)).filter((d) => d && !d.deleted);
       return { ok: true, items };
     } catch (error) {
       return { ok: false, error: error?.message || 'List question bank failed', items: [] };

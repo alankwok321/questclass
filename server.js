@@ -30,12 +30,29 @@ function getFirebaseRuntimeConfig() {
   };
 }
 
-function getProviderConfig(body = {}) {
+function getServerProviderConfig() {
   return {
-    apiKey: body.apiKey || process.env.OPENAI_API_KEY || process.env.OPENROUTER_API_KEY || '',
-    apiBaseUrl: (body.apiBaseUrl || process.env.OPENAI_BASE_URL || process.env.OPENROUTER_BASE_URL || 'https://openrouter.ai/api/v1').replace(/\/+$/, ''),
-    model: body.model || process.env.AI_MODEL || 'openai/gpt-4.1-mini',
+    apiKey: process.env.OPENAI_API_KEY || process.env.OPENROUTER_API_KEY || '',
+    apiBaseUrl: (process.env.OPENAI_BASE_URL || process.env.OPENROUTER_BASE_URL || 'https://openrouter.ai/api/v1').replace(/\/+$/, ''),
+    model: process.env.AI_MODEL || 'openai/gpt-4.1-mini',
+    source: 'server',
   };
+}
+
+function getProviderConfig(body = {}) {
+  const bodyKey = String(body.apiKey || '').trim();
+  const server = getServerProviderConfig();
+  // A caller-supplied base URL is only honoured together with the caller's own key.
+  // Otherwise anyone could point the server's secret key at a URL they control.
+  if (bodyKey) {
+    return {
+      apiKey: bodyKey,
+      apiBaseUrl: String(body.apiBaseUrl || server.apiBaseUrl).trim().replace(/\/+$/, ''),
+      model: String(body.model || server.model).trim(),
+      source: 'request',
+    };
+  }
+  return { ...server, model: String(body.model || server.model).trim() };
 }
 
 function getEncryptionKey() {
@@ -73,10 +90,12 @@ function decryptApiKey(payload = {}) {
 function getFirebaseAdmin() {
   if (!getApps().length) {
     const serviceAccountJson = process.env.FIREBASE_SERVICE_ACCOUNT_JSON || '';
+    const projectId = process.env.FIREBASE_PROJECT_ID || undefined;
     if (serviceAccountJson) {
-      initializeApp({ credential: cert(JSON.parse(serviceAccountJson)) });
+      initializeApp({ credential: cert(JSON.parse(serviceAccountJson)), projectId });
     } else {
-      initializeApp();
+      // Without a service account, ID-token checks still need the project ID (e.g. on Vercel).
+      initializeApp(projectId ? { projectId } : undefined);
     }
   }
   return {
@@ -94,7 +113,8 @@ async function verifyUserFromToken(idToken) {
   return {
     uid: decoded.uid,
     email: decoded.email || '',
-    role: profile?.role || 'student'
+    role: String(profile?.role || 'student').trim().toLowerCase(),
+    accountStatus: String(profile?.accountStatus || 'active').trim().toLowerCase()
   };
 }
 
@@ -106,10 +126,32 @@ function canManageStudent(user, targetUid) {
 
 async function resolveProviderConfig(body = {}) {
   let cfg = getProviderConfig(body);
-  if (!body?.idToken) return cfg;
+  const firebaseOn = getFirebaseRuntimeConfig().enabled;
 
-  const actor = await verifyUserFromToken(body.idToken);
+  if (!body?.idToken) {
+    // The school's own key is only for signed-in users when Firebase is set up.
+    if (cfg.source === 'server' && firebaseOn && cfg.apiKey) {
+      const err = new Error('請先登入才能使用 AI 功能');
+      err.status = 401;
+      throw err;
+    }
+    return cfg;
+  }
+
+  let actor;
+  try {
+    actor = await verifyUserFromToken(body.idToken);
+  } catch {
+    const err = new Error('登入已過期，請重新登入');
+    err.status = 401;
+    throw err;
+  }
   if (!actor) return cfg;
+  if (actor.accountStatus === 'suspended') {
+    const err = new Error('此帳號已停用');
+    err.status = 403;
+    throw err;
+  }
   const targetUid = String(body.uid || '').trim() || actor.uid;
   if (!canManageStudent(actor, targetUid)) {
     const err = new Error('Insufficient role to use this student config');
@@ -119,10 +161,18 @@ async function resolveProviderConfig(body = {}) {
 
   const { db } = getFirebaseAdmin();
   const snap = await db.collection('aiProviderConfigs').doc(targetUid).get();
-  if (!snap.exists) return cfg;
+  if (!snap.exists || !snap.data()?.secret?.ciphertext) return cfg;
   const data = snap.data() || {};
+  let storedKey;
+  try {
+    storedKey = decryptApiKey(data.secret || {});
+  } catch (e) {
+    const err = new Error('無法讀取已儲存的 AI key：' + (e?.message || 'decrypt failed'));
+    err.status = 500;
+    throw err;
+  }
   return {
-    apiKey: decryptApiKey(data.secret || {}),
+    apiKey: storedKey,
     apiBaseUrl: String(data?.provider?.apiBaseUrl || cfg.apiBaseUrl || 'https://openrouter.ai/api/v1').replace(/\/+$/, ''),
     model: String(data?.provider?.model || cfg.model || 'openai/gpt-4.1-mini')
   };
@@ -524,8 +574,10 @@ app.post('/api/teacher/lesson-loop', async (req, res) => {
 // Legacy UI removed
 const legacyPageMap = {};
 
-const spaRoutes = new Set(['/', '/dashboard', '/teacher', '/student', '/admin', '/chat', '/analytics', '/teacher-homework', '/student-homework']);
-const spaRoutePrefixes = ['/teacher-homework', '/student-homework', '/teacher-question-bank'];
+// Every client-side route in web/src/App.jsx; keep in sync when adding pages.
+const spaRoutes = new Set(['/', '/dashboard', '/teacher', '/student', '/admin', '/chat', '/analytics', '/teacher-homework', '/student-homework',
+  '/teacher-question-bank', '/classroom', '/assignments', '/progress', '/reports', '/parents', '/teacher-homework-legacy']);
+const spaRoutePrefixes = ['/teacher-homework', '/student-homework', '/teacher-question-bank', '/teacher-homework-old'];
 
 app.get('*', (req, res) => {
   if (req.path.startsWith('/api/')) return res.status(404).json({ error: 'Not found' });

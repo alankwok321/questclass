@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import * as XLSX from 'xlsx';
 import { listQuestionBank, upsertQuestionBankItem } from '../services/firebase.js';
 import { getIdToken } from '../services/firebase.js';
+import { generateQuestions } from '../services/api.js';
 import QuestionTypeBadge from '../components/QuestionTypeBadge.jsx';
 
 const SUPPORTED_TYPES = ['TRUE_FALSE','MULTIPLE_CHOICE','FILL_IN_BLANK','MATCHING','SHORT_ANSWER','LONG_ANSWER'];
@@ -303,23 +304,16 @@ function AiModal({ onClose, onSave }) {
         '{"type":"LONG_ANSWER","question_text":"申論題","grading_rubric":"評分標準","points":4}',
         `]}\n請產出 ${count} 題，混合使用以下題型：${typesStr}。`,
       ].join('\n');
-      const res = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          idToken: token, topic: 'teacher-question-bank', mode: 'generate',
-          format: 'json', studentName: 'teacher',
-          message: `主題：${topic || '（不限）'}\n年級：${level}\n題數：${count}\n題型：${typesStr}`,
-          system,
-        }),
+      const generated = await generateQuestions({
+        idToken: token, topic: 'teacher-question-bank', mode: 'generate',
+        studentName: 'teacher',
+        message: `主題：${topic || '（不限）'}\n年級：${level}\n題數：${count}\n題型：${typesStr}`,
+        system,
       });
-      const data = await res.json();
-      const text = data.content || data.message || JSON.stringify(data);
-      const match = text.match(/\{[\s\S]*\}/);
-      if (!match) throw new Error('AI 回應中找不到 JSON 格式');
-      const parsed = JSON.parse(match[0]);
-      const qs = (parsed.questions || []).map(q => stripUndef({ ...q }));
-      if (!qs.length) throw new Error('未產生任何題目');
+      const qs = generated
+        .filter(q => q && selectedTypes.includes(String(q.type || '').toUpperCase()))
+        .map(q => stripUndef({ ...q, type: String(q.type).toUpperCase(), target_level: q.target_level || level }));
+      if (!qs.length) throw new Error('AI 產生的題型不符合所選題型，請再試一次');
       setCandidates(qs);
       setChecked(Object.fromEntries(qs.map((_, i) => [i, true])));
       setActiveIdx(0);
@@ -619,7 +613,7 @@ function ExcelImportModal({ onClose, onDone }) {
     if (ok > 0) onDone();
   }
 
-  const typeColor = { TRUE_FALSE: '#34C759', MULTIPLE_CHOICE: '#0071E3', FILL_IN_BLANK: '#FF9500', SHORT_ANSWER: '#AF52DE', LONG_ANSWER: '#FF3B30' };
+  const typeColor = { TRUE_FALSE: '#248A3D', MULTIPLE_CHOICE: '#0071E3', FILL_IN_BLANK: '#C93400', SHORT_ANSWER: '#8944AB', LONG_ANSWER: '#D70015', MATCHING: '#0B6E75' };
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, backdropFilter: 'blur(4px)' }}>
@@ -653,7 +647,7 @@ function ExcelImportModal({ onClose, onDone }) {
             onClick={() => {
               const ws = XLSX.utils.aoa_to_sheet([
                 ['type','question_text','option_A','option_B','option_C','option_D','correct_answer','points','topic','target_level','ideal_answer'],
-                ['MULTIPLE_CHOICE','以下哪個是香港的法定語文？','英文','普通話','廣東話','日文','C',1,'常識','P5',''],
+                ['MULTIPLE_CHOICE','以下哪個是香港的法定語文？','英文','日文','韓文','法文','A',1,'常識','P5',''],
                 ['TRUE_FALSE','香港特別行政區於1997年成立。','','','','','TRUE',1,'歷史','S1',''],
                 ['SHORT_ANSWER','請簡述香港的地理位置。','','','','','',2,'地理','S2','位於中國南部沿海'],
               ]);

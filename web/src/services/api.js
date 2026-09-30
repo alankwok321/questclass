@@ -54,6 +54,24 @@ export async function lessonLoop(payload) {
   return postJson('/api/teacher/lesson-loop', body);
 }
 
+// Ask the AI for questions as JSON. Surfaces the server's real error
+// (not configured, not signed in, bad JSON) instead of "no questions".
+export async function generateQuestions(body) {
+  const res = await fetch('/api/chat', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ...body, format: 'json' }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const msg = data?.error === 'JSON_PARSE_FAILED' ? 'AI 回應不是有效的 JSON，請再試一次' : (data?.error || `HTTP ${res.status}`);
+    throw new Error(msg);
+  }
+  const questions = Array.isArray(data?.questions) ? data.questions : [];
+  if (!questions.length) throw new Error('AI 沒有產生任何題目，請調整條件再試');
+  return questions;
+}
+
 export async function getAiConfig(payload) {
   return postJson('/api/ai-config/get', payload);
 }

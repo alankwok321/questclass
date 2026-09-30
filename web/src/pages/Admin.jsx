@@ -47,7 +47,7 @@ export default function AdminPage({ user }) {
       // Ensure auth state is loaded.
       await fb.init?.();
 
-      const uRes = await fb.listUsers?.(80);
+      const uRes = await fb.listUsers?.(500);
 
       if (!uRes?.ok) throw new Error(uRes?.error || 'listUsers failed');
 
@@ -109,21 +109,18 @@ export default function AdminPage({ user }) {
       });
       if (!res?.ok) throw new Error(res?.error || 'update failed');
 
-      // 2) Save per-user AI config (Firestore only; no localStorage)
-      const idToken = await getIdToken();
-      if (!idToken) throw new Error('請先登入 Firebase');
-
-      if (!String(apiForm.apiKey || '').trim()) {
-        throw new Error('請填入 API Key（會加密存到 Firebase）');
-      }
-
-      await upsertAiConfig({
+      // 2) Save per-user AI config only when a new key was typed ("留空=不更新 key").
+      if (String(apiForm.apiKey || '').trim()) {
+        const idToken = await getIdToken();
+        if (!idToken) throw new Error('帳號已儲存，但無法儲存 API Key：請先登入 Firebase');
+        await upsertAiConfig({
         idToken,
         uid: selectedUid,
         apiKey: apiForm.apiKey || '',
         apiBaseUrl: apiForm.apiBaseUrl || '',
         model: apiForm.apiModel || ''
-      });
+        });
+      }
 
       toast.show('已儲存');
       await refresh();

@@ -8,6 +8,7 @@ import {
   listStudents,
   getIdToken,
 } from '../services/firebase.js';
+import { generateQuestions } from '../services/api.js';
 import QuestionTypeBadge, { formatTypeLabel } from '../components/QuestionTypeBadge.jsx';
 import QuestionPreview from '../components/QuestionPreview.jsx';
 
@@ -50,10 +51,12 @@ const labelStyle = {
 };
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
+// Current local time as "YYYY-MM-DDTHH:mm", the format <input type="datetime-local"> uses.
+// (toISOString() is UTC, which let Hong Kong teachers pick a deadline 8 hours in the past.)
 function nowMinString() {
   const d = new Date();
-  d.setSeconds(0, 0);
-  return d.toISOString().slice(0, 16);
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 
@@ -313,25 +316,15 @@ function AiModal({ form, onClose, onAdd }) {
     try {
       const token = await getIdToken();
       if (!token) { alert('請先登入才能使用 AI 功能'); return; }
-      const res = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      const generated = await generateQuestions({
           idToken: token,
           topic: 'teacher-homework',
           mode: 'generate',
-          format: 'json',
           studentName: 'teacher',
           message: `標題：${form.title}\n主題：${aiForm.topic || form.title}\n年級：${aiForm.level}\n題數：${aiForm.count}`,
           system: `你是一個老師助教。請產出「作業題目」JSON，輸出必須是純 JSON，不要 markdown。\n只能使用以下題型：TRUE_FALSE、MULTIPLE_CHOICE、SHORT_ANSWER、FILL_IN_BLANK\n依照香港學制（HK）調整難度，target_level: ${aiForm.level}\n輸出格式：{"questions":[{"type":"MULTIPLE_CHOICE","question_text":"題目","options":[{"id":"A","text":"選項A","is_correct":true},{"id":"B","text":"選項B","is_correct":false}],"points":1},{"type":"TRUE_FALSE","question_text":"陳述句","correct_answer":true,"points":1},{"type":"SHORT_ANSWER","question_text":"問題","ideal_answer":"參考答案","points":2}]}\n請產出 ${aiForm.count} 題。`,
-        }),
       });
-      const data = await res.json();
-      const text = data.content || data.message || JSON.stringify(data);
-      const match = text.match(/\{[\s\S]*\}/);
-      if (!match) throw new Error('AI 回應中找不到 JSON 格式');
-      const parsed = JSON.parse(match[0]);
-      const newQs = (parsed.questions || []).map((q, i) => stripUndefined({
+      const newQs = generated.map((q, i) => stripUndefined({
         ...q,
         id: `q_${Date.now()}_${i}`,
         prompt: q.question_text || q.prompt || '',
@@ -632,6 +625,7 @@ export default function TeacherHomeworkPage() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [editId, setEditId] = useState(null);
+  const [originalDueAt, setOriginalDueAt] = useState('');
 
   const [form, setForm] = useState(EMPTY_FORM);
   const [questions, setQuestions] = useState([]);
@@ -660,10 +654,11 @@ export default function TeacherHomeworkPage() {
   };
 
   function openNew() {
-    setEditId(null); setForm(EMPTY_FORM); setQuestions([]); setView('edit');
+    setEditId(null); setOriginalDueAt(''); setForm(EMPTY_FORM); setQuestions([]); setView('edit');
   }
   function openEdit(a) {
     setEditId(a.id);
+    setOriginalDueAt(a.dueAt ? a.dueAt.substring(0, 16) : '');
     setForm({
       title: a.title || '',
       description: a.description || '',
@@ -678,7 +673,8 @@ export default function TeacherHomeworkPage() {
 
   async function save(status) {
     if (!form.title.trim()) return alert('請輸入作業標題。');
-    if (form.dueAt && form.dueAt < nowMinString()) return alert('截止日期不能早於現在。');
+    // Only block a past deadline when it was just changed, so old homework can still be edited or re-saved.
+    if (form.dueAt && form.dueAt !== originalDueAt && form.dueAt < nowMinString()) return alert('截止日期不能早於現在。');
     setSaving(true);
     try {
       const payload = stripUndefined({
@@ -857,7 +853,7 @@ export default function TeacherHomeworkPage() {
               type="datetime-local"
               style={{ ...inputStyle, colorScheme: 'light' }}
               value={form.dueAt}
-              min={nowMinString()}
+              min={form.dueAt && form.dueAt === originalDueAt && form.dueAt < nowMinString() ? undefined : nowMinString()}
               onChange={e => setForm(f => ({ ...f, dueAt: e.target.value }))}
             />
           </label>
