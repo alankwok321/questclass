@@ -1,0 +1,255 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isSelf(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function userDoc() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function userRole() {
+      return isSignedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        ? userDoc().role
+        : null;
+    }
+
+    function isTeacherLike() {
+      return userRole() in ['teacher', 'admin'];
+    }
+
+    function isAdmin() {
+      return userRole() == 'admin';
+    }
+
+    function allowedUserKeys() {
+      return ['name', 'email', 'role', 'requestedRole', 'learnerStage', 'roleNote', 'photoURL', 'createdAt', 'updatedAt', 'lastLoginAt', 'accountStatus', 'adminNote', 'disabledReason', 'resolvedAt', 'issueFlag', 'studentId', 'classroomIds', 'class'];
+    }
+
+    function allowedStudentKeys() {
+      return ['userUid', 'name', 'gradeLevel', 'classroomIds', 'primaryTeacherUid', 'status', 'currentLevel', 'xp', 'nextLevelXp', 'streak', 'mastery', 'weaknessLabel', 'weaknessScore', 'focusSkills', 'createdAt', 'updatedAt'];
+    }
+
+    function allowedClassroomKeys() {
+      return ['name', 'grade', 'subject', 'teacherUid', 'teacherUids', 'studentIds', 'studentUids', 'activeStudents', 'completionRate', 'createdAt', 'updatedAt'];
+    }
+
+    function allowedSubmissionKeys() {
+      return ['id', 'assignmentId', 'classroomId', 'studentId', 'studentUid', 'assignmentTitle', 'topic', 'score', 'status', 'answers', 'feedback', 'submittedAt', 'updatedAt'];
+    }
+
+    function allowedStudentSubmissionUpdateKeys() {
+      return ['assignmentTitle', 'topic', 'status', 'answers', 'submittedAt', 'updatedAt'];
+    }
+
+    function allowedProgressKeys() {
+      return ['studentId', 'userUid', 'classroomId', 'mastery', 'level', 'xp', 'nextLevelXp', 'streak', 'weaknessLabel', 'weaknessScore', 'focusAreas', 'recentQuestTitles', 'updatedAt'];
+    }
+
+    function selfProfileKeysAreSafe() {
+      return request.resource.data.diff(resource.data).changedKeys().hasOnly(['name', 'requestedRole', 'learnerStage', 'roleNote', 'photoURL', 'updatedAt', 'lastLoginAt']);
+    }
+
+    match /users/{userId} {
+      allow read: if isSelf(userId) || isTeacherLike();
+
+      allow create: if isSelf(userId)
+        && request.resource.data.keys().hasOnly(allowedUserKeys())
+        && request.resource.data.email == request.auth.token.email
+        && request.resource.data.role in ['student', 'teacher', 'admin']
+        && request.resource.data.requestedRole in ['', 'student', 'teacher', 'admin']
+        && (!('accountStatus' in request.resource.data) || request.resource.data.accountStatus in ['active', 'review', 'suspended'])
+        && (!('issueFlag' in request.resource.data) || request.resource.data.issueFlag is bool);
+
+      allow update: if (
+          isSelf(userId)
+          && request.resource.data.diff(resource.data).changedKeys().hasOnly(allowedUserKeys())
+          && request.resource.data.role == resource.data.role
+          && request.resource.data.email == resource.data.email
+          && (!('requestedRole' in request.resource.data) || request.resource.data.requestedRole in ['', 'student', 'teacher', 'admin'])
+          && selfProfileKeysAreSafe()
+        ) || (
+          isAdmin()
+          && request.resource.data.diff(resource.data).changedKeys().hasOnly(allowedUserKeys())
+          && (!('requestedRole' in request.resource.data) || request.resource.data.requestedRole in ['', 'student', 'teacher', 'admin'])
+          && (!('role' in request.resource.data) || request.resource.data.role in ['student', 'teacher', 'admin'])
+          && (!('accountStatus' in request.resource.data) || request.resource.data.accountStatus in ['active', 'review', 'suspended'])
+          && (!('issueFlag' in request.resource.data) || request.resource.data.issueFlag is bool)
+        );
+
+      allow delete: if isAdmin()
+        || (
+          isTeacherLike()
+          && resource.data.createdBy == request.auth.uid
+          && resource.data.status == 'archived'
+        );
+    }
+
+    match /students/{studentId} {
+      allow read: if isTeacherLike() || (isSignedIn() && resource.data.userUid == request.auth.uid);
+      allow create: if isTeacherLike() && request.resource.data.keys().hasOnly(allowedStudentKeys());
+      allow update: if isTeacherLike() && request.resource.data.diff(resource.data).changedKeys().hasOnly(allowedStudentKeys());
+      allow delete: if isAdmin();
+    }
+
+    match /classrooms/{classroomId} {
+      allow read: if isTeacherLike() || (isSignedIn() && request.auth.uid in resource.data.studentUids);
+      allow create: if isTeacherLike() && request.resource.data.keys().hasOnly(allowedClassroomKeys());
+      allow update: if isTeacherLike() && request.resource.data.diff(resource.data).changedKeys().hasOnly(allowedClassroomKeys());
+      allow delete: if isAdmin();
+
+      match /members/{memberId} {
+        allow read: if isTeacherLike() || isSelf(memberId);
+        allow write: if isTeacherLike();
+      }
+    }
+
+    match /submissions/{submissionId} {
+      allow read: if isTeacherLike() || (isSignedIn() && resource.data.studentUid == request.auth.uid);
+      allow create: if (isSignedIn() && request.resource.data.studentUid == request.auth.uid) || isTeacherLike();
+      allow update: if (
+        isSignedIn()
+        && resource.data.studentUid == request.auth.uid
+        && request.resource.data.studentUid == request.auth.uid
+        && request.resource.data.assignmentId == resource.data.assignmentId
+        && request.resource.data.diff(resource.data).changedKeys().hasOnly(allowedStudentSubmissionUpdateKeys())
+      ) || (
+        isTeacherLike()
+        && request.resource.data.diff(resource.data).changedKeys().hasOnly(allowedSubmissionKeys())
+      );
+      allow delete: if isAdmin();
+    }
+
+    match /progressSummaries/{summaryId} {
+      allow read: if isTeacherLike() || (isSignedIn() && resource.data.userUid == request.auth.uid);
+      allow create: if isTeacherLike() && request.resource.data.keys().hasOnly(allowedProgressKeys());
+      allow update: if isTeacherLike() && request.resource.data.diff(resource.data).changedKeys().hasOnly(allowedProgressKeys());
+      allow delete: if isAdmin();
+    }
+
+    match /units/{unitId} {
+      allow read: if isSignedIn();
+      allow write: if isTeacherLike();
+    }
+
+    match /assignments/{assignmentId} {
+      allow read: if isSignedIn();
+      allow write: if isTeacherLike();
+    }
+
+    match /aiRuns/{runId} {
+      allow read, create: if isSignedIn();
+      allow update, delete: if isTeacherLike();
+    }
+
+    // --- Homework assignments ---
+    function allowedHomeworkKeys() {
+      return [
+        'id',
+        'title',
+        'description',
+        'dueAt',
+        'status', // draft | published | archived
+        'totalPoints',
+        'questions', // legacy
+        'questionRefs', // Kahoot-style
+        'createdBy',
+        'createdAt',
+        'updatedAt',
+        'targetType',        // 'all' | 'class' | 'students'
+        'targetClass',       // class name string
+        'targetStudentUids'  // array of student uids
+      ];
+    }
+
+    function homeworkStatusValid() {
+      return !('status' in request.resource.data)
+        || request.resource.data.status in ['draft', 'published', 'archived'];
+    }
+
+    match /homeworkAssignments/{assignmentId} {
+      allow read: if isSignedIn() || isTeacherLike();
+
+      allow create: if isTeacherLike()
+        && request.resource.data.keys().hasOnly(allowedHomeworkKeys())
+        && homeworkStatusValid()
+        && request.resource.data.createdBy == request.auth.uid;
+
+      allow update: if isTeacherLike()
+        && request.resource.data.diff(resource.data).changedKeys().hasOnly(allowedHomeworkKeys())
+        && homeworkStatusValid()
+        && (
+          isAdmin()
+          || resource.data.createdBy == request.auth.uid
+        );
+
+      allow delete: if isAdmin();
+    }
+
+    // --- Question Bank (Kahoot-style, shape aligned to UI mockDatabase) ---
+    function allowedQuestionBankKeys() {
+      return [
+        // common
+        'id',
+        'type',
+        'topic',
+        'points',
+        'timeLimitSec',
+        'media',
+        'tags',
+        'difficulty',
+
+        // UI-aligned content fields
+        'target_level',
+        'question_text',
+        'options',
+        'correct_answer',
+        'blanks',
+        'pairs',
+        'ideal_answer',
+        'grading_rubric',
+        'max_word_count',
+
+        // backward-compatible aliases (older editor/bridge)
+        'prompt',
+        'choices',
+        'correctChoiceIds',
+
+        // audit
+        'createdBy',
+        'createdAt',
+        'updatedAt',
+
+        // legacy
+        'classroomId'
+      ];
+    }
+
+    match /questionBank/{questionId} {
+      allow read: if isTeacherLike();
+
+      allow create: if isTeacherLike()
+        && request.resource.data.keys().hasOnly(allowedQuestionBankKeys())
+        && request.resource.data.createdBy == request.auth.uid;
+
+      allow update: if isTeacherLike()
+        && request.resource.data.diff(resource.data).changedKeys().hasOnly(allowedQuestionBankKeys())
+        && (
+          isAdmin()
+          || resource.data.createdBy == request.auth.uid
+        );
+
+      allow delete: if isAdmin();
+    }
+
+    // NEW: Per-user AI provider config (server stores encrypted secret; do not expose writes to students)
+    match /aiProviderConfigs/{uid} {
+      allow read, write: if isAdmin();
+    }
+  }
+}
