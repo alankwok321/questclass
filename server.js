@@ -86,6 +86,11 @@ async function getSchoolProviderConfig(schoolId) {
   } catch {
     stored = null; // no Firestore access (e.g. demo mode): use the env vars
   }
+  if (stored?.provider?.mode === 'chatgpt') {
+    const cred = await getChatgptCredential(schoolId, stored);
+    return { mode: 'chatgpt', apiKey: cred.access, accountId: cred.accountId, apiBaseUrl: CHATGPT.baseUrl,
+      model: String(stored.provider.model || CHATGPT_DEFAULT_MODEL), source: 'chatgpt' };
+  }
   if (stored) {
     const base = String(stored?.provider?.apiBaseUrl || env.apiBaseUrl).replace(/\/+$/, '');
     const model = String(stored?.provider?.model || env.model).trim();
@@ -137,6 +142,138 @@ function decryptApiKey(payload = {}) {
   decipher.setAuthTag(tag);
   const out = Buffer.concat([decipher.update(data), decipher.final()]);
   return out.toString('utf8');
+}
+
+// ── Codex via ChatGPT sign-in ───────────────────────────────────────────────
+// Same device-code login as the pi coding agent (and Codex CLI): the admin signs in to ChatGPT, and
+// the school's AI requests then run on that ChatGPT subscription through the Codex backend.
+// Unofficial: OpenAI may change or block it.
+const CHATGPT = {
+  clientId: 'app_EMoamEEZ73f0CkXaXp7hrann',
+  tokenUrl: 'https://auth.openai.com/oauth/token',
+  deviceUserCodeUrl: 'https://auth.openai.com/api/accounts/deviceauth/usercode',
+  deviceTokenUrl: 'https://auth.openai.com/api/accounts/deviceauth/token',
+  verificationUri: 'https://auth.openai.com/codex/device',
+  deviceRedirectUri: 'https://auth.openai.com/deviceauth/callback',
+  responsesUrl: 'https://chatgpt.com/backend-api/codex/responses',
+  baseUrl: 'https://chatgpt.com/backend-api',
+  originator: 'pi',
+};
+// Models available to ChatGPT-subscription Codex (from pi's list; there is no live list endpoint).
+const CHATGPT_CODEX_MODELS = [
+  { id: 'gpt-5.5', name: 'GPT-5.5', contextLength: 272000 },
+  { id: 'gpt-5.6-sol', name: 'GPT-5.6 Sol', contextLength: 272000 },
+  { id: 'gpt-5.6-luna', name: 'GPT-5.6 Luna', contextLength: 272000 },
+  { id: 'gpt-6-sol', name: 'GPT-6 Sol', contextLength: 272000 },
+  { id: 'gpt-6-luna', name: 'GPT-6 Luna', contextLength: 272000 },
+  { id: 'gpt-6-astra', name: 'GPT-6 Astra', contextLength: 272000 },
+  { id: 'gpt-6.1-sol', name: 'GPT-6.1 Sol', contextLength: 272000 },
+  { id: 'gpt-5.3-codex-spark', name: 'GPT-5.3 Codex Spark', contextLength: 128000 },
+];
+const CHATGPT_DEFAULT_MODEL = 'gpt-5.5';
+
+function decodeJwtPayload(token) {
+  try {
+    const part = String(token || '').split('.')[1] || '';
+    return JSON.parse(Buffer.from(part.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));
+  } catch {
+    return null;
+  }
+}
+
+async function chatgptTokenRequest(params) {
+  const response = await fetch(CHATGPT.tokenUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ client_id: CHATGPT.clientId, ...params }).toString(),
+  });
+  const raw = await response.text();
+  let data;
+  try { data = JSON.parse(raw); } catch { data = {}; }
+  if (!response.ok || !data.access_token || !data.refresh_token) {
+    throw httpError(response.status === 400 || response.status === 401 ? 401 : 502, 'ChatGPT 登入已失效，請在 AI 設定重新登入');
+  }
+  const accountId = decodeJwtPayload(data.access_token)?.['https://api.openai.com/auth']?.chatgpt_account_id;
+  if (!accountId) throw httpError(502, '無法讀取 ChatGPT 帳戶資料');
+  const idClaims = decodeJwtPayload(data.id_token) || {};
+  const profile = decodeJwtPayload(data.access_token)?.['https://api.openai.com/profile'] || {};
+  return {
+    access: data.access_token,
+    refresh: data.refresh_token,
+    expires: Date.now() + Number(data.expires_in || 3600) * 1000,
+    accountId,
+    email: String(idClaims.email || profile.email || ''),
+  };
+}
+
+// The school's ChatGPT credential, refreshed (and saved) when it is about to expire.
+async function getChatgptCredential(schoolId, stored) {
+  if (!stored?.chatgpt?.secret?.ciphertext) throw httpError(400, '尚未登入 ChatGPT');
+  let cred;
+  try {
+    cred = JSON.parse(decryptApiKey(stored.chatgpt.secret));
+  } catch {
+    throw httpError(500, '無法讀取已儲存的 ChatGPT 登入（請檢查 AI_CONFIG_ENCRYPTION_KEY）');
+  }
+  if (!cred.expires || cred.expires - Date.now() < 3 * 60 * 1000) {
+    const next = await chatgptTokenRequest({ grant_type: 'refresh_token', refresh_token: cred.refresh });
+    cred = { ...cred, ...next, email: next.email || cred.email };
+    const { db } = getFirebaseAdmin();
+    await db.collection('schoolSecrets').doc(String(schoolId)).set({ chatgpt: { ...stored.chatgpt, secret: encryptApiKey(JSON.stringify(cred)) } }, { merge: true });
+  }
+  return cred;
+}
+
+// One request to the Codex backend (streamed; the text deltas are joined).
+async function callChatgptCodex({ system, user, history = [], apiKey, accountId, model, responseFormat }) {
+  const content = (role, text) => ({ role, content: [{ type: role === 'assistant' ? 'output_text' : 'input_text', text: String(text || '') }] });
+  try {
+    const response = await fetch(CHATGPT.responsesUrl, {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer ' + apiKey,
+        'chatgpt-account-id': accountId,
+        originator: CHATGPT.originator,
+        'OpenAI-Beta': 'responses=experimental',
+        accept: 'text/event-stream',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        model,
+        store: false,
+        stream: true,
+        instructions: system || 'You are a helpful assistant.',
+        input: [...history.map((m) => content(m.role, m.content)), content('user', user)],
+        ...(responseFormat?.type === 'json_object' ? { text: { format: { type: 'json_object' } } } : {}),
+      }),
+    });
+    const raw = await response.text();
+    if (!response.ok) {
+      let msg = '';
+      try { const d = JSON.parse(raw); msg = d?.error?.message || d?.detail || ''; } catch { /* not JSON */ }
+      if (response.status === 401) msg = 'ChatGPT 登入已失效，請在 AI 設定重新登入';
+      if (response.status === 429) msg = msg || '已達 ChatGPT 方案的使用上限，請稍後再試';
+      return { ok: false, status: response.status, error: String(msg || `ChatGPT 回應錯誤（${response.status}）`).slice(0, 300) };
+    }
+    let text = '';
+    let finalText = '';
+    let failure = '';
+    for (const line of raw.split('\n')) {
+      if (!line.startsWith('data:')) continue;
+      let ev;
+      try { ev = JSON.parse(line.slice(5).trim()); } catch { continue; }
+      if (ev.type === 'response.output_text.delta' && typeof ev.delta === 'string') text += ev.delta;
+      if ((ev.type === 'response.completed' || ev.type === 'response.done') && Array.isArray(ev.response?.output)) {
+        finalText = ev.response.output.flatMap((o) => (Array.isArray(o?.content) ? o.content : []))
+          .filter((c) => c?.type === 'output_text').map((c) => c.text || '').join('');
+      }
+      if (ev.type === 'response.failed' || ev.type === 'error') failure = ev.response?.error?.message || ev.error?.message || ev.message || 'ChatGPT 回應失敗';
+    }
+    if (failure && !text && !finalText) return { ok: false, status: 502, error: String(failure).slice(0, 300) };
+    return { ok: true, status: 200, text: text || finalText };
+  } catch (error) {
+    return { ok: false, status: 502, error: '無法連線到 ChatGPT：' + error.message };
+  }
 }
 
 function getFirebaseAdmin() {
@@ -269,8 +406,9 @@ async function callResponsesApi({ system, user, history = [], apiKey, apiBaseUrl
   }
 }
 
-async function callChatCompletion({ system, user, history = [], apiKey, apiBaseUrl, model, temperature = 0.7, responseFormat }) {
+async function callChatCompletion({ system, user, history = [], apiKey, apiBaseUrl, model, temperature = 0.7, responseFormat, mode, accountId }) {
   if (!apiKey) return { ok: false, status: 400, error: 'AI provider is not configured. Set an API key first.' };
+  if (mode === 'chatgpt') return callChatgptCodex({ system, user, history, apiKey, accountId, model, responseFormat });
   if (usesResponsesApi(model)) return callResponsesApi({ system, user, history, apiKey, apiBaseUrl, model, responseFormat });
 
   const base = String(apiBaseUrl || '').replace(/\/+$/, '');
@@ -438,6 +576,14 @@ app.post('/api/admin/ai-settings/get', async (req, res) => {
         model: String(stored?.provider?.model || env.model),
       },
       hasKey: Boolean(stored?.secret?.ciphertext),
+      mode: stored?.provider?.mode === 'chatgpt' ? 'chatgpt' : 'apikey',
+      // The API-key setup to return to from Codex (ChatGPT) mode.
+      apiKeyProvider: stored?.provider?.mode === 'chatgpt'
+        ? (stored.apiKeyProvider ? { apiBaseUrl: stored.apiKeyProvider.apiBaseUrl, model: stored.apiKeyProvider.model } : null)
+        : null,
+      chatgpt: stored?.chatgpt?.secret?.ciphertext
+        ? { connected: true, email: String(stored.chatgpt.email || ''), connectedAt: stored.chatgpt.connectedAt?.toDate ? stored.chatgpt.connectedAt.toDate().toISOString() : (stored.chatgpt.connectedAt || null) }
+        : { connected: false },
       recentModels: Array.isArray(stored?.recentModels) ? stored.recentModels.slice(0, 8) : [],
       keyHint: String(stored?.keyHint || ''),
       envKeyConfigured: Boolean(env.apiKey),
@@ -455,8 +601,38 @@ app.post('/api/admin/ai-settings/get', async (req, res) => {
 // clearKey removes it (AI then falls back to OPENROUTER_API_KEY, if set).
 app.post('/api/admin/ai-settings/save', async (req, res) => {
   try {
-    const { idToken, schoolId, apiKey, apiBaseUrl, model, clearKey } = req.body || {};
+    const { idToken, schoolId, apiKey, apiBaseUrl, model, clearKey, mode } = req.body || {};
     const actor = await requireSchoolAdmin(idToken, schoolId);
+    if (mode === 'chatgpt') {
+      // Use the signed-in ChatGPT subscription (Codex) with this model.
+      const cleanModel = String(model || CHATGPT_DEFAULT_MODEL).trim();
+      if (!cleanModel || cleanModel.length > 200) throw httpError(400, '請選擇模型');
+      const { db } = getFirebaseAdmin();
+      const ref = db.collection('schoolSecrets').doc(actor.schoolId);
+      const before = (await ref.get()).data() || {};
+      if (!before.chatgpt?.secret?.ciphertext) throw httpError(400, '請先登入 ChatGPT');
+      const recentModels = [cleanModel, ...(Array.isArray(before.recentModels) ? before.recentModels : [])]
+        .filter((m, i, a) => m && a.indexOf(m) === i).slice(0, 8);
+      await ref.set({
+        schoolId: actor.schoolId,
+        ...(before.provider && before.provider.mode !== 'chatgpt' ? { apiKeyProvider: before.provider } : {}),
+        provider: { mode: 'chatgpt', apiBaseUrl: CHATGPT.baseUrl, model: cleanModel },
+        recentModels, updatedBy: actor.uid, updatedByEmail: actor.email || '', updatedAt: FieldValue.serverTimestamp(),
+      }, { merge: true });
+      return res.json({ ok: true });
+    }
+    if (clearKey && !String(apiKey || '').trim()) {
+      // Remove the API key only; if the school is on Codex (ChatGPT), it stays there.
+      const { db } = getFirebaseAdmin();
+      const ref = db.collection('schoolSecrets').doc(actor.schoolId);
+      const before = (await ref.get()).data() || {};
+      await ref.set({
+        secret: FieldValue.delete(), keyHint: '',
+        ...(before.provider?.mode === 'chatgpt' ? {} : { provider: { ...(before.provider || {}), mode: 'apikey' } }),
+        updatedBy: actor.uid, updatedByEmail: actor.email || '', updatedAt: FieldValue.serverTimestamp(),
+      }, { merge: true });
+      return res.json({ ok: true });
+    }
     const base = String(apiBaseUrl || 'https://openrouter.ai/api/v1').trim().replace(/\/+$/, '');
     if (!isAllowedProviderUrl(base)) throw providerUrlError();
     const cleanModel = String(model || '').trim();
@@ -470,7 +646,7 @@ app.post('/api/admin/ai-settings/save', async (req, res) => {
     const recentModels = [cleanModel, ...(Array.isArray(before.recentModels) ? before.recentModels : [])]
       .filter((m, i, a) => m && a.indexOf(m) === i).slice(0, 8);
     const update = {
-      provider: { apiBaseUrl: base, model: cleanModel },
+      provider: { mode: 'apikey', apiBaseUrl: base, model: cleanModel },
       recentModels,
       updatedBy: actor.uid,
       updatedByEmail: actor.email || '',
@@ -494,11 +670,17 @@ app.post('/api/admin/ai-settings/save', async (req, res) => {
 // to the host it was saved for (never to another provider the admin is just browsing).
 app.post('/api/admin/ai-settings/models', async (req, res) => {
   try {
-    const { idToken, schoolId, apiBaseUrl, apiKey: typedKey } = req.body || {};
+    const { idToken, schoolId, apiBaseUrl, apiKey: typedKey, mode } = req.body || {};
     const actor = await requireSchoolAdmin(idToken, schoolId);
     const stored = await readSchoolAiSettings(actor.schoolId);
+    if (mode === 'chatgpt') {
+      if (!stored?.chatgpt?.secret?.ciphertext) throw httpError(400, '請先登入 ChatGPT，才會顯示可用的模型');
+      return res.json({ ok: true, apiBaseUrl: CHATGPT.baseUrl, models: CHATGPT_CODEX_MODELS.map((m) => ({ ...m, promptPrice: null, completionPrice: null })) });
+    }
     const env = getServerProviderConfig();
-    const savedBase = String(stored?.provider?.apiBaseUrl || env.apiBaseUrl).replace(/\/+$/, '');
+    // The provider the saved API key belongs to (while on Codex/ChatGPT, the one to switch back to).
+    const keyProvider = stored?.provider?.mode === 'chatgpt' ? stored?.apiKeyProvider : stored?.provider;
+    const savedBase = String(keyProvider?.apiBaseUrl || env.apiBaseUrl).replace(/\/+$/, '');
     const base = String(apiBaseUrl || savedBase).trim().replace(/\/+$/, '');
     if (!isAllowedProviderUrl(base)) throw providerUrlError();
     const host = (u) => { try { return new URL(u).hostname.toLowerCase(); } catch { return ''; } };
@@ -547,6 +729,94 @@ app.post('/api/admin/ai-settings/models', async (req, res) => {
     return res.json({ ok: true, apiBaseUrl: base, usedSavedKey: Boolean(key), models });
   } catch (error) {
     return sendError(res, error, 'list models failed');
+  }
+});
+
+// Admin: start "Sign in with ChatGPT" (device code). Returns a code to enter on OpenAI's page.
+app.post('/api/admin/ai-settings/chatgpt/start', async (req, res) => {
+  try {
+    const actor = await requireSchoolAdmin((req.body || {}).idToken, (req.body || {}).schoolId);
+    if (!getEncryptionKey()) throw httpError(503, '伺服器未設定 AI_CONFIG_ENCRYPTION_KEY，無法儲存登入');
+    const response = await fetch(CHATGPT.deviceUserCodeUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ client_id: CHATGPT.clientId }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.device_auth_id || !data.user_code) throw httpError(502, '無法開始 ChatGPT 登入，請稍後再試');
+    const { db } = getFirebaseAdmin();
+    await db.collection('schoolSecrets').doc(actor.schoolId).set({
+      schoolId: actor.schoolId,
+      chatgptPending: { deviceAuthId: String(data.device_auth_id), userCode: String(data.user_code), startedAt: Date.now(), startedBy: actor.uid },
+    }, { merge: true });
+    return res.json({ ok: true, userCode: data.user_code, verificationUri: CHATGPT.verificationUri,
+      interval: Math.max(3, Number(data.interval) || 5), expiresIn: 15 * 60 });
+  } catch (error) {
+    return sendError(res, error, 'chatgpt login start failed');
+  }
+});
+
+// Admin: check once whether the ChatGPT sign-in was completed (the page calls this every few seconds).
+app.post('/api/admin/ai-settings/chatgpt/poll', async (req, res) => {
+  try {
+    const actor = await requireSchoolAdmin((req.body || {}).idToken, (req.body || {}).schoolId);
+    const { db } = getFirebaseAdmin();
+    const ref = db.collection('schoolSecrets').doc(actor.schoolId);
+    const stored = (await ref.get()).data() || {};
+    const pending = stored.chatgptPending;
+    if (!pending?.deviceAuthId) return res.json({ ok: true, status: 'none' });
+    if (Date.now() - Number(pending.startedAt || 0) > 15 * 60 * 1000) {
+      await ref.set({ chatgptPending: FieldValue.delete() }, { merge: true });
+      return res.json({ ok: true, status: 'expired' });
+    }
+    const response = await fetch(CHATGPT.deviceTokenUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ device_auth_id: pending.deviceAuthId, user_code: pending.userCode }),
+    });
+    if (response.status === 403 || response.status === 404) return res.json({ ok: true, status: 'pending' });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const code = typeof data?.error === 'object' ? data.error?.code : data?.error;
+      if (code === 'deviceauth_authorization_pending' || code === 'slow_down') return res.json({ ok: true, status: 'pending' });
+      await ref.set({ chatgptPending: FieldValue.delete() }, { merge: true });
+      return res.json({ ok: true, status: 'failed', error: 'ChatGPT 登入失敗，請再試一次' });
+    }
+    if (!data.authorization_code || !data.code_verifier) throw httpError(502, 'ChatGPT 登入回應不完整');
+    const cred = await chatgptTokenRequest({
+      grant_type: 'authorization_code', code: data.authorization_code, code_verifier: data.code_verifier, redirect_uri: CHATGPT.deviceRedirectUri,
+    });
+    const keepModel = stored.provider?.mode === 'chatgpt' && stored.provider?.model ? stored.provider.model : CHATGPT_DEFAULT_MODEL;
+    await ref.set({
+      chatgpt: { secret: encryptApiKey(JSON.stringify(cred)), email: cred.email, connectedAt: FieldValue.serverTimestamp(), connectedBy: actor.uid },
+      chatgptPending: FieldValue.delete(),
+      // Remember the API-key setup so switching back is one tap.
+      ...(stored.provider && stored.provider.mode !== 'chatgpt' ? { apiKeyProvider: stored.provider } : {}),
+      // Signing in switches the school to Codex on that subscription.
+      provider: { mode: 'chatgpt', apiBaseUrl: CHATGPT.baseUrl, model: keepModel },
+      updatedBy: actor.uid, updatedByEmail: actor.email || '', updatedAt: FieldValue.serverTimestamp(),
+    }, { merge: true });
+    return res.json({ ok: true, status: 'connected', email: cred.email });
+  } catch (error) {
+    return sendError(res, error, 'chatgpt login check failed');
+  }
+});
+
+// Admin: sign out of ChatGPT. If the school was using it, AI goes back to the saved API key (if any).
+app.post('/api/admin/ai-settings/chatgpt/disconnect', async (req, res) => {
+  try {
+    const actor = await requireSchoolAdmin((req.body || {}).idToken, (req.body || {}).schoolId);
+    const { db } = getFirebaseAdmin();
+    const ref = db.collection('schoolSecrets').doc(actor.schoolId);
+    const stored = (await ref.get()).data() || {};
+    const update = { chatgpt: FieldValue.delete(), chatgptPending: FieldValue.delete(), updatedAt: FieldValue.serverTimestamp() };
+    if (stored.provider?.mode === 'chatgpt') {
+      update.provider = stored.apiKeyProvider || { mode: 'apikey', apiBaseUrl: 'https://api.openai.com/v1', model: 'gpt-5-mini' };
+    }
+    await ref.set(update, { merge: true });
+    return res.json({ ok: true });
+  } catch (error) {
+    return sendError(res, error, 'chatgpt disconnect failed');
   }
 });
 

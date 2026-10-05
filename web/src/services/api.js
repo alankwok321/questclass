@@ -89,10 +89,24 @@ export async function saveSchoolSettings(settings) {
 
 // Admin: models offered by an AI provider (defaults to the school's saved provider).
 // apiKey: a key the admin has typed but not saved yet (used only to list that provider's models).
-export async function listAiModels({ schoolId, apiBaseUrl, apiKey } = {}) {
+export async function listAiModels({ schoolId, apiBaseUrl, apiKey, mode } = {}) {
   return postJson('/api/admin/ai-settings/models', await withAuth({
     ...(schoolId ? { schoolId } : {}),
     ...(apiBaseUrl ? { apiBaseUrl } : {}),
     ...(apiKey ? { apiKey } : {}),
+    ...(mode ? { mode } : {}),
   }));
+}
+
+// Codex via "Sign in with ChatGPT" (device code): start, check, sign out.
+export async function chatgptLoginStart(schoolId) {
+  return postJson('/api/admin/ai-settings/chatgpt/start', await withAuth(schoolId ? { schoolId } : {}));
+}
+
+export async function chatgptLoginPoll(schoolId) {
+  return postJson('/api/admin/ai-settings/chatgpt/poll', await withAuth(schoolId ? { schoolId } : {}));
+}
+
+export async function chatgptLogout(schoolId) {
+  return postJson('/api/admin/ai-settings/chatgpt/disconnect', await withAuth(schoolId ? { schoolId } : {}));
 }

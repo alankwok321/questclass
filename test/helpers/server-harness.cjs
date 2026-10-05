@@ -40,7 +40,9 @@ const ai = {
 };
 ai.reset();
 global.fetch = async (url, init = {}) => {
-  const call = { url: String(url), headers: init.headers || {}, body: init.body ? JSON.parse(init.body) : null };
+  let parsed = null;
+  if (init.body) { try { parsed = JSON.parse(String(init.body)); } catch { parsed = String(init.body); } }
+  const call = { url: String(url), headers: init.headers || {}, body: parsed };
   ai.calls.push(call);
   const r = ai.responder(call);
   const raw = typeof r.body === 'string' ? r.body : JSON.stringify(r.body);

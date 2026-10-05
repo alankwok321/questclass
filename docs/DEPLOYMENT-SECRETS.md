@@ -65,6 +65,12 @@ Each school has its own AI key, set by that school's admin on **管理後台 →
 (`/admin/ai-settings`). It is stored encrypted in Firestore at `schoolSecrets/{schoolId}`, which
 browsers cannot read; the server reads it with the Admin SDK. Any key a browser sends is ignored.
 If a school has no key, the server falls back to `OPENROUTER_API_KEY` when that is set.
+Services on the page: OpenAI, Google Gemini and DeepSeek use an API key. **Codex** instead signs in
+with a ChatGPT (Plus/Pro) account using the same device-code login as the pi coding agent / Codex CLI;
+the encrypted tokens are stored in `schoolSecrets/{schoolId}.chatgpt` and refreshed automatically, and
+requests go to `chatgpt.com/backend-api/codex/responses`. This is unofficial: OpenAI may change or block
+it, and all of the school's AI use counts against that ChatGPT plan. The saved API key is kept, so the
+school can switch back with one tap.
 When Firebase is configured, only signed-in, active users can use AI.
 
 ### Firestore rules
