@@ -88,9 +88,11 @@ export async function saveSchoolSettings(settings) {
 }
 
 // Admin: models offered by an AI provider (defaults to the school's saved provider).
-export async function listAiModels({ schoolId, apiBaseUrl } = {}) {
+// apiKey: a key the admin has typed but not saved yet (used only to list that provider's models).
+export async function listAiModels({ schoolId, apiBaseUrl, apiKey } = {}) {
   return postJson('/api/admin/ai-settings/models', await withAuth({
     ...(schoolId ? { schoolId } : {}),
     ...(apiBaseUrl ? { apiBaseUrl } : {}),
+    ...(apiKey ? { apiKey } : {}),
   }));
 }

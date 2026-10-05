@@ -196,15 +196,20 @@ test('models: the saved key only goes to the provider it was saved for', async (
   await models({ idToken: 'adm' });
   assert.equal(h.ai.last.url, 'https://x.example/v1/models');
   assert.equal(h.ai.last.headers.Authorization, 'Bearer sk-school-123456');
-  await models({ idToken: 'adm', apiBaseUrl: 'https://school-llm.example/v1' });
+  const calls = h.ai.calls.length;
+  const r = await models({ idToken: 'adm', apiBaseUrl: 'https://school-llm.example/v1' });
+  assert.equal(r.status, 400, 'no key for that provider: nothing is listed');
+  assert.equal(h.ai.calls.length, calls, 'and the saved key is not sent there');
+  await models({ idToken: 'adm', apiBaseUrl: 'https://school-llm.example/v1', apiKey: 'sk-typed' });
   assert.equal(h.ai.last.url, 'https://school-llm.example/v1/models');
-  assert.equal(h.ai.last.headers.Authorization, undefined, 'no key sent to a different provider');
+  assert.equal(h.ai.last.headers.Authorization, 'Bearer sk-typed', 'a just-typed key is used for that provider');
+  assert.equal(h.fbState.data.schoolSecrets.sch_a.keyHint, 'sk-…3456', 'the typed key is not saved');
   assert.equal((await models({ idToken: 'adm', apiBaseUrl: 'https://evil.example/v1' })).status, 400);
 });
 
-test('models: a provider that needs a key explains it', async () => {
+test('models: a rejected key is explained', async () => {
   h.ai.responder = () => ({ status: 401, body: { error: { message: 'no key' } } });
-  const r = await models({ idToken: 'adm', apiBaseUrl: 'https://school-llm.example/v1' });
+  const r = await models({ idToken: 'adm', apiBaseUrl: 'https://school-llm.example/v1', apiKey: 'sk-wrong' });
   assert.equal(r.status, 400);
   assert.match(r.body.error, /API Key/);
 });
@@ -216,4 +221,27 @@ test('switching models keeps a most-recent-first list of used models', async () 
   const r = await getS({ idToken: 'adm' });
   assert.deepEqual(r.body.recentModels, ['m1', 'm2']);
   assert.equal(r.body.hasKey, true, 'switching model keeps the key');
+});
+
+test('Codex models go through the Responses API and the reply text is read from output_text items', async () => {
+  await saveS({ idToken: 'adm', apiKey: 'sk-openai-123456', apiBaseUrl: 'https://api.openai.com/v1', model: 'gpt-5-codex' });
+  h.ai.responder = () => ({ status: 200, body: { output: [
+    { type: 'reasoning', content: [] },
+    { type: 'message', content: [{ type: 'output_text', text: '你好' }, { type: 'output_text', text: '！' }] },
+  ] } });
+  const r = await h.post(app, '/api/chat', { idToken: 'stu', message: 'hi', history: [{ role: 'user', content: 'earlier' }] });
+  assert.equal(r.status, 200);
+  assert.equal(r.body.reply, '你好！');
+  assert.equal(h.ai.last.url, 'https://api.openai.com/v1/responses');
+  assert.equal(h.ai.last.body.model, 'gpt-5-codex');
+  assert.ok(h.ai.last.body.instructions, 'system prompt sent as instructions');
+  assert.equal(h.ai.last.body.input.at(-1).role, 'user');
+  assert.match(h.ai.last.body.input.at(-1).content, /hi/);
+  assert.equal(h.ai.last.body.temperature, undefined);
+});
+
+test('non-Codex models still use chat completions', async () => {
+  await saveS({ idToken: 'adm', apiKey: 'sk-openai-123456', apiBaseUrl: 'https://api.openai.com/v1', model: 'gpt-4.1-mini' });
+  await h.post(app, '/api/chat', { idToken: 'stu', message: 'hi' });
+  assert.equal(h.ai.last.url, 'https://api.openai.com/v1/chat/completions');
 });

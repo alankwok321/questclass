@@ -232,8 +232,46 @@ function sanitizeHistory(history) {
     .map((m) => ({ role: m.role, content: String(m.content).slice(0, 2000) }));
 }
 
+// Codex models only work through OpenAI's Responses API, not chat completions.
+function usesResponsesApi(model) {
+  return /codex/i.test(String(model || ''));
+}
+
+async function callResponsesApi({ system, user, history = [], apiKey, apiBaseUrl, model, responseFormat }) {
+  const base = String(apiBaseUrl || '').replace(/\/+$/, '');
+  try {
+    const response = await fetch(base + '/responses', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + apiKey },
+      body: JSON.stringify({
+        model,
+        ...(system ? { instructions: system } : {}),
+        input: [...history, { role: 'user', content: user }],
+        ...(responseFormat?.type === 'json_object' ? { text: { format: { type: 'json_object' } } } : {}),
+      }),
+    });
+    const raw = await response.text();
+    let data;
+    try { data = JSON.parse(raw); } catch { data = {}; }
+    if (!response.ok) {
+      const upstreamMsg = typeof data.error?.message === 'string' ? data.error.message.slice(0, 300) : '';
+      return { ok: false, status: response.status, error: upstreamMsg || `AI 服務回應錯誤（${response.status}）`, usedBaseUrl: base };
+    }
+    // The text is in output[].content[] items of type "output_text".
+    const text = typeof data.output_text === 'string' ? data.output_text
+      : (Array.isArray(data.output) ? data.output : [])
+        .flatMap((o) => (Array.isArray(o?.content) ? o.content : []))
+        .filter((c) => c?.type === 'output_text' && typeof c.text === 'string')
+        .map((c) => c.text).join('');
+    return { ok: true, status: 200, text, data, usedBaseUrl: base };
+  } catch (error) {
+    return { ok: false, status: 500, error: error.message, usedBaseUrl: base };
+  }
+}
+
 async function callChatCompletion({ system, user, history = [], apiKey, apiBaseUrl, model, temperature = 0.7, responseFormat }) {
   if (!apiKey) return { ok: false, status: 400, error: 'AI provider is not configured. Set an API key first.' };
+  if (usesResponsesApi(model)) return callResponsesApi({ system, user, history, apiKey, apiBaseUrl, model, responseFormat });
 
   const base = String(apiBaseUrl || '').replace(/\/+$/, '');
   const candidates = [base];
@@ -456,7 +494,7 @@ app.post('/api/admin/ai-settings/save', async (req, res) => {
 // to the host it was saved for (never to another provider the admin is just browsing).
 app.post('/api/admin/ai-settings/models', async (req, res) => {
   try {
-    const { idToken, schoolId, apiBaseUrl } = req.body || {};
+    const { idToken, schoolId, apiBaseUrl, apiKey: typedKey } = req.body || {};
     const actor = await requireSchoolAdmin(idToken, schoolId);
     const stored = await readSchoolAiSettings(actor.schoolId);
     const env = getServerProviderConfig();
@@ -464,12 +502,14 @@ app.post('/api/admin/ai-settings/models', async (req, res) => {
     const base = String(apiBaseUrl || savedBase).trim().replace(/\/+$/, '');
     if (!isAllowedProviderUrl(base)) throw providerUrlError();
     const host = (u) => { try { return new URL(u).hostname.toLowerCase(); } catch { return ''; } };
-    let key = '';
-    if (stored?.secret?.ciphertext && host(base) === host(savedBase)) {
+    // A key the admin just typed (not saved yet) is used only for this request, to this provider.
+    let key = String(typedKey || '').trim();
+    if (!key && stored?.secret?.ciphertext && host(base) === host(savedBase)) {
       try { key = decryptApiKey(stored.secret); } catch { key = ''; }
-    } else if (env.apiKey && host(base) === host(env.apiBaseUrl)) {
+    } else if (!key && env.apiKey && host(base) === host(env.apiBaseUrl)) {
       key = env.apiKey;
     }
+    if (!key) throw httpError(400, '請先輸入 API Key，才會顯示可用的模型');
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 10000);
     let response;
