@@ -400,6 +400,7 @@ app.post('/api/admin/ai-settings/get', async (req, res) => {
         model: String(stored?.provider?.model || env.model),
       },
       hasKey: Boolean(stored?.secret?.ciphertext),
+      recentModels: Array.isArray(stored?.recentModels) ? stored.recentModels.slice(0, 8) : [],
       keyHint: String(stored?.keyHint || ''),
       envKeyConfigured: Boolean(env.apiKey),
       encryptionConfigured: Boolean(getEncryptionKey()),
@@ -424,8 +425,15 @@ app.post('/api/admin/ai-settings/save', async (req, res) => {
     if (!cleanModel || cleanModel.length > 200) throw httpError(400, '請輸入模型名稱');
     const key = String(apiKey || '').trim();
 
+    const { db } = getFirebaseAdmin();
+    const ref = db.collection('schoolSecrets').doc(actor.schoolId);
+    const before = (await ref.get()).data() || {};
+    // Most recent first, so admins can switch back with one tap.
+    const recentModels = [cleanModel, ...(Array.isArray(before.recentModels) ? before.recentModels : [])]
+      .filter((m, i, a) => m && a.indexOf(m) === i).slice(0, 8);
     const update = {
       provider: { apiBaseUrl: base, model: cleanModel },
+      recentModels,
       updatedBy: actor.uid,
       updatedByEmail: actor.email || '',
       updatedAt: FieldValue.serverTimestamp(),
@@ -437,11 +445,68 @@ app.post('/api/admin/ai-settings/save', async (req, res) => {
       update.secret = FieldValue.delete();
       update.keyHint = '';
     }
-    const { db } = getFirebaseAdmin();
-    await db.collection('schoolSecrets').doc(actor.schoolId).set({ ...update, schoolId: actor.schoolId }, { merge: true });
+    await ref.set({ ...update, schoolId: actor.schoolId }, { merge: true });
     return res.json({ ok: true });
   } catch (error) {
     return sendError(res, error, 'save ai settings failed');
+  }
+});
+
+// Admin: the models a provider offers, for the model picker. The school's saved key is only sent
+// to the host it was saved for (never to another provider the admin is just browsing).
+app.post('/api/admin/ai-settings/models', async (req, res) => {
+  try {
+    const { idToken, schoolId, apiBaseUrl } = req.body || {};
+    const actor = await requireSchoolAdmin(idToken, schoolId);
+    const stored = await readSchoolAiSettings(actor.schoolId);
+    const env = getServerProviderConfig();
+    const savedBase = String(stored?.provider?.apiBaseUrl || env.apiBaseUrl).replace(/\/+$/, '');
+    const base = String(apiBaseUrl || savedBase).trim().replace(/\/+$/, '');
+    if (!isAllowedProviderUrl(base)) throw providerUrlError();
+    const host = (u) => { try { return new URL(u).hostname.toLowerCase(); } catch { return ''; } };
+    let key = '';
+    if (stored?.secret?.ciphertext && host(base) === host(savedBase)) {
+      try { key = decryptApiKey(stored.secret); } catch { key = ''; }
+    } else if (env.apiKey && host(base) === host(env.apiBaseUrl)) {
+      key = env.apiKey;
+    }
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 10000);
+    let response;
+    try {
+      response = await fetch(base + '/models', {
+        method: 'GET',
+        headers: key ? { Authorization: 'Bearer ' + key } : {},
+        signal: controller.signal,
+      });
+    } catch {
+      throw httpError(502, '無法連線到 AI 服務，請稍後再試');
+    } finally {
+      clearTimeout(timer);
+    }
+    const raw = await response.text();
+    let data;
+    try { data = JSON.parse(raw); } catch { data = null; }
+    if (!response.ok) {
+      const msg = typeof data?.error?.message === 'string' ? data.error.message.slice(0, 200) : '';
+      throw httpError(response.status === 401 || response.status === 403 ? 400 : 502,
+        response.status === 401 || response.status === 403 ? '這個服務需要先儲存它的 API Key，才能列出模型' : (msg || `AI 服務回應錯誤（${response.status}）`));
+    }
+    const list = Array.isArray(data?.data) ? data.data : (Array.isArray(data?.models) ? data.models : []);
+    const perMillion = (v) => { const n = Number(v); return Number.isFinite(n) && n >= 0 ? Math.round(n * 1e6 * 100) / 100 : null; };
+    const models = list
+      .map((m) => ({
+        id: String(m?.id || m?.name || '').replace(/^models\//, ''),
+        name: String(m?.name && m.name !== m.id ? m.name : '').slice(0, 120),
+        contextLength: Number(m?.context_length || m?.context_window || 0) || null,
+        promptPrice: perMillion(m?.pricing?.prompt),
+        completionPrice: perMillion(m?.pricing?.completion),
+      }))
+      .filter((m) => m.id && m.id.length <= 200)
+      .slice(0, 1000);
+    return res.json({ ok: true, apiBaseUrl: base, usedSavedKey: Boolean(key), models });
+  } catch (error) {
+    return sendError(res, error, 'list models failed');
   }
 });
 

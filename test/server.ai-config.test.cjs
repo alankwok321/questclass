@@ -172,3 +172,48 @@ test('the old seed and migration endpoints are gone', () => {
   assert.equal(app.routes['POST /api/admin/seed'], undefined);
   assert.equal(app.routes['POST /api/admin/migrate-users-only'], undefined);
 });
+
+const models = (body) => h.post(app, '/api/admin/ai-settings/models', body);
+
+test('models: admin only; lists the provider\'s models with prices per million tokens', async () => {
+  assert.equal((await models({ idToken: 'tea' })).status, 403);
+  h.ai.responder = () => ({ status: 200, body: { data: [
+    { id: 'openai/gpt-x', name: 'GPT X', context_length: 128000, pricing: { prompt: '0.00000015', completion: '0.0000006' } },
+    { id: 'free/model', pricing: { prompt: '0', completion: '0' } },
+    { id: '' },
+  ] } });
+  const r = await models({ idToken: 'adm' });
+  assert.equal(r.status, 200);
+  assert.equal(h.ai.last.url, 'https://openrouter.ai/api/v1/models');
+  assert.deepEqual(r.body.models[0], { id: 'openai/gpt-x', name: 'GPT X', contextLength: 128000, promptPrice: 0.15, completionPrice: 0.6 });
+  assert.equal(r.body.models[1].promptPrice, 0);
+  assert.equal(r.body.models.length, 2);
+});
+
+test('models: the saved key only goes to the provider it was saved for', async () => {
+  await saveS({ idToken: 'adm', apiKey: 'sk-school-123456', apiBaseUrl: 'https://x.example/v1', model: 'm1' });
+  h.ai.responder = () => ({ status: 200, body: { data: [{ id: 'a' }] } });
+  await models({ idToken: 'adm' });
+  assert.equal(h.ai.last.url, 'https://x.example/v1/models');
+  assert.equal(h.ai.last.headers.Authorization, 'Bearer sk-school-123456');
+  await models({ idToken: 'adm', apiBaseUrl: 'https://school-llm.example/v1' });
+  assert.equal(h.ai.last.url, 'https://school-llm.example/v1/models');
+  assert.equal(h.ai.last.headers.Authorization, undefined, 'no key sent to a different provider');
+  assert.equal((await models({ idToken: 'adm', apiBaseUrl: 'https://evil.example/v1' })).status, 400);
+});
+
+test('models: a provider that needs a key explains it', async () => {
+  h.ai.responder = () => ({ status: 401, body: { error: { message: 'no key' } } });
+  const r = await models({ idToken: 'adm', apiBaseUrl: 'https://school-llm.example/v1' });
+  assert.equal(r.status, 400);
+  assert.match(r.body.error, /API Key/);
+});
+
+test('switching models keeps a most-recent-first list of used models', async () => {
+  await saveS({ idToken: 'adm', apiKey: 'sk-school-123456', model: 'm1' });
+  await saveS({ idToken: 'adm', model: 'm2' });
+  await saveS({ idToken: 'adm', model: 'm1' });
+  const r = await getS({ idToken: 'adm' });
+  assert.deepEqual(r.body.recentModels, ['m1', 'm2']);
+  assert.equal(r.body.hasKey, true, 'switching model keeps the key');
+});

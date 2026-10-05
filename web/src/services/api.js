@@ -86,3 +86,11 @@ export async function renameSchool(schoolId, name) {
 export async function saveSchoolSettings(settings) {
   return postJson('/api/school/settings/save', await withAuth(settings));
 }
+
+// Admin: models offered by an AI provider (defaults to the school's saved provider).
+export async function listAiModels({ schoolId, apiBaseUrl } = {}) {
+  return postJson('/api/admin/ai-settings/models', await withAuth({
+    ...(schoolId ? { schoolId } : {}),
+    ...(apiBaseUrl ? { apiBaseUrl } : {}),
+  }));
+}
