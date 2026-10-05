@@ -8,7 +8,7 @@ import {
   listStudents,
   getIdToken,
 } from '../services/firebase.js';
-import { generateQuestions } from '../services/api.js';
+import { generateQuestions, suggestHomeworkDetails } from '../services/api.js';
 import QuestionTypeBadge, { formatTypeLabel } from '../components/QuestionTypeBadge.jsx';
 import QuestionPreview from '../components/QuestionPreview.jsx';
 
@@ -53,10 +53,25 @@ const labelStyle = {
 // ── Helpers ────────────────────────────────────────────────────────────────────
 // Current local time as "YYYY-MM-DDTHH:mm", the format <input type="datetime-local"> uses.
 // (toISOString() is UTC, which let Hong Kong teachers pick a deadline 8 hours in the past.)
-function nowMinString() {
-  const d = new Date();
+function nowMinString(offsetMs = 0) {
+  const d = new Date(Date.now() + offsetMs);
   const pad = (n) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+// New homework is due 24 hours from now by default.
+function defaultDueAt() {
+  return nowMinString(24 * 60 * 60 * 1000);
+}
+
+// Used when AI is not available: a title from the questions' topics and a plain instruction.
+function fallbackDetails(questions) {
+  const count = questions.length;
+  const topics = [...new Set(questions.map((q) => String(q.topic || '').trim()).filter(Boolean))].slice(0, 2);
+  const level = [...new Set(questions.map((q) => String(q.target_level || '').trim()).filter(Boolean))][0] || '';
+  const title = topics.length ? `${topics.join('、')}練習` : `${level ? `${level} ` : ''}練習（${count} 題）`;
+  const description = `本作業共 ${count} 題，請在截止時間前完成並提交。作答時請小心審題，完成後檢查一次答案。`;
+  return { title: title.slice(0, 60), description };
 }
 
 
@@ -631,6 +646,39 @@ export default function TeacherHomeworkPage() {
   const [questions, setQuestions] = useState([]);
   const [aiOpen, setAiOpen] = useState(false);
   const [bankOpen, setBankOpen] = useState(false);
+  // Title / instructions the teacher typed themselves are never replaced by suggestions.
+  const [typed, setTyped] = useState({ title: false, description: false });
+  const [suggesting, setSuggesting] = useState(false);
+
+  // After questions are chosen, suggest a title and student instructions (AI, else a simple default).
+  async function suggestDetails(qs, { force = false } = {}) {
+    if (!qs.length) return;
+    const fillTitle = force || !typed.title;
+    const fillDesc = force || !typed.description;
+    if (!fillTitle && !fillDesc) return;
+    setSuggesting(true);
+    let s;
+    try {
+      s = await suggestHomeworkDetails(qs);
+      if (!s.title && !s.description) s = fallbackDetails(qs);
+    } catch {
+      s = fallbackDetails(qs);
+    } finally {
+      setSuggesting(false);
+    }
+    setForm((f) => ({
+      ...f,
+      ...(fillTitle && s.title ? { title: s.title } : {}),
+      ...(fillDesc && s.description ? { description: s.description } : {}),
+    }));
+    if (force) setTyped({ title: false, description: false });
+  }
+
+  function addQuestions(newQs) {
+    const next = [...questions, ...newQs];
+    setQuestions(next);
+    suggestDetails(next);
+  }
   const [submissionsAssignment, setSubmissionsAssignment] = useState(null);
 
   const load = useCallback(async () => {
@@ -654,10 +702,13 @@ export default function TeacherHomeworkPage() {
   };
 
   function openNew() {
-    setEditId(null); setOriginalDueAt(''); setForm(EMPTY_FORM); setQuestions([]); setView('edit');
+    setEditId(null); setOriginalDueAt(''); setForm({ ...EMPTY_FORM, dueAt: defaultDueAt() }); setQuestions([]);
+    setTyped({ title: false, description: false }); setView('edit');
   }
   function openEdit(a) {
     setEditId(a.id);
+    // An existing homework's title and instructions count as the teacher's own.
+    setTyped({ title: Boolean(a.title), description: Boolean(a.description) });
     setOriginalDueAt(a.dueAt ? a.dueAt.substring(0, 16) : '');
     setForm({
       title: a.title || '',
@@ -833,18 +884,28 @@ export default function TeacherHomeworkPage() {
         </div>
 
         <div style={{ display: 'grid', gap: 16 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', marginBottom: -6 }}>
+            <span style={{ fontSize: 12, color: '#86868B' }}>
+              {suggesting ? '✨ 正在根據題目建議標題和說明…' : questions.length ? '選好題目後會自動建議標題和說明，可再修改。' : '先加入題目，系統會建議標題和說明。'}
+            </span>
+            {questions.length ? (
+              <button type="button" className="qcLink" style={{ fontSize: 12 }} disabled={suggesting}
+                onClick={() => suggestDetails(questions, { force: true })}>✨ 重新建議</button>
+            ) : null}
+          </div>
+
           <label style={labelStyle}>
             標題 *
             <input style={inputStyle} value={form.title}
-              placeholder="例如：第三章閱讀理解"
-              onChange={e => setForm(f => ({ ...f, title: e.target.value }))} />
+              placeholder={suggesting ? '建議中…' : '例如：第三章閱讀理解'}
+              onChange={e => { const v = e.target.value; setForm(f => ({ ...f, title: v })); setTyped(t => ({ ...t, title: Boolean(v.trim()) })); }} />
           </label>
 
           <label style={labelStyle}>
             學生說明
             <textarea style={{ ...inputStyle, height: 88, resize: 'vertical' }} value={form.description}
-              placeholder="描述學生需要完成的任務…"
-              onChange={e => setForm(f => ({ ...f, description: e.target.value }))} />
+              placeholder={suggesting ? '建議中…' : '描述學生需要完成的任務…'}
+              onChange={e => { const v = e.target.value; setForm(f => ({ ...f, description: v })); setTyped(t => ({ ...t, description: Boolean(v.trim()) })); }} />
           </label>
 
           <label style={labelStyle}>
@@ -964,13 +1025,13 @@ export default function TeacherHomeworkPage() {
       {bankOpen && (
         <QuestionBankPicker
           alreadyIds={addedBankIds}
-          onAdd={qs => setQuestions(prev => [...prev, ...qs])}
+          onAdd={addQuestions}
           onClose={() => setBankOpen(false)}
         />
       )}
       {aiOpen && (
         <AiModal form={form} onClose={() => setAiOpen(false)}
-          onAdd={newQs => setQuestions(prev => [...prev, ...newQs])} />
+          onAdd={addQuestions} />
       )}
     </div>
   );

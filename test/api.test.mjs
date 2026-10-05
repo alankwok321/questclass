@@ -69,3 +69,20 @@ test('signed out: no token, request still goes out', async () => {
   await api.chat({ message: 'hi' });
   assert.equal(sent[0].body.idToken, undefined);
 });
+
+test('suggestHomeworkDetails asks the AI for JSON (title + instructions) from the question texts, without answers', async () => {
+  const sent = setup();
+  globalThis.fetch = async (url, init) => {
+    sent.push({ url, body: JSON.parse(init.body) });
+    return { ok: true, status: 200, json: async () => ({ title: ' 分數加減練習 ', description: '共 2 題。' }) };
+  };
+  const r = await api.suggestHomeworkDetails([
+    { type: 'MULTIPLE_CHOICE', topic: '分數', question_text: '1/2 + 1/4 = ?', options: [{ text: '3/4', is_correct: true }] },
+    { type: 'TRUE_FALSE', question_text: '1/3 > 1/2', correct_answer: false },
+  ]);
+  assert.deepEqual(r, { title: '分數加減練習', description: '共 2 題。' });
+  assert.equal(sent[0].url, '/api/chat');
+  assert.equal(sent[0].body.format, 'json');
+  assert.match(sent[0].body.message, /1\/2 \+ 1\/4/);
+  assert.doesNotMatch(sent[0].body.message, /is_correct|correct_answer|3\/4/, 'answers are not sent');
+});

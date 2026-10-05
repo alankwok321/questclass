@@ -110,3 +110,25 @@ export async function chatgptLoginPoll(schoolId) {
 export async function chatgptLogout(schoolId) {
   return postJson('/api/admin/ai-settings/chatgpt/disconnect', await withAuth(schoolId ? { schoolId } : {}));
 }
+
+// Teacher: suggest a homework title and student instructions from the chosen questions.
+export async function suggestHomeworkDetails(questions) {
+  const lines = (questions || []).slice(0, 30).map((q, i) => {
+    const text = String(q.question_text || q.prompt || '').replace(/\s+/g, ' ').slice(0, 160);
+    return `${i + 1}. [${q.type || ''}${q.topic ? ` · ${q.topic}` : ''}${q.target_level ? ` · ${q.target_level}` : ''}] ${text}`;
+  });
+  const data = await postJson('/api/chat', await withAuth({
+    format: 'json',
+    topic: 'teacher-homework',
+    studentName: 'teacher',
+    message: `作業題目（共 ${questions.length} 題）：\n${lines.join('\n')}`,
+    system: '你是香港學校老師的助教。根據作業題目，用繁體中文（香港用語）寫：\n'
+      + '1. title：簡短作業標題（最多 20 字，說明科目或課題，例如「分數加減練習」）\n'
+      + '2. description：給學生的說明（2 至 3 句，最多 120 字）：要做甚麼、共幾題、提醒（例如寫出步驟、檢查答案）。不要透露答案。\n'
+      + '只輸出 JSON：{"title":"…","description":"…"}',
+  }));
+  return {
+    title: String(data?.title || '').trim().slice(0, 60),
+    description: String(data?.description || '').trim().slice(0, 400),
+  };
+}
