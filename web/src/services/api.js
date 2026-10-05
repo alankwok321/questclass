@@ -137,3 +137,19 @@ export async function suggestHomeworkDetails(questions) {
 export async function renameClass(from, to, schoolId) {
   return postJson('/api/school/classes/rename', await withAuth({ from, to, ...(schoolId ? { schoolId } : {}) }));
 }
+
+// Teacher: a short, encouraging report comment for one student, from their real numbers.
+export async function suggestStudentComment(summary) {
+  const data = await postJson('/api/chat', await withAuth({
+    format: 'json',
+    topic: 'teacher-report',
+    studentName: 'teacher',
+    message: summary,
+    system: '你是香港小學老師。根據學生的作業數據，用繁體中文（香港用語）寫一段給學生及家長看的學習評語：'
+      + '2 至 4 句，最多 120 字；先肯定做得好的地方，再具體指出要加強的課題或欠交情況，最後給一個可行的建議。語氣溫和、具體，不要誇大。'
+      + '只輸出 JSON：{"comment":"…"}',
+  }));
+  const comment = String(data?.comment || '').trim();
+  if (!comment) throw new Error('AI 沒有產生評語，請再試一次');
+  return comment.slice(0, 400);
+}
