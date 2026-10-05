@@ -39,11 +39,27 @@ test('existing profile: promoted with merge, createdAt/name untouched', async ()
   assert.equal(h.fbState.data.users.u1.name, 'Original');
 });
 
-test('already-active admin: no write', async () => {
-  h.fbState.data.users = { u1: { role: 'Admin', accountStatus: 'active' } };
+test('already-active platform admin: no write', async () => {
+  h.fbState.data.users = { u1: { role: 'Admin', accountStatus: 'active', platformAdmin: true } };
   const r = await sync({ idToken: 'boss' });
   assert.equal(r.body.changed, false);
   assert.equal(h.fbState.writes.length, 0);
+});
+
+test('an existing admin listed in ADMIN_EMAILS becomes platform admin', async () => {
+  h.fbState.data.users = { u1: { role: 'admin', accountStatus: 'active', schoolId: 'a' } };
+  const r = await sync({ idToken: 'boss' });
+  assert.equal(r.body.changed, true);
+  assert.equal(h.fbState.data.users.u1.platformAdmin, true);
+  assert.equal(h.fbState.data.users.u1.schoolId, 'a', 'school is kept');
+});
+
+test('removed from ADMIN_EMAILS: platform admin rights are taken away, school role kept', async () => {
+  h.fbState.data.users = { u3: { role: 'admin', accountStatus: 'active', platformAdmin: true, schoolId: 'a' } };
+  const r = await sync({ idToken: 'stranger' });
+  assert.equal(r.body.changed, true);
+  assert.equal(h.fbState.data.users.u3.platformAdmin, undefined);
+  assert.equal(h.fbState.data.users.u3.role, 'admin');
 });
 
 test('unverified email is ignored', async () => {

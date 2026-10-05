@@ -1,51 +1,50 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { useToast } from '../components/Toast.jsx';
 import { Link } from 'react-router-dom';
-import { getIdToken } from '../services/firebase.js';
+import { useToast } from '../components/Toast.jsx';
+import { listSchools } from '../services/firebase.js';
+import { saveSchoolSettings } from '../services/api.js';
 
 function isAdmin(user) {
   return String(user?.role || '').toLowerCase() === 'admin';
 }
 
+const UNASSIGNED = '__none__';
+
 export default function AdminPage({ user }) {
   const toast = useToast();
+  const platform = user?.platformAdmin === true;
   const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
-  const [remoteSaving, setRemoteSaving] = useState(false);
-  const [classroomIdsText, setClassroomIdsText] = useState('');
-
+  const [schools, setSchools] = useState([]);
+  // Which school's members are shown. School admins: always their own.
+  const [viewSchool, setViewSchool] = useState(user?.schoolId || (platform ? UNASSIGNED : ''));
   const [users, setUsers] = useState([]);
+  const [filter, setFilter] = useState('all');
 
   const [selectedUid, setSelectedUid] = useState('');
-  const selectedUser = useMemo(() => users.find(u => u.uid === selectedUid) || null, [users, selectedUid]);
-
-  const [accountRole, setAccountRole] = useState('');
-  const [accountStatus, setAccountStatus] = useState('active');
-  const [adminNote, setAdminNote] = useState('');
-  const [childUids, setChildUids] = useState([]);
+  const selectedUser = useMemo(() => users.find((u) => u.uid === selectedUid) || null, [users, selectedUid]);
+  const [form, setForm] = useState({ role: 'student', accountStatus: 'active', class: '', childUids: [], schoolId: '' });
   const [childSearch, setChildSearch] = useState('');
 
+  const mySchool = schools.find((s) => s.id === user?.schoolId) || null;
+  const viewingOwn = viewSchool === user?.schoolId;
 
-  const refresh = async () => {
+  const refresh = async (schoolKey = viewSchool) => {
     setErr('');
     setLoading(true);
     try {
       const fb = window.QuestClassFirebase;
-      if (!fb?.enabled?.()) {
-        setErr('Firebase 未設定');
-        return;
-      }
-      // Ensure auth state is loaded.
+      if (!fb?.enabled?.()) { setErr('Firebase 未設定'); return; }
       await fb.init?.();
-
-      const uRes = await fb.listUsers?.(500);
-
-      if (!uRes?.ok) throw new Error(uRes?.error || 'listUsers failed');
-
-      setUsers(uRes.users || []);
-
-      // keep selection stable
-      if (!selectedUid && (uRes.users || []).length) setSelectedUid(uRes.users[0].uid);
+      const sRes = await listSchools();
+      setSchools(sRes?.schools || []);
+      const opts = platform ? { schoolId: schoolKey === UNASSIGNED ? '' : schoolKey } : {};
+      const uRes = await fb.listUsers?.(1000, opts);
+      if (!uRes?.ok) throw new Error(uRes?.error || '載入使用者失敗');
+      const list = (uRes.users || []).sort((a, b) => String(a.name || a.email || '').localeCompare(String(b.name || b.email || ''), 'zh-Hant'));
+      setUsers(list);
+      setSelectedUid((cur) => (list.some((u) => u.uid === cur) ? cur : (list[0]?.uid || '')));
     } catch (e) {
       setErr(e.message || '載入失敗');
     } finally {
@@ -54,259 +53,247 @@ export default function AdminPage({ user }) {
   };
 
   useEffect(() => {
-    refresh();
+    refresh(viewSchool);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [viewSchool]);
 
   useEffect(() => {
     if (!selectedUser) return;
-    // Roles are stored case-insensitively elsewhere ("Teacher" works in the rules), so match the dropdown.
-    setAccountRole(String(selectedUser.role || 'student').trim().toLowerCase());
-    setAccountStatus(selectedUser.accountStatus || 'active');
-    setAdminNote(selectedUser.adminNote || '');
-    setChildUids(Array.isArray(selectedUser.childUids) ? selectedUser.childUids : []);
+    setForm({
+      // Roles are stored case-insensitively elsewhere ("Teacher" works in the rules), so match the dropdown.
+      role: String(selectedUser.role || 'student').trim().toLowerCase(),
+      accountStatus: selectedUser.accountStatus || 'active',
+      class: selectedUser.class || '',
+      childUids: Array.isArray(selectedUser.childUids) ? selectedUser.childUids : [],
+      schoolId: selectedUser.schoolId || '',
+    });
     setChildSearch('');
-    setClassroomIdsText(Array.isArray(selectedUser.classroomIds) ? selectedUser.classroomIds.join(', ') : String(selectedUser.classroomIds || ''));
-
   }, [selectedUser]);
 
-  const onSaveAll = async () => {
-    setRemoteSaving(true);
+  const onSave = async () => {
+    if (!selectedUid) return toast.show('請先選擇使用者');
+    if (selectedUid === user?.uid && (form.role !== 'admin' || form.accountStatus !== 'active')) {
+      return toast.show('不能移除自己的管理員權限或停用自己的帳戶，以免失去管理權限。');
+    }
+    setSaving(true);
     try {
-      const fb = window.QuestClassFirebase;
-      if (!selectedUid) return toast.show('請先選擇使用者');
-      if (selectedUid === user?.uid && (accountRole !== 'admin' || accountStatus !== 'active')) {
-        return toast.show('不能移除自己的管理員權限或停用自己的帳戶，以免失去管理權限。');
-      }
-
-      // Save account settings (Firestore)
-      const res = await fb.adminUpdateUserAccount?.(selectedUid, {
-        role: accountRole,
-        accountStatus,
-        adminNote,
-        classroomIds: classroomIdsText,
+      const input = {
+        role: form.role,
+        accountStatus: form.accountStatus,
+        class: form.role === 'student' ? form.class : '',
         // Only parents keep child links; changing the role away from parent clears them.
-        childUids: accountRole === 'parent' ? childUids : []
-      });
-      if (!res?.ok) throw new Error(res?.error || 'update failed');
-
-      toast.show('已儲存');
+        childUids: form.role === 'parent' ? form.childUids : [],
+      };
+      if (platform && form.schoolId !== (selectedUser?.schoolId || '')) input.schoolId = form.schoolId;
+      const res = await window.QuestClassFirebase?.adminUpdateUserAccount?.(selectedUid, input);
+      if (!res?.ok) throw new Error(res?.error || '儲存失敗');
+      toast.show(input.schoolId !== undefined ? '已儲存並轉校' : '已儲存');
       await refresh();
     } catch (e) {
       toast.show(e.message || '儲存失敗');
     } finally {
-      setRemoteSaving(false);
+      setSaving(false);
     }
   };
 
-  const onRunMigration = async () => {
-    setRemoteSaving(true);
+  const onToggleShare = async () => {
+    if (!mySchool) return;
+    const next = !mySchool.shareQuestionBank;
+    if (next && !window.confirm('開啟後，其他學校的老師可以查看及使用本校題庫的題目（不能修改）。確定？')) return;
+    setSaving(true);
     try {
-      const idToken = await getIdToken();
-      if (!idToken) throw new Error('請先登入 Firebase');
-      const res = await fetch('/api/admin/migrate-users-only', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ idToken, mode: 'merge' })
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.error || 'migrate failed');
-      toast.show(`Migration 完成：merged=${data.merged || 0}, skipped=${data.skipped || 0}`);
+      await saveSchoolSettings({ shareQuestionBank: next });
+      toast.show(next ? '已與其他學校共享題庫' : '已停止共享題庫');
       await refresh();
     } catch (e) {
-      toast.show(e.message || 'Migration 失敗');
+      toast.show(e.message || '儲存失敗');
     } finally {
-      setRemoteSaving(false);
+      setSaving(false);
     }
   };
 
+  if (!user) return <div className="qcCard">請先登入。</div>;
+  if (!isAdmin(user)) return <div className="qcCard" style={{ color: '#D70015', fontWeight: 600 }}>只有管理員可使用此頁面。</div>;
+  if (!user.schoolId && !platform) return <div className="qcCard">你的帳戶尚未加入學校。</div>;
 
-  if (!user) {
-    return (
-      <div className="card">
-        <div style={{ fontWeight: 700, fontSize: 16 }}>Admin</div>
-        <div style={{ marginTop: 10, color: '#6E6E73', fontWeight: 500 }}>請先登入。</div>
-      </div>
-    );
-  }
-
-  if (!isAdmin(user)) {
-    return (
-      <div className="card">
-        <div style={{ fontWeight: 700, fontSize: 16 }}>Admin</div>
-        <div style={{ marginTop: 10, color: '#D70015', fontWeight: 600 }}>只有 admin 可使用此頁面。</div>
-      </div>
-    );
-  }
+  const reviewCount = users.filter((u) => u.accountStatus === 'review').length;
+  const shown = filter === 'review' ? users.filter((u) => u.accountStatus === 'review') : users;
+  const students = users.filter((u) => String(u.role || '').toLowerCase() === 'student');
+  const classNames = [...new Set(students.map((u) => String(u.class || '').trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'zh-Hant', { numeric: true }));
+  const viewName = viewSchool === UNASSIGNED ? '未分配學校' : (schools.find((s) => s.id === viewSchool)?.name || '');
 
   return (
     <div style={{ display: 'grid', gap: 16 }}>
-      <div className="card">
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+      <div className="qcCard">
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
           <div>
-            <div style={{ fontWeight: 700, fontSize: 16 }}>Admin 控制台</div>
-            <div style={{ color: '#6E6E73', fontWeight: 500, marginTop: 4, fontSize: 13 }}>users / students（Firestore）</div>
+            <h2 className="qcSectionTitle">{viewName || '管理後台'}</h2>
+            <div style={{ color: '#6E6E73', fontSize: 13, marginTop: 4 }}>
+              {users.length} 位使用者{reviewCount ? ` · ${reviewCount} 位待審核` : ''}
+            </div>
           </div>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <Link to="/admin/ai-settings" style={{ ...btnGhost, textDecoration: 'none', color: '#0071E3' }}>AI 設定</Link>
-            <button type="button" onClick={refresh} disabled={loading} style={btnGhost}>
-              {loading ? '刷新中…' : '重新整理'}
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+            {platform ? (
+              <select value={viewSchool} onChange={(e) => setViewSchool(e.target.value)} aria-label="查看學校" style={{ ...selectStyle, width: 'auto' }}>
+                {schools.map((s) => <option key={s.id} value={s.id}>{s.name}{s.id === user.schoolId ? '（你的學校）' : ''}</option>)}
+                <option value={UNASSIGNED}>未分配學校</option>
+              </select>
+            ) : null}
+            {platform ? <Link to="/admin/schools" className="qcBtn qcBtnSecondary qcBtnSmall" style={{ textDecoration: 'none' }}>學校管理</Link> : null}
+            <Link to="/admin/ai-settings" className="qcBtn qcBtnSecondary qcBtnSmall" style={{ textDecoration: 'none' }}>AI 設定</Link>
+            <button type="button" className="qcBtn qcBtnSecondary qcBtnSmall" onClick={() => refresh()} disabled={loading}>
+              {loading ? '載入中…' : '重新整理'}
             </button>
           </div>
         </div>
         {err ? <div style={{ marginTop: 10, color: '#D70015', fontWeight: 600 }}>{err}</div> : null}
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '320px minmax(0, 1fr)', gap: 14 }}>
-        <div className="card" style={{ padding: 12, overflow: 'hidden' }}>
-          <div style={{ fontWeight: 700, marginBottom: 10 }}>使用者</div>
-          <div style={{ maxHeight: 520, overflow: 'auto', display: 'grid', gap: 8 }}>
-            {users.map((u) => (
-              <button
-                key={u.uid}
-                type="button"
-                onClick={() => setSelectedUid(u.uid)}
-                style={{
-                  textAlign: 'left',
-                  border: '1px solid rgba(0,0,0,0.10)',
-                  background: u.uid === selectedUid ? 'rgba(0,113,227,0.10)' : '#F2F2F7',
-                  borderRadius: 16,
-                  padding: 10,
-                  cursor: 'pointer'
-                }}
-              >
-                <div style={{ fontWeight: 700, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{u.name || u.email || u.uid}</div>
-                <div style={{ marginTop: 2, color: '#6E6E73', fontWeight: 600, fontSize: 11, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {ROLE_NAMES[String(u.role || '').toLowerCase()] || u.role || '—'} · {STATUS_NAMES[u.accountStatus || 'active'] || u.accountStatus}
-                  {u.requestedRole && u.requestedRole !== u.role ? ` · 申請：${ROLE_NAMES[u.requestedRole] || u.requestedRole}` : ''}
+      {viewingOwn && mySchool ? (
+        <div className="qcCard" style={{ display: 'flex', alignItems: 'center', gap: 16, justifyContent: 'space-between', flexWrap: 'wrap' }}>
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <div style={{ fontWeight: 700 }}>與其他學校共享題庫</div>
+            <div style={{ fontSize: 13, color: '#6E6E73', marginTop: 4, lineHeight: 1.5 }}>
+              開啟後，其他學校的老師可以查看及使用本校題庫的題目，但不能修改。本校老師一直可以看到其他已共享學校的題目。
+            </div>
+          </div>
+          <button type="button" role="switch" aria-checked={!!mySchool.shareQuestionBank} aria-label="與其他學校共享題庫" onClick={onToggleShare} disabled={saving}
+            style={{ width: 51, height: 31, borderRadius: 999, border: 0, padding: 2, cursor: 'pointer', flexShrink: 0,
+              background: mySchool.shareQuestionBank ? '#34C759' : '#E3E3E8', transition: 'background .2s' }}>
+            <span style={{ display: 'block', width: 27, height: 27, borderRadius: 999, background: '#fff', boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+              transform: mySchool.shareQuestionBank ? 'translateX(20px)' : 'none', transition: 'transform .2s' }} />
+          </button>
+        </div>
+      ) : null}
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(240px, 320px) minmax(0, 1fr)', gap: 14 }}>
+        <div className="qcCard" style={{ padding: 12, overflow: 'hidden' }}>
+          <div role="tablist" aria-label="篩選" style={{ display: 'inline-flex', padding: 2, borderRadius: 9, background: '#E3E3E8', marginBottom: 10 }}>
+            {[['all', `全部 ${users.length}`], ['review', `待審核 ${reviewCount}`]].map(([k, text]) => (
+              <button key={k} type="button" role="tab" aria-selected={filter === k} onClick={() => setFilter(k)} style={{
+                height: 28, padding: '0 12px', border: 0, borderRadius: 7, cursor: 'pointer', fontSize: 12,
+                fontWeight: filter === k ? 600 : 500, background: filter === k ? '#FFFFFF' : 'transparent',
+              }}>{text}</button>
+            ))}
+          </div>
+          <div style={{ maxHeight: 560, overflow: 'auto', display: 'grid', gap: 8 }}>
+            {shown.length === 0 ? <div style={{ color: '#86868B', fontSize: 13, padding: 8 }}>沒有使用者</div> : null}
+            {shown.map((u) => (
+              <button key={u.uid} type="button" onClick={() => setSelectedUid(u.uid)} style={{
+                textAlign: 'left', border: 0, borderRadius: 14, padding: 10, cursor: 'pointer',
+                background: u.uid === selectedUid ? 'rgba(0,113,227,0.10)' : '#F2F2F7',
+              }}>
+                <div style={{ fontWeight: 600, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{u.name || u.email || u.uid}</div>
+                <div style={{ marginTop: 2, color: '#6E6E73', fontSize: 11, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {ROLE_NAMES[String(u.role || '').toLowerCase()] || '—'}
+                  {u.class ? ` · ${u.class}` : ''}
+                  {(u.accountStatus || 'active') !== 'active' ? <span style={{ color: u.accountStatus === 'review' ? '#B25000' : '#D70015' }}> · {STATUS_NAMES[u.accountStatus] || u.accountStatus}</span> : null}
                 </div>
               </button>
             ))}
           </div>
         </div>
 
-        <div style={{ display: 'grid', gap: 14 }}>
-          <div className="card">
-            <div style={{ fontWeight: 700, marginBottom: 12 }}>帳號設定</div>
-            {!selectedUser ? (
-              <div style={{ color: '#6E6E73', fontWeight: 500 }}>尚未選擇使用者</div>
-            ) : (
-              <div style={{ display: 'grid', gap: 10 }}>
-                <div style={{ display: 'grid', gap: 4 }}>
-                  <div style={label}>UID</div>
-                  <div style={{ fontWeight: 600, color: '#374151', fontSize: 13 }}>{selectedUser.uid}</div>
-                </div>
-
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                  <label style={{ display: 'grid', gap: 6 }}>
-                    <div style={label}>角色</div>
-                    <select value={accountRole} onChange={(e) => setAccountRole(e.target.value)} style={selectStyle}>
-                      <option value="student">學生</option>
-                      <option value="teacher">老師</option>
-                      <option value="parent">家長</option>
-                      <option value="admin">管理員</option>
-                    </select>
-                  </label>
-
-                  <label style={{ display: 'grid', gap: 6 }}>
-                    <div style={label}>狀態</div>
-                    <select value={accountStatus} onChange={(e) => setAccountStatus(e.target.value)} style={selectStyle}>
-                      <option value="active">啟用</option>
-                      <option value="review">待審核</option>
-                      <option value="suspended">停用</option>
-                    </select>
-                  </label>
-                </div>
-
-                <label style={{ display: 'grid', gap: 6 }}>
-                  <div style={label}>管理備註</div>
-                  <input value={adminNote} onChange={(e) => setAdminNote(e.target.value)} style={inputStyle} placeholder="notes..." />
-                </label>
-
-                {accountRole === 'parent' ? (
-                  <div style={{ display: 'grid', gap: 6 }}>
-                    <div style={label}>連結子女（家長只可查看已連結子女的作業和成績）</div>
-                    <input value={childSearch} onChange={(e) => setChildSearch(e.target.value)} style={inputStyle} placeholder="搜尋學生姓名或電郵" aria-label="搜尋學生" />
-                    <div style={{ maxHeight: 200, overflow: 'auto', border: '1px solid #E8E8ED', borderRadius: 10 }}>
-                      {users
-                        .filter((u) => String(u.role || '').toLowerCase() === 'student')
-                        .filter((u) => {
-                          const q = childSearch.trim().toLowerCase();
-                          return !q || String(u.name || '').toLowerCase().includes(q) || String(u.email || '').toLowerCase().includes(q);
-                        })
-                        .map((u) => {
-                          const on = childUids.includes(u.uid);
-                          return (
-                            <label key={u.uid} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderBottom: '1px solid #F0F0F3', cursor: 'pointer', background: on ? 'rgba(0,113,227,0.06)' : 'transparent' }}>
-                              <input type="checkbox" checked={on} onChange={() => setChildUids((prev) => (on ? prev.filter((x) => x !== u.uid) : [...prev, u.uid]))} />
-                              <span style={{ fontSize: 14, fontWeight: 500 }}>{u.name || u.email || u.uid}</span>
-                              <span style={{ fontSize: 12, color: '#6E6E73', marginLeft: 'auto' }}>{u.email || ''}</span>
-                            </label>
-                          );
-                        })}
-                    </div>
-                    <div style={{ fontSize: 12, color: '#6E6E73' }}>已連結 {childUids.length} 位子女</div>
-                  </div>
-                ) : null}
-
-                <label style={{ display: 'grid', gap: 6 }}>
-                  <div style={label}>Classroom IDs（逗號分隔）</div>
-                  <input value={classroomIdsText} onChange={(e) => setClassroomIdsText(e.target.value)} style={inputStyle} placeholder="classroom-001, classroom-002" />
-                </label>
-
-                <div style={{ display: 'flex', gap: 10, justifyContent: 'space-between', flexWrap: 'wrap' }}>
-                  <button type="button" onClick={onRunMigration} disabled={remoteSaving} style={btnGhost}>
-                    {remoteSaving ? '執行中…' : 'Run migration'}
-                  </button>
-                  <button type="button" onClick={onSaveAll} disabled={remoteSaving} style={btnPrimary}>
-                    {remoteSaving ? '儲存中…' : '儲存'}
-                  </button>
-                </div>
+        <div className="qcCard">
+          {!selectedUser ? (
+            <div style={{ color: '#6E6E73' }}>尚未選擇使用者</div>
+          ) : (
+            <div style={{ display: 'grid', gap: 14 }}>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: 17 }}>{selectedUser.name || '—'}</div>
+                <div style={{ color: '#6E6E73', fontSize: 13, marginTop: 2 }}>{selectedUser.email || selectedUser.uid}</div>
               </div>
-            )}
-          </div>
 
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 10 }}>
+                <label style={{ display: 'grid', gap: 6 }}>
+                  <div style={labelStyle}>角色</div>
+                  <select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })} style={selectStyle}>
+                    <option value="student">學生</option>
+                    <option value="teacher">老師</option>
+                    <option value="parent">家長</option>
+                    <option value="admin">管理員</option>
+                  </select>
+                </label>
+                <label style={{ display: 'grid', gap: 6 }}>
+                  <div style={labelStyle}>狀態</div>
+                  <select value={form.accountStatus} onChange={(e) => setForm({ ...form, accountStatus: e.target.value })} style={selectStyle}>
+                    <option value="active">啟用</option>
+                    <option value="review">待審核</option>
+                    <option value="suspended">停用</option>
+                  </select>
+                </label>
+                {platform ? (
+                  <label style={{ display: 'grid', gap: 6 }}>
+                    <div style={labelStyle}>學校</div>
+                    <select value={form.schoolId} onChange={(e) => setForm({ ...form, schoolId: e.target.value })} style={selectStyle}>
+                      <option value="">未分配</option>
+                      {schools.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                    </select>
+                  </label>
+                ) : null}
+              </div>
+
+              {form.role === 'student' ? (
+                <label style={{ display: 'grid', gap: 6 }}>
+                  <div style={labelStyle}>班別</div>
+                  <input value={form.class} onChange={(e) => setForm({ ...form, class: e.target.value })} list="qc-class-names"
+                    style={inputStyle} placeholder="例如 5A" maxLength={40} />
+                  <datalist id="qc-class-names">{classNames.map((c) => <option key={c} value={c} />)}</datalist>
+                </label>
+              ) : null}
+
+              {form.role === 'parent' ? (
+                <div style={{ display: 'grid', gap: 6 }}>
+                  <div style={labelStyle}>連結子女（家長只可查看已連結子女的作業和成績）</div>
+                  <input value={childSearch} onChange={(e) => setChildSearch(e.target.value)} style={inputStyle} placeholder="搜尋學生姓名或電郵" aria-label="搜尋學生" />
+                  <div style={{ maxHeight: 220, overflow: 'auto', border: '1px solid #E8E8ED', borderRadius: 10 }}>
+                    {students
+                      .filter((u) => {
+                        const q = childSearch.trim().toLowerCase();
+                        return !q || String(u.name || '').toLowerCase().includes(q) || String(u.email || '').toLowerCase().includes(q);
+                      })
+                      .map((u) => {
+                        const on = form.childUids.includes(u.uid);
+                        return (
+                          <label key={u.uid} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderBottom: '1px solid #F0F0F3', cursor: 'pointer', background: on ? 'rgba(0,113,227,0.06)' : 'transparent' }}>
+                            <input type="checkbox" checked={on} onChange={() => setForm((f) => ({ ...f, childUids: on ? f.childUids.filter((x) => x !== u.uid) : [...f.childUids, u.uid] }))} />
+                            <span style={{ fontSize: 14, fontWeight: 500 }}>{u.name || u.email || u.uid}</span>
+                            <span style={{ fontSize: 12, color: '#6E6E73', marginLeft: 'auto' }}>{u.class || u.email || ''}</span>
+                          </label>
+                        );
+                      })}
+                  </div>
+                  <div style={{ fontSize: 12, color: '#6E6E73' }}>已連結 {form.childUids.length} 位子女</div>
+                </div>
+              ) : null}
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                <button type="button" className="qcBtn qcBtnPrimary" onClick={onSave} disabled={saving}>
+                  {saving ? '儲存中…' : '儲存'}
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
   );
 }
 
-const label = { fontWeight: 700, fontSize: 13, color: '#6E6E73' };
+const labelStyle = { fontWeight: 600, fontSize: 13, color: '#6E6E73' };
 const ROLE_NAMES = { admin: '管理員', teacher: '老師', student: '學生', parent: '家長' };
 const STATUS_NAMES = { active: '啟用', review: '待審核', suspended: '停用' };
 
 const inputStyle = {
   width: '100%',
+  boxSizing: 'border-box',
   padding: '10px 12px',
   borderRadius: 10,
   border: '1px solid #D2D2D7',
   background: '#FFFFFF',
   outline: 'none',
-  fontWeight: 600,
-};
-
-const selectStyle = {
-  ...inputStyle,
-  appearance: 'none',
-};
-
-const btnPrimary = {
-  border: 0,
-  background: '#0071E3',
-  color: 'white',
-  padding: '10px 14px',
-  borderRadius: 999,
-  fontWeight: 600,
-  cursor: 'pointer',
-};
-
-const btnGhost = {
-  border: 0,
-  background: '#E3E3E8',
-  color: '#1D1D1F',
-  padding: '10px 14px',
-  borderRadius: 999,
+  fontSize: 15,
   fontWeight: 500,
-  cursor: 'pointer',
 };
+
+const selectStyle = { ...inputStyle };

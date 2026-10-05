@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { useToast } from '../components/Toast.jsx';
 import { getAiSettings, saveAiSettings, testAiSettings } from '../services/api.js';
 
-// Admin-only page: the one place the school's AI provider and API key are set.
+// School admin page: the one place their school's AI provider and API key are set.
 // The key is sent to the server once, stored encrypted, and never shown again.
 export default function AiSettingsPage({ user }) {
   const toast = useToast();
@@ -26,8 +26,8 @@ export default function AiSettingsPage({ user }) {
 
   useEffect(() => { load(); }, []);
 
-  if (String(user?.role || '').toLowerCase() !== 'admin') {
-    return <div className="qcCard" style={{ color: '#D70015', fontWeight: 600 }}>只有管理員可使用此頁面。</div>;
+  if (String(user?.role || '').toLowerCase() !== 'admin' || !user?.schoolId) {
+    return <div className="qcCard" style={{ color: '#D70015', fontWeight: 600 }}>只有已加入學校的管理員可使用此頁面。</div>;
   }
 
   const onSave = async (e) => {
@@ -85,7 +85,7 @@ export default function AiSettingsPage({ user }) {
           <div>
             <h2 className="qcSectionTitle">AI 設定</h2>
             <div style={{ color: '#6E6E73', fontSize: 14, marginTop: 4, lineHeight: 1.5 }}>
-              全校共用一組 AI 設定。老師、學生和 AI 助理都使用這裡的 API Key；其他人無法查看或更改。
+              本校的 AI 設定。本校老師、學生和 AI 助理都使用這裡的 API Key；其他學校和本校其他人都無法查看或更改。
             </div>
           </div>
           <Link to="/admin" className="qcLink">← 管理後台</Link>

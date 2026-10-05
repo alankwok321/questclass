@@ -75,9 +75,9 @@ window.QuestClassFirebase = {
       name,
       role,
       photoURL: profile?.photoURL || user.photoURL || '',
-      requestedRole: profile?.requestedRole || '',
-      learnerStage: profile?.learnerStage || '',
-      roleNote: profile?.roleNote || '',
+      schoolId: String(profile?.schoolId || ''),
+      platformAdmin: profile?.platformAdmin === true,
+      class: String(profile?.class || ''),
       accountStatus: String(profile?.accountStatus || 'active').toLowerCase(),
       childUids: Array.isArray(profile?.childUids) ? profile.childUids : [],
       profileRole: normalizedProfileRole || '',
@@ -86,16 +86,14 @@ window.QuestClassFirebase = {
     };
   },
 
-  _profileDocFromUser(user, profile = null) {
-    const normalized = this._normalizeUser(user, profile);
+  // A brand-new account: a student awaiting approval by their school's admin.
+  _profileDocFromUser(user) {
+    const normalized = this._normalizeUser(user, null);
     return {
       name: normalized.name,
       email: normalized.email,
-      role: profile?.role || normalized.role,
-      // Hint for the admin only; it grants nothing.
-      requestedRole: profile?.requestedRole || (normalized.email.includes('teacher') ? 'teacher' : ''),
-      learnerStage: profile?.learnerStage || '',
-      roleNote: profile?.roleNote || '',
+      role: 'student',
+      accountStatus: 'review',
       photoURL: normalized.photoURL || '',
       lastLoginAt: new Date().toISOString()
     };
@@ -268,41 +266,46 @@ window.QuestClassFirebase = {
     }
   },
 
-  async saveMyProfile(input = {}) {
+  // ── Schools ────────────────────────────────────────────────────────────────
+  async listSchools() {
     const ready = await this._ensure();
-    if (!ready) return { ok: false, error: 'Firebase config missing' };
-    const authUser = await this.waitForAuthState();
-    if (!authUser) return { ok: false, error: '請先登入' };
+    if (!ready) return { ok: false, error: 'Firebase config missing', schools: [] };
     const { db, sdk } = ready;
-    const ref = sdk.doc(db, 'users', authUser.uid);
-    const existing = await this._loadProfile(authUser.uid);
-    const payload = {
-      name: String(input.name || existing?.name || authUser.displayName || '').trim(),
-      email: authUser.email || existing?.email || '',
-      learnerStage: String(input.learnerStage || '').trim(),
-      requestedRole: String(input.requestedRole || '').trim(),
-      roleNote: String(input.roleNote || '').trim(),
-      photoURL: authUser.photoURL || existing?.photoURL || '',
-      updatedAt: sdk.serverTimestamp(),
-      lastLoginAt: existing?.lastLoginAt || new Date().toISOString()
-    };
     try {
-      if (existing) {
-        // Only self-editable keys; email/role/createdAt are left as they are.
-        const { email, ...selfPayload } = payload;
-        await sdk.setDoc(ref, selfPayload, { merge: true });
-      } else {
-        await sdk.setDoc(ref, {
-          ...payload,
-          role: this._normalizeUser(authUser, existing).role,
-          createdAt: sdk.serverTimestamp()
-        });
-      }
-      const profile = await this._loadProfile(authUser.uid);
-      this._initResult = { ok: true, mode: this.mode(), user: this._normalizeUser(authUser, profile) };
+      const snap = await sdk.getDocs(sdk.collection(db, 'schools'));
+      const schools = snap.docs.map((d) => this._docData(d)).filter(Boolean)
+        .sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'zh-Hant'));
+      return { ok: true, schools };
+    } catch (error) {
+      return { ok: false, error: error?.message || '載入學校失敗', schools: [] };
+    }
+  },
+
+  async getSchool(schoolId) {
+    const ready = await this._ensure();
+    if (!ready || !schoolId) return null;
+    const { db, sdk } = ready;
+    try {
+      return this._docData(await sdk.getDoc(sdk.doc(db, 'schools', String(schoolId))));
+    } catch {
+      return null;
+    }
+  },
+
+  // A new account (still awaiting approval) chooses which school to join.
+  async joinSchool(schoolId) {
+    const check = await this._requireSignedIn();
+    if (!check.ok) return { ok: false, error: check.error };
+    const { db, sdk } = check.ready;
+    const id = String(schoolId || '').trim();
+    if (!id) return { ok: false, error: '請選擇學校' };
+    try {
+      await sdk.setDoc(sdk.doc(db, 'users', check.authUser.uid), { schoolId: id, updatedAt: sdk.serverTimestamp() }, { merge: true });
+      const profile = await this._loadProfile(check.authUser.uid);
+      this._initResult = { ok: true, mode: this.mode(), user: this._normalizeUser(check.authUser, profile) };
       return this._initResult;
     } catch (error) {
-      return { ok: false, error: error?.message || 'Profile save failed' };
+      return { ok: false, error: /permission/i.test(String(error?.code || error?.message)) ? '你的帳戶已加入學校，請聯絡學校管理員轉校。' : (error?.message || '加入學校失敗') };
     }
   },
 
@@ -312,7 +315,7 @@ window.QuestClassFirebase = {
     const authUser = await this.waitForAuthState();
     if (!authUser) return { ok: false, error: '請先登入' };
     const me = await this._loadProfile(authUser.uid);
-    if (me?.role !== 'admin') return { ok: false, error: '只有 admin 可使用這個功能' };
+    if (String(me?.role || '').trim().toLowerCase() !== 'admin') return { ok: false, error: '只有 admin 可使用這個功能' };
     return { ok: true, authUser, me, ready };
   },
 
@@ -325,16 +328,30 @@ window.QuestClassFirebase = {
     return { ok: true, authUser, me, ready };
   },
 
-  async listUsers(limit = 50) {
+  // School admin: their school's users. Platform admin: everyone, or one school ('' = no school yet).
+  async listUsers(limit = 500, opts = {}) {
     const adminCheck = await this._requireAdmin();
     if (!adminCheck.ok) return { ok: false, error: adminCheck.error, users: [] };
     const { db, sdk } = adminCheck.ready;
+    const me = adminCheck.me || {};
     try {
-      const snap = await sdk.getDocs(sdk.query(sdk.collection(db, 'users'), sdk.limit(limit)));
-      return {
-        ok: true,
-        users: snap.docs.map((doc) => ({ uid: doc.id, ...this._plainValue(doc.data()) }))
-      };
+      let q;
+      if (me.platformAdmin === true) {
+        q = 'schoolId' in opts
+          ? sdk.query(sdk.collection(db, 'users'), sdk.where('schoolId', '==', String(opts.schoolId || '')), sdk.limit(limit))
+          : sdk.query(sdk.collection(db, 'users'), sdk.limit(limit));
+      } else {
+        if (!me.schoolId) return { ok: false, error: '你的帳戶尚未加入學校', users: [] };
+        q = sdk.query(sdk.collection(db, 'users'), sdk.where('schoolId', '==', me.schoolId), sdk.limit(limit));
+      }
+      const snap = await sdk.getDocs(q);
+      let users = snap.docs.map((doc) => ({ uid: doc.id, ...this._plainValue(doc.data()) }));
+      // Users created before schools existed have no schoolId field at all.
+      if (me.platformAdmin === true && opts.schoolId === '') {
+        const all = await sdk.getDocs(sdk.query(sdk.collection(db, 'users'), sdk.limit(limit)));
+        users = all.docs.map((doc) => ({ uid: doc.id, ...this._plainValue(doc.data()) })).filter((u) => !u.schoolId);
+      }
+      return { ok: true, users };
     } catch (error) {
       return { ok: false, error: error?.message || 'User list failed', users: [] };
     }
@@ -344,24 +361,25 @@ window.QuestClassFirebase = {
     const adminCheck = await this._requireAdmin();
     if (!adminCheck.ok) return { ok: false, error: adminCheck.error };
     const { db, sdk } = adminCheck.ready;
+    const me = adminCheck.me || {};
     const nextRole = ['student', 'teacher', 'admin', 'parent'].includes(String(input.role || '').trim()) ? String(input.role).trim() : null;
     const nextStatus = ['active', 'review', 'suspended'].includes(String(input.accountStatus || '').trim()) ? String(input.accountStatus).trim() : 'active';
     const payload = {
       updatedAt: sdk.serverTimestamp(),
       accountStatus: nextStatus,
-      adminNote: String(input.adminNote || '').trim()
     };
-
-    if ('classroomIds' in input) {
-      const raw = Array.isArray(input.classroomIds) ? input.classroomIds.join(',') : String(input.classroomIds || '');
-      const ids = raw.split(',').map(s => s.trim()).filter(Boolean);
-      payload.classroomIds = ids;
-    }
+    if (nextRole) payload.role = nextRole;
+    if ('class' in input) payload.class = String(input.class || '').trim().slice(0, 40);
     if ('childUids' in input) {
       payload.childUids = Array.from(new Set((Array.isArray(input.childUids) ? input.childUids : [])
         .map((s) => String(s || '').trim()).filter(Boolean)));
     }
-    if (nextRole) payload.role = nextRole;
+    // Moving someone to another school is for the platform admin only.
+    if ('schoolId' in input && me.platformAdmin === true) {
+      payload.schoolId = String(input.schoolId || '');
+      // Taken out of every school: back to awaiting approval.
+      if (!payload.schoolId) payload.accountStatus = 'review';
+    }
     try {
       await sdk.setDoc(sdk.doc(db, 'users', uid), payload, { merge: true });
       return { ok: true };
@@ -370,61 +388,19 @@ window.QuestClassFirebase = {
     }
   },
 
-  // Deprecated (we now use users/{uid} only)
-  async listAllStudents() {
-    return { ok: false, error: 'Deprecated: use users collection', students: [] };
-  },
-
-  _generateStudentId(input = {}) {
-    const clean = (v) => String(v || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
-    const fromUid = clean(input.userUid || '').slice(0, 12);
-    const fromName = clean(input.name || '').slice(0, 12);
-    const stamp = Date.now().toString(36).slice(-6);
-    const base = fromName || fromUid || 'student';
-    return `stu-${base}-${stamp}`;
-  },
-
-  // Deprecated (we now use users/{uid} only)
-  async adminUpsertStudent() {
-    return { ok: false, error: 'Deprecated: use users collection' };
-  },
-
-  // Deprecated (we now use users/{uid} only)
-  async adminDeleteStudent() {
-    return { ok: false, error: 'Deprecated: use users collection' };
-  },
-
-  // Deprecated (we now use users/{uid} only)
-  async adminBindUserStudent() {
-    return { ok: false, error: 'Deprecated: use users collection' };
-  },
-
+  // Classes in my school: every 班別 that a student has.
   async listClassrooms() {
     const check = await this._requireSignedIn();
     if (!check.ok) return { ok: false, error: check.error, classrooms: [] };
-    const { db, sdk } = check.ready;
     const me = check.me || {};
-
-    // Teacher/student dropdown should be driven by users/{uid}.classroomIds (source of truth).
-    // Admin can see all classrooms if the collection exists; otherwise fall back to user.classroomIds.
-    try {
-      if (String(me.role || '').toLowerCase() === 'admin') {
-        const snap = await sdk.getDocs(sdk.collection(db, 'classrooms'));
-        const classrooms = snap.docs.map((doc) => this._docData(doc)).filter(Boolean);
-        if (classrooms.length) return { ok: true, classrooms };
-
-        // Fallback when classrooms collection is empty / not used.
-        const ids = Array.isArray(me.classroomIds) ? me.classroomIds : [];
-        return { ok: true, classrooms: ids.map((id) => ({ id: String(id), name: String(id) })) };
-      }
-
-      const ids = Array.isArray(me.classroomIds) ? me.classroomIds : [];
-      if (!ids.length) return { ok: true, classrooms: [] };
-      // Return simple objects; editor/list pages only need id/name.
-      return { ok: true, classrooms: ids.map((id) => ({ id: String(id), name: String(id) })) };
-    } catch (error) {
-      return { ok: false, error: error?.message || 'Classroom list failed', classrooms: [] };
+    if (!['teacher', 'admin'].includes(String(me.role || '').toLowerCase())) {
+      return { ok: true, classrooms: me.class ? [{ id: me.class, name: me.class }] : [] };
     }
+    const res = await this.listStudents(1000);
+    if (!res.ok) return { ok: false, error: res.error, classrooms: [] };
+    const names = [...new Set(res.students.map((s) => String(s.class || '').trim()).filter(Boolean))]
+      .sort((a, b) => a.localeCompare(b, 'zh-Hant', { numeric: true }));
+    return { ok: true, classrooms: names.map((n) => ({ id: n, name: n })) };
   },
 
   // ── Answer keys ────────────────────────────────────────────────────────────
@@ -496,6 +472,7 @@ window.QuestClassFirebase = {
     if (!['teacher', 'admin'].includes(String(me.role || '').toLowerCase())) {
       return { ok: false, error: 'Teacher/admin only' };
     }
+    if (!me.schoolId) return { ok: false, error: '你的帳戶尚未加入學校' };
 
     const cleanId = String(payload.id || '').trim();
     const isUpdate = Boolean(cleanId);
@@ -513,6 +490,7 @@ window.QuestClassFirebase = {
 
     const assignment = {
       id: docRef.id,
+      schoolId: me.schoolId,
       title: String(payload.title || '').trim(),
       description: String(payload.description || '').trim(),
       dueAt: String(payload.dueAt || '').trim(),
@@ -539,8 +517,12 @@ window.QuestClassFirebase = {
         assignment.createdAt = sdk.serverTimestamp();
       }
       // Answer key first, so a homework is never saved without its answers.
+      if (existing && existing.schoolId && existing.schoolId !== me.schoolId) {
+        return { ok: false, error: '這份作業屬於其他學校。' };
+      }
       await sdk.setDoc(sdk.doc(db, 'homeworkAnswerKeys', docRef.id), {
         assignmentId: docRef.id,
+        schoolId: me.schoolId,
         questions: this._dropUndefined(Array.isArray(payload.questions) ? payload.questions : []),
         updatedBy: check.authUser.uid,
         updatedAt: sdk.serverTimestamp(),
@@ -561,16 +543,20 @@ window.QuestClassFirebase = {
       return { ok: false, error: 'Teacher/admin only', items: [] };
     }
 
+    if (!me.schoolId) return { ok: false, error: '你的帳戶尚未加入學校', items: [] };
+
     try {
-      const col = sdk.collection(db, 'homeworkAssignments');
-      const q = sdk.query(col, sdk.orderBy('createdAt', 'desc'), sdk.limit(limit));
+      // Filter by school only and sort here, so no composite index is needed.
+      const q = sdk.query(sdk.collection(db, 'homeworkAssignments'), sdk.where('schoolId', '==', me.schoolId), sdk.limit(500));
       const snap = await sdk.getDocs(q);
-      const items = snap.docs.map((doc) => this._docData(doc)).filter(Boolean);
+      const items = snap.docs.map((doc) => this._docData(doc)).filter(Boolean)
+        .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')))
+        .slice(0, limit);
 
       // Staff see the full questions (with answers) from the answer keys.
       const keys = {};
       try {
-        const keySnap = await sdk.getDocs(sdk.query(sdk.collection(db, 'homeworkAnswerKeys'), sdk.limit(1000)));
+        const keySnap = await sdk.getDocs(sdk.query(sdk.collection(db, 'homeworkAnswerKeys'), sdk.where('schoolId', '==', me.schoolId), sdk.limit(1000)));
         keySnap.docs.forEach((d) => { const k = this._docData(d); if (k) keys[d.id] = k; });
       } catch {
         // Rules not deployed yet: fall back to whatever the homework doc holds.
@@ -589,6 +575,7 @@ window.QuestClassFirebase = {
           try {
             await sdk.setDoc(sdk.doc(db, 'homeworkAnswerKeys', item.id), {
               assignmentId: item.id,
+              schoolId: me.schoolId,
               questions: this._dropUndefined(item.questions),
               updatedBy: check.authUser.uid,
               updatedAt: sdk.serverTimestamp(),
@@ -612,41 +599,33 @@ window.QuestClassFirebase = {
   async listMyHomework(limit = 50) {
     const check = await this._requireSignedIn();
     if (!check.ok) return { ok: false, error: check.error, items: [] };
-    const { db, sdk } = check.ready;
-    const uid = check.authUser.uid;
-
-    let me = null;
+    const me = check.me || {};
+    if (!me.schoolId) return { ok: true, items: [] };
     try {
-      const userSnap = await sdk.getDoc(sdk.doc(db, 'users', uid));
-      me = userSnap.exists() ? userSnap.data() : null;
-    } catch (_) { /* ignore */ }
-
-    try {
-      const all = await this._publishedHomework(limit);
-      return { ok: true, items: this._homeworkFor(all, uid, me) };
+      const all = await this._publishedHomework(me.schoolId, limit);
+      return { ok: true, items: this._homeworkFor(all, check.authUser.uid, me) };
     } catch (error) {
       return { ok: false, error: error?.message || 'My homework list failed', items: [] };
     }
   },
 
-  async _publishedHomework(limit = 50) {
+  async _publishedHomework(schoolId, limit = 50) {
     const { db, sdk } = await this._ensure();
-    const q = sdk.query(sdk.collection(db, 'homeworkAssignments'), sdk.where('status', '==', 'published'), sdk.limit(limit));
+    const q = sdk.query(sdk.collection(db, 'homeworkAssignments'),
+      sdk.where('schoolId', '==', String(schoolId || '')), sdk.where('status', '==', 'published'), sdk.limit(limit));
     const snap = await sdk.getDocs(q);
     return snap.docs.map((doc) => this._docData(doc)).filter(Boolean);
   },
 
-  // Homework a given student should see. A student belongs to their `class` field and to every
-  // id in `classroomIds` (the admin page only sets classroomIds), matched case-insensitively.
+  // Homework a given student should see: everything for the whole school, their 班別's
+  // homework (matched case-insensitively), and homework assigned to them by name.
   _homeworkFor(all, uid, userDoc) {
     const norm = (v) => String(v || '').trim().toLowerCase();
-    const classes = new Set();
-    if (norm(userDoc?.class)) classes.add(norm(userDoc.class));
-    (Array.isArray(userDoc?.classroomIds) ? userDoc.classroomIds : []).forEach((c) => { if (norm(c)) classes.add(norm(c)); });
+    const myClass = norm(userDoc?.class);
     return all.filter((a) => {
       const t = a.targetType || 'all';
       if (t === 'all') return true;
-      if (t === 'class') return Boolean(a.targetClass) && classes.has(norm(a.targetClass));
+      if (t === 'class') return Boolean(a.targetClass) && Boolean(myClass) && norm(a.targetClass) === myClass;
       if (t === 'students') return Array.isArray(a.targetStudentUids) && a.targetStudentUids.includes(uid);
       return true; // unknown type → show
     }).sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
@@ -665,7 +644,12 @@ window.QuestClassFirebase = {
     if (!childUids.length) return { ok: true, children: [] };
 
     try {
-      const all = await this._publishedHomework(100);
+      let all = [];
+      try {
+        all = me.schoolId ? await this._publishedHomework(me.schoolId, 100) : [];
+      } catch {
+        all = []; // show the children's results even if homework can't be loaded
+      }
       const children = [];
       for (const childUid of childUids) {
         let child = null;
@@ -677,7 +661,8 @@ window.QuestClassFirebase = {
         if (!child) continue;
         let submissions = [];
         try {
-          const snap = await sdk.getDocs(sdk.query(sdk.collection(db, 'submissions'), sdk.where('studentUid', '==', childUid), sdk.limit(100)));
+          const snap = await sdk.getDocs(sdk.query(sdk.collection(db, 'submissions'),
+            sdk.where('schoolId', '==', String(me.schoolId || '')), sdk.where('studentUid', '==', childUid), sdk.limit(100)));
           submissions = snap.docs.map((d) => this._docData(d)).filter(Boolean)
             .sort((a, b) => String(b.submittedAt || '').localeCompare(String(a.submittedAt || '')));
         } catch {
@@ -686,7 +671,7 @@ window.QuestClassFirebase = {
         children.push({
           uid: childUid,
           name: child.name || '',
-          classroomIds: child.classroomIds || [],
+          class: child.class || '',
           studentProfile: child.studentProfile || {},
           homework: this._homeworkFor(all, childUid, child),
           submissions,
@@ -706,9 +691,11 @@ window.QuestClassFirebase = {
     if (!['teacher', 'admin'].includes(String(me.role || '').toLowerCase())) {
       return { ok: false, error: 'Teacher/admin only', students: [] };
     }
+    if (!me.schoolId) return { ok: false, error: '你的帳戶尚未加入學校', students: [] };
     try {
       const q = sdk.query(
         sdk.collection(db, 'users'),
+        sdk.where('schoolId', '==', me.schoolId),
         sdk.where('role', '==', 'student'),
         sdk.limit(limit)
       );
@@ -741,7 +728,7 @@ window.QuestClassFirebase = {
     try {
       const ref = sdk.doc(db, 'homeworkAssignments', assignmentId);
       const existing = this._docData(await sdk.getDoc(ref));
-      if (!existing) return { ok: false, error: '找不到這份作業' };
+      if (!existing || existing.schoolId !== me.schoolId) return { ok: false, error: '找不到這份作業' };
       if (String(me.role || '').toLowerCase() !== 'admin' && existing.createdBy && existing.createdBy !== check.authUser.uid) {
         return { ok: false, error: '只有建立這份作業的老師或管理員可以更改狀態。' };
       }
@@ -808,12 +795,20 @@ window.QuestClassFirebase = {
     };
 
     try {
+      if (!me.schoolId) return { ok: false, error: '你的帳戶尚未加入學校' };
       const existing = isUpdate ? this._docData(await sdk.getDoc(docRef)) : null;
       if (existing) {
+        if (existing.schoolId !== me.schoolId) {
+          return { ok: false, error: '這是其他學校共享的題目，只可以檢視和加入作業，不能修改。' };
+        }
         if (String(me.role || '').toLowerCase() !== 'admin' && existing.createdBy && existing.createdBy !== check.authUser.uid) {
           return { ok: false, error: '只有建立這條題目的老師或管理員可以修改。' };
         }
       } else {
+        // New questions follow the school's 共享題庫 setting.
+        const school = await this.getSchool(me.schoolId);
+        item.schoolId = me.schoolId;
+        item.shared = school?.shareQuestionBank === true;
         item.createdBy = check.authUser.uid;
         item.createdAt = sdk.serverTimestamp();
       }
@@ -832,21 +827,11 @@ window.QuestClassFirebase = {
     if (!uniq.length) return { ok: true, items: [] };
 
     try {
-      const out = [];
-      // Firestore IN limit is 10.
-      for (let i = 0; i < uniq.length; i += 10) {
-        const slice = uniq.slice(i, i + 10);
-        const q = sdk.query(
-          sdk.collection(db, 'questionBank'),
-          sdk.where('id', 'in', slice)
-        );
-        const snap = await sdk.getDocs(q);
-        snap.docs.forEach((d) => {
-          const obj = this._docData(d);
-          if (obj) out.push(obj);
-        });
-      }
-      return { ok: true, items: out };
+      // One read per question (a shared question from another school is allowed one by one).
+      const docs = await Promise.all(uniq.map(async (id) => {
+        try { return this._docData(await sdk.getDoc(sdk.doc(db, 'questionBank', id))); } catch { return null; }
+      }));
+      return { ok: true, items: docs.filter(Boolean) };
     } catch (error) {
       return { ok: false, error: error?.message || 'Get questions failed', items: [] };
     }
@@ -861,14 +846,26 @@ window.QuestClassFirebase = {
       return { ok: false, error: 'Teacher/admin only', items: [] };
     }
 
+    if (!me.schoolId) return { ok: false, error: '你的帳戶尚未加入學校', items: [] };
+
     try {
-      const q = sdk.query(
-        sdk.collection(db, 'questionBank'),
-        sdk.orderBy('updatedAt', 'desc'),
-        sdk.limit(limit)
-      );
-      const snap = await sdk.getDocs(q);
-      const items = snap.docs.map((d) => this._docData(d)).filter((d) => d && !d.deleted);
+      const col = sdk.collection(db, 'questionBank');
+      const mine = await sdk.getDocs(sdk.query(col, sdk.where('schoolId', '==', me.schoolId), sdk.limit(limit)));
+      const items = mine.docs.map((d) => this._docData(d)).filter((d) => d && !d.deleted);
+      // Questions other schools chose to share: read-only here, tagged with the school's name.
+      try {
+        const shared = await sdk.getDocs(sdk.query(col, sdk.where('shared', '==', true), sdk.limit(limit)));
+        const others = shared.docs.map((d) => this._docData(d)).filter((d) => d && !d.deleted && d.schoolId !== me.schoolId);
+        if (others.length) {
+          const { schools } = await this.listSchools();
+          const names = Object.fromEntries((schools || []).map((x) => [x.id, x.name]));
+          others.forEach((d) => { d.readOnly = true; d.sharedFromSchool = names[d.schoolId] || '其他學校'; });
+          items.push(...others);
+        }
+      } catch {
+        // Sharing is optional: ignore errors here.
+      }
+      items.sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')));
       return { ok: true, items };
     } catch (error) {
       return { ok: false, error: error?.message || 'List question bank failed', items: [] };
@@ -903,20 +900,22 @@ window.QuestClassFirebase = {
       if (isStudent && !this._homeworkFor([a], check.authUser.uid, me).length) {
         return { ok: false, error: '這份作業沒有指派給你' };
       }
+      if (!me.schoolId || a.schoolId !== me.schoolId) return { ok: false, error: '這份作業不屬於你的學校' };
       // Recorded so the teacher dashboard can count hand-ins per class.
-      const classroomId = Array.isArray(me.classroomIds) && me.classroomIds.length ? String(me.classroomIds[0]) : '';
+      const studentClass = String(me.class || '').trim();
 
       const answers = Array.isArray(payload.answers) ? payload.answers : [];
       const subId = `${assignmentId}_${check.authUser.uid}`;
       const docRef = sdk.doc(db, 'submissions', subId);
       const submission = {
         id: subId,
+        schoolId: me.schoolId,
         assignmentId,
         studentUid: check.authUser.uid,
         assignmentTitle: a.title || '',
         topic: 'homework',
         status: 'submitted',
-        ...(classroomId ? { classroomId } : {}),
+        ...(studentClass ? { class: studentClass } : {}),
         answers,
         submittedAt: sdk.serverTimestamp(),
         updatedAt: sdk.serverTimestamp(),
@@ -929,44 +928,21 @@ window.QuestClassFirebase = {
     }
   },
 
-  async listStudentsForClassroom(classroomId) {
+  async listStudentsForClassroom(className) {
     const check = await this._requireSignedIn();
     if (!check.ok) return { ok: false, error: check.error, students: [] };
     const { db, sdk } = check.ready;
+    const me = check.me || {};
+    if (!me.schoolId) return { ok: false, error: '你的帳戶尚未加入學校', students: [] };
+    const cls = String(className || '');
     try {
-      let classroom = null;
-      try {
-        classroom = this._docData(await sdk.getDoc(sdk.doc(db, 'classrooms', classroomId)));
-      } catch {
-        classroom = null;
-      }
-      // users/{uid}.classroomIds is the source of truth; a classroom doc is optional.
-      if (!classroom) classroom = { id: String(classroomId), name: String(classroomId) };
-
-      // New: single source of truth = users/{uid} with classroomIds + studentProfile
-      const snap = await sdk.getDocs(
-        sdk.query(
-          sdk.collection(db, 'users'),
-          sdk.where('role', '==', 'student'),
-          sdk.where('classroomIds', 'array-contains', classroomId),
-          sdk.limit(100)
-        )
-      );
-
+      const snap = await sdk.getDocs(sdk.query(sdk.collection(db, 'users'),
+        sdk.where('schoolId', '==', me.schoolId), sdk.where('role', '==', 'student'), sdk.where('class', '==', cls), sdk.limit(200)));
       const students = snap.docs.map((doc) => {
         const u = this._docData(doc);
-        if (!u) return null;
-        const profile = u.studentProfile || {};
-        return {
-          id: u.uid || doc.id,
-          uid: u.uid || doc.id,
-          name: u.name || '',
-          classroomIds: u.classroomIds || [],
-          studentProfile: profile,
-        };
+        return u ? { id: doc.id, uid: doc.id, name: u.name || '', class: u.class || '', studentProfile: u.studentProfile || {} } : null;
       }).filter(Boolean);
-
-      return { ok: true, classroom, students };
+      return { ok: true, classroom: { id: cls, name: cls }, students };
     } catch (error) {
       return { ok: false, error: error?.message || 'Student list failed', students: [] };
     }
@@ -978,18 +954,7 @@ window.QuestClassFirebase = {
     const { db, sdk } = check.ready;
     try {
       const me = check.me || {};
-      const classroomIds = Array.isArray(me.classroomIds) ? me.classroomIds : [];
-
-      const classrooms = classroomIds.length
-        ? (await Promise.all(classroomIds.map(async (classroomId) => {
-            try {
-              const roomSnap = await sdk.getDoc(sdk.doc(db, 'classrooms', classroomId));
-              return this._docData(roomSnap);
-            } catch {
-              return null;
-            }
-          }))).filter(Boolean)
-        : [];
+      const classrooms = me.class ? [{ id: me.class, name: me.class }] : [];
 
       let submissions = [];
       try {
@@ -1008,7 +973,7 @@ window.QuestClassFirebase = {
       const student = {
         uid: me.uid || check.authUser.uid,
         name: me.name || '',
-        classroomIds,
+        class: me.class || '',
         studentProfile: me.studentProfile || {},
       };
 
@@ -1058,6 +1023,7 @@ window.QuestClassFirebase = {
     try {
       const q = sdk.query(
         sdk.collection(db, 'submissions'),
+        sdk.where('schoolId', '==', String(me.schoolId || '')),
         sdk.where('assignmentId', '==', aId),
         sdk.limit(limit)
       );
@@ -1072,18 +1038,12 @@ window.QuestClassFirebase = {
       // Fetch student names in one batch (up to 10 per IN query)
       const uids = [...new Set(submissions.map(s => s.studentUid).filter(Boolean))];
       const nameMap = {};
-      for (let i = 0; i < uids.length; i += 10) {
-        const slice = uids.slice(i, i + 10);
+      await Promise.all(uids.map(async (uid) => {
         try {
-          const uSnap = await sdk.getDocs(
-            sdk.query(sdk.collection(db, 'users'), sdk.where(sdk.documentId(), 'in', slice))
-          );
-          uSnap.docs.forEach(d => {
-            const u = this._docData(d);
-            if (u) nameMap[d.id] = u.name || u.email || d.id;
-          });
+          const u = this._docData(await sdk.getDoc(sdk.doc(db, 'users', uid)));
+          if (u) nameMap[uid] = u.name || u.email || uid;
         } catch { /* ignore */ }
-      }
+      }));
 
       const enriched = submissions.map(s => ({
         ...s,
@@ -1112,7 +1072,8 @@ window.QuestClassFirebase = {
     const { db, sdk } = check.ready;
     let submissions = [];
     try {
-      const submissionsSnap = await sdk.getDocs(sdk.query(sdk.collection(db, 'submissions'), sdk.where('classroomId', '==', targetClassroomId), sdk.limit(25)));
+      const submissionsSnap = await sdk.getDocs(sdk.query(sdk.collection(db, 'submissions'),
+        sdk.where('schoolId', '==', String(check.me?.schoolId || '')), sdk.where('class', '==', targetClassroomId), sdk.limit(200)));
       submissions = submissionsSnap.docs.map((doc) => this._docData(doc)).filter(Boolean);
     } catch {
       submissions = [];
@@ -1120,7 +1081,10 @@ window.QuestClassFirebase = {
     const students = studentResult.students || [];
     const avgMastery = students.length ? Math.round(students.reduce((sum, item) => sum + Number(item.studentProfile?.mastery || 0), 0) / students.length) : 0;
     const focusCount = students.filter((item) => Number(item.studentProfile?.mastery || 0) < 75).length;
-    const completionRate = Number(studentResult.classroom?.completionRate || 0);
+    // Share of the class who have handed in at least one piece of homework.
+    const handedIn = new Set(submissions.map((x) => x.studentUid));
+    const completionRate = students.length ? Math.round(100 * students.filter((x) => handedIn.has(x.uid)).length / students.length) : 0;
+    submissions = submissions.sort((a, b) => String(b.submittedAt || '').localeCompare(String(a.submittedAt || ''))).slice(0, 25);
     const metrics = [
       { label: '班級完成率', value: `${completionRate}%` },
       { label: '平均掌握度', value: `${avgMastery}%` },

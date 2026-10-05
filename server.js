@@ -67,22 +67,22 @@ function providerUrlError() {
 }
 
 // ── School AI settings ──────────────────────────────────────────────────────
-// One key for the whole school, set by an admin on the 「AI 設定」 page and stored encrypted in
-// Firestore (appSettings/ai, server-only). Falls back to the OPENROUTER_API_KEY / AI_MODEL env vars.
-// Keys sent by browsers are ignored.
-const AI_SETTINGS_DOC = ['appSettings', 'ai'];
-async function readStoredAiSettings() {
+// Each school has its own AI key, set by that school's admin on the 「AI 設定」 page and stored
+// encrypted in Firestore (schoolSecrets/{schoolId}, server-only). If a school has no key, the
+// OPENROUTER_API_KEY / AI_MODEL env vars are used when set. Keys sent by browsers are ignored.
+async function readSchoolAiSettings(schoolId) {
+  if (!schoolId) return null;
   const { db } = getFirebaseAdmin();
-  const snap = await db.collection(AI_SETTINGS_DOC[0]).doc(AI_SETTINGS_DOC[1]).get();
+  const snap = await db.collection('schoolSecrets').doc(String(schoolId)).get();
   return snap.exists ? (snap.data() || {}) : null;
 }
 
-async function getSchoolProviderConfig() {
+async function getSchoolProviderConfig(schoolId) {
   const env = getServerProviderConfig();
   let cfg = { ...env, source: env.apiKey ? 'env' : 'none' };
   let stored = null;
   try {
-    stored = await readStoredAiSettings();
+    stored = await readSchoolAiSettings(schoolId);
   } catch {
     stored = null; // no Firestore access (e.g. demo mode): use the env vars
   }
@@ -183,7 +183,9 @@ async function verifyUserFromToken(idToken) {
     uid: decoded.uid,
     email: decoded.email || '',
     role: String(profile?.role || 'student').trim().toLowerCase(),
-    accountStatus: String(profile?.accountStatus || 'active').trim().toLowerCase()
+    accountStatus: String(profile?.accountStatus || 'active').trim().toLowerCase(),
+    schoolId: String(profile?.schoolId || ''),
+    platformAdmin: profile?.platformAdmin === true,
   };
 }
 
@@ -214,8 +216,9 @@ async function resolveProviderConfig(body = {}, allowedRoles = null) {
       throw httpError(403, actor.accountStatus === 'suspended' ? '此帳號已停用' : '帳戶審核中，暫時不能使用 AI 功能');
     }
     if (allowedRoles && !allowedRoles.includes(actor.role)) throw httpError(403, '你的角色不能使用這個 AI 功能');
+    return getSchoolProviderConfig(actor.schoolId);
   }
-  return getSchoolProviderConfig();
+  return getSchoolProviderConfig(null);
 }
 
 // Keep the last few turns so the assistant remembers the conversation (bounded for cost).
@@ -304,8 +307,6 @@ app.post('/api/auth/sync-role', async (req, res) => {
     const { idToken } = req.body || {};
     if (!idToken) return res.status(401).json({ error: 'Unauthorized' });
     const list = adminEmails();
-    if (!list.length) return res.json({ ok: true, changed: false });
-
     const { auth, db } = getFirebaseAdmin();
     let decoded;
     try {
@@ -314,22 +315,36 @@ app.post('/api/auth/sync-role', async (req, res) => {
       return res.status(401).json({ error: 'Invalid auth token' });
     }
     const email = String(decoded.email || '').toLowerCase();
-    // Only a Google-verified address counts.
-    if (!email || decoded.email_verified !== true || !list.includes(email)) return res.json({ ok: true, changed: false });
-
     const ref = db.collection('users').doc(decoded.uid);
+    // Only a Google-verified address counts.
+    if (!email || decoded.email_verified !== true || !list.includes(email)) {
+      // Removed from ADMIN_EMAILS: no longer a platform admin (their school role stays).
+      if (!list.includes(email)) {
+        const snap = await ref.get();
+        if (snap.exists && snap.data()?.platformAdmin === true) {
+          await ref.set({ platformAdmin: FieldValue.delete(), updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+          return res.json({ ok: true, changed: true, platformAdmin: false });
+        }
+      }
+      return res.json({ ok: true, changed: false });
+    }
+
     const snap = await ref.get();
     const current = snap.exists ? String(snap.data()?.role || '').toLowerCase() : '';
-    if (current === 'admin' && (snap.data()?.accountStatus || 'active') === 'active') return res.json({ ok: true, changed: false });
+    if (current === 'admin' && (snap.data()?.accountStatus || 'active') === 'active' && snap.data()?.platformAdmin === true) {
+      return res.json({ ok: true, changed: false });
+    }
 
+    // ADMIN_EMAILS accounts run the whole platform (create schools, move people between them).
     await ref.set({
       role: 'admin',
       accountStatus: 'active',
+      platformAdmin: true,
       email: decoded.email,
       updatedAt: FieldValue.serverTimestamp(),
       ...(snap.exists ? {} : { name: decoded.name || email.split('@')[0], createdAt: FieldValue.serverTimestamp() }),
     }, { merge: true });
-    return res.json({ ok: true, changed: true, role: 'admin' });
+    return res.json({ ok: true, changed: true, role: 'admin', platformAdmin: true });
   } catch (error) {
     return res.status(500).json({ error: error?.message || 'role sync failed' });
   }
@@ -339,7 +354,22 @@ async function requireAdminActor(idToken) {
   const actor = await verifyUserFromToken(idToken);
   if (!actor) throw httpError(401, 'Unauthorized');
   requireActive(actor);
-  if (actor.role !== 'admin') throw httpError(403, '只有管理員可以管理 AI 設定');
+  if (actor.role !== 'admin') throw httpError(403, '只有管理員可以使用這個功能');
+  return actor;
+}
+
+// A school admin acting on their own school.
+async function requireSchoolAdmin(idToken) {
+  const actor = await requireAdminActor(idToken);
+  if (!actor.schoolId) throw httpError(400, '你的帳戶尚未加入學校');
+  return actor;
+}
+
+async function requirePlatformAdmin(idToken) {
+  const actor = await verifyUserFromToken(idToken);
+  if (!actor) throw httpError(401, 'Unauthorized');
+  requireActive(actor);
+  if (!actor.platformAdmin) throw httpError(403, '只有平台管理員可以管理學校');
   return actor;
 }
 
@@ -348,12 +378,12 @@ function maskKey(key) {
   return k.length > 8 ? `${k.slice(0, 3)}…${k.slice(-4)}` : (k ? '已設定' : '');
 }
 
-// Admin: read the school AI settings (never returns the key itself).
+// School admin: read their school's AI settings (never returns the key itself).
 app.post('/api/admin/ai-settings/get', async (req, res) => {
   try {
-    await requireAdminActor((req.body || {}).idToken);
+    const actor = await requireSchoolAdmin((req.body || {}).idToken);
     const env = getServerProviderConfig();
-    const stored = await readStoredAiSettings();
+    const stored = await readSchoolAiSettings(actor.schoolId);
     return res.json({
       ok: true,
       provider: {
@@ -378,7 +408,7 @@ app.post('/api/admin/ai-settings/get', async (req, res) => {
 app.post('/api/admin/ai-settings/save', async (req, res) => {
   try {
     const { idToken, apiKey, apiBaseUrl, model, clearKey } = req.body || {};
-    const actor = await requireAdminActor(idToken);
+    const actor = await requireSchoolAdmin(idToken);
     const base = String(apiBaseUrl || 'https://openrouter.ai/api/v1').trim().replace(/\/+$/, '');
     if (!isAllowedProviderUrl(base)) throw providerUrlError();
     const cleanModel = String(model || '').trim();
@@ -399,7 +429,7 @@ app.post('/api/admin/ai-settings/save', async (req, res) => {
       update.keyHint = '';
     }
     const { db } = getFirebaseAdmin();
-    await db.collection(AI_SETTINGS_DOC[0]).doc(AI_SETTINGS_DOC[1]).set(update, { merge: true });
+    await db.collection('schoolSecrets').doc(actor.schoolId).set({ ...update, schoolId: actor.schoolId }, { merge: true });
     return res.json({ ok: true });
   } catch (error) {
     return sendError(res, error, 'save ai settings failed');
@@ -409,8 +439,8 @@ app.post('/api/admin/ai-settings/save', async (req, res) => {
 // Admin: send a tiny request with the saved settings to check they work.
 app.post('/api/admin/ai-settings/test', async (req, res) => {
   try {
-    await requireAdminActor((req.body || {}).idToken);
-    const cfg = await getSchoolProviderConfig();
+    const actor = await requireSchoolAdmin((req.body || {}).idToken);
+    const cfg = await getSchoolProviderConfig(actor.schoolId);
     if (!cfg.apiKey) return res.status(400).json({ ok: false, error: '尚未設定 API Key' });
     const result = await callChatCompletion({ ...cfg, system: 'Reply with the single word: OK', user: 'ping', temperature: 0 });
     if (!result.ok) return res.status(result.status || 502).json({ ok: false, error: result.error });
@@ -420,107 +450,139 @@ app.post('/api/admin/ai-settings/test', async (req, res) => {
   }
 });
 
-app.post('/api/admin/seed', async (req, res) => {
+// ── Schools ─────────────────────────────────────────────────────────────────
+// schools/{id}: { name, shareQuestionBank }. Browsers may read them; only these endpoints write.
+// Every user and every piece of school data carries a schoolId (see firestore.rules).
+
+// User fields that are no longer used; removed when the first school is created.
+const REMOVED_USER_FIELDS = ['requestedRole', 'learnerStage', 'roleNote', 'adminNote', 'disabledReason',
+  'resolvedAt', 'issueFlag', 'studentId', 'classroomIds', 'classroomId'];
+
+function cleanSchoolName(name) {
+  const n = String(name || '').trim().replace(/\s+/g, ' ');
+  if (!n || n.length > 80) throw httpError(400, '請輸入學校名稱（最多 80 字）');
+  return n;
+}
+
+async function inChunks(items, size, fn) {
+  for (let i = 0; i < items.length; i += size) await Promise.all(items.slice(i, i + size).map(fn));
+}
+
+// The first school takes over everything created before schools existed, and old user
+// fields are removed. Safe to run again: it only touches documents without a schoolId.
+async function adoptExistingData(db, schoolId) {
+  const counts = {};
+  const users = await db.collection('users').get();
+  const userUpdates = [];
+  for (const doc of users.docs) {
+    const d = doc.data() || {};
+    const update = {};
+    if (!d.schoolId) update.schoolId = schoolId;
+    for (const f of REMOVED_USER_FIELDS) if (f in d) update[f] = FieldValue.delete();
+    // Keep a student's class: the old admin page only set classroomIds.
+    if (!d.class && Array.isArray(d.classroomIds) && d.classroomIds.length && String(d.role || '').toLowerCase() === 'student') {
+      update.class = String(d.classroomIds[0]);
+    }
+    if (Object.keys(update).length) userUpdates.push([doc.id, update]);
+  }
+  await inChunks(userUpdates, 50, ([id, update]) => db.collection('users').doc(id).set(update, { merge: true }));
+  counts.users = userUpdates.length;
+
+  for (const col of ['homeworkAssignments', 'homeworkAnswerKeys', 'submissions', 'questionBank']) {
+    const snap = await db.collection(col).get();
+    const todo = snap.docs.filter((doc) => !(doc.data() || {}).schoolId);
+    await inChunks(todo, 50, (doc) => {
+      const d = doc.data() || {};
+      const update = { schoolId };
+      if (col === 'questionBank') update.shared = false;
+      if ('classroomId' in d) update.classroomId = FieldValue.delete();
+      if ('studentId' in d) update.studentId = FieldValue.delete();
+      return db.collection(col).doc(doc.id).set(update, { merge: true });
+    });
+    counts[col] = todo.length;
+  }
+
+  // The school-wide AI key from before becomes this school's key.
+  const oldAi = await db.collection('appSettings').doc('ai').get();
+  if (oldAi.exists) {
+    await db.collection('schoolSecrets').doc(schoolId).set({ ...oldAi.data(), schoolId }, { merge: true });
+    await db.collection('appSettings').doc('ai').delete();
+    counts.aiKey = 1;
+  }
+  return counts;
+}
+
+app.post('/api/platform/schools/create', async (req, res) => {
   try {
-    const { idToken, mode = 'merge' } = req.body || {};
-    const actor = await verifyUserFromToken(idToken);
-    if (!actor) return res.status(401).json({ error: 'Unauthorized' });
-    requireActive(actor);
-    if (String(actor.role || '').toLowerCase() !== 'admin') return res.status(403).json({ error: 'Admin only' });
-
-    const seedPath = path.join(__dirname, 'seeds', 'sample-firestore-data.json');
-    if (!fs.existsSync(seedPath)) return res.status(500).json({ error: 'Seed file missing on server' });
-
-    const seed = JSON.parse(fs.readFileSync(seedPath, 'utf8'));
+    const { idToken, name } = req.body || {};
+    const actor = await requirePlatformAdmin(idToken);
+    const cleanName = cleanSchoolName(name);
     const { db } = getFirebaseAdmin();
-
-    const convert = (value) => {
-      if (Array.isArray(value)) return value.map(convert);
-      if (value && typeof value === 'object') {
-        if (value.__type === 'serverTimestamp') return FieldValue.serverTimestamp();
-        return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, convert(v)]));
-      }
-      return value;
-    };
-
-    const merge = mode !== 'overwrite';
-    const result = { ok: true, merge, written: {} };
-
-    const writeCollection = async (collectionName, docs = {}) => {
-      const entries = Object.entries(docs || {});
-      for (const [docId, payload] of entries) {
-        await db.collection(collectionName).doc(docId).set(convert(payload), { merge });
-      }
-      result.written[collectionName] = entries.length;
-    };
-
-    await writeCollection('classrooms', seed.classrooms);
-    await writeCollection('students', seed.students);
-    await writeCollection('progressSummaries', seed.progressSummaries);
-    await writeCollection('submissions', seed.submissions);
-    await writeCollection('users', seed.users || {});
-
-    return res.json({ ...result, ts: new Date().toISOString() });
+    const existing = await db.collection('schools').get();
+    if (existing.docs.some((d) => String(d.data()?.name || '').toLowerCase() === cleanName.toLowerCase())) {
+      throw httpError(409, '已有同名的學校');
+    }
+    const schoolId = 'sch_' + crypto.randomBytes(8).toString('hex');
+    await db.collection('schools').doc(schoolId).set({
+      name: cleanName,
+      shareQuestionBank: false,
+      createdBy: actor.uid,
+      createdAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+    const adopted = existing.docs.length === 0 ? await adoptExistingData(db, schoolId) : null;
+    return res.json({ ok: true, schoolId, adopted });
   } catch (error) {
-    return sendError(res, error, 'seed failed');
+    return sendError(res, error, 'create school failed');
   }
 });
 
-app.post('/api/admin/migrate-users-only', async (req, res) => {
+// Platform admin, API only: give a school any documents still without a schoolId (e.g. if the
+// first school's setup was interrupted). Not shown in the app.
+app.post('/api/platform/schools/adopt', async (req, res) => {
   try {
-    const { idToken, mode = 'merge' } = req.body || {};
-    const actor = await verifyUserFromToken(idToken);
-    if (!actor) return res.status(401).json({ error: 'Unauthorized' });
-    requireActive(actor);
-    if (String(actor.role || '').toLowerCase() !== 'admin') return res.status(403).json({ error: 'Admin only' });
-
+    const { idToken, schoolId } = req.body || {};
+    await requirePlatformAdmin(idToken);
     const { db } = getFirebaseAdmin();
-    const studentsSnap = await db.collection('students').get();
-
-    let merged = 0;
-    let skipped = 0;
-
-    const pick = (obj, keys) => {
-      const out = {};
-      for (const k of keys) if (obj && obj[k] !== undefined) out[k] = obj[k];
-      return out;
-    };
-
-    for (const doc of studentsSnap.docs) {
-      const s = doc.data() || {};
-      const uid = String(s.userUid || '').trim();
-      if (!uid) { skipped++; continue; }
-
-      let summary = {};
-      try {
-        const sumSnap = await db.collection('progressSummaries').doc(doc.id).get();
-        summary = sumSnap.exists ? (sumSnap.data() || {}) : {};
-      } catch {
-        summary = {};
-      }
-
-      const studentProfile = {
-        ...pick(s, ['gradeLevel','status','currentLevel','xp','nextLevelXp','streak','mastery','weaknessLabel','weaknessScore','focusSkills']),
-        ...pick(summary, ['focusAreas','recentQuestTitles']),
-        migratedFrom: { studentId: doc.id, at: new Date().toISOString() }
-      };
-
-      // Keep an existing role: a teacher or admin who also has a students record must not be demoted.
-      const existing = await db.collection('users').doc(uid).get();
-      const existingRole = existing.exists ? String(existing.data()?.role || '').trim() : '';
-      await db.collection('users').doc(uid).set({
-        role: existingRole || 'student',
-        classroomIds: Array.isArray(s.classroomIds) ? s.classroomIds : [],
-        studentProfile,
-        updatedAt: FieldValue.serverTimestamp(),
-      }, { merge: mode !== 'overwrite' });
-
-      merged++;
-    }
-
-    return res.json({ ok: true, merged, skipped, ts: new Date().toISOString() });
+    if (!schoolId || !(await db.collection('schools').doc(String(schoolId)).get()).exists) throw httpError(404, '找不到這間學校');
+    return res.json({ ok: true, adopted: await adoptExistingData(db, String(schoolId)) });
   } catch (error) {
-    return sendError(res, error, 'migrate failed');
+    return sendError(res, error, 'adopt failed');
+  }
+});
+
+app.post('/api/platform/schools/rename', async (req, res) => {
+  try {
+    const { idToken, schoolId, name } = req.body || {};
+    await requirePlatformAdmin(idToken);
+    const cleanName = cleanSchoolName(name);
+    const { db } = getFirebaseAdmin();
+    const ref = db.collection('schools').doc(String(schoolId || ''));
+    if (!schoolId || !(await ref.get()).exists) throw httpError(404, '找不到這間學校');
+    await ref.set({ name: cleanName, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+    return res.json({ ok: true });
+  } catch (error) {
+    return sendError(res, error, 'rename school failed');
+  }
+});
+
+// School admin: share (or stop sharing) the school's question bank with other schools.
+app.post('/api/school/settings/save', async (req, res) => {
+  try {
+    const { idToken, shareQuestionBank } = req.body || {};
+    const actor = await requireSchoolAdmin(idToken);
+    if (typeof shareQuestionBank !== 'boolean') throw httpError(400, 'shareQuestionBank must be true or false');
+    const { db } = getFirebaseAdmin();
+    const schoolRef = db.collection('schools').doc(actor.schoolId);
+    if (!(await schoolRef.get()).exists) throw httpError(404, '找不到你的學校');
+    await schoolRef.set({ shareQuestionBank, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+    // Each question carries the flag so the rules can check it without extra reads.
+    const snap = await db.collection('questionBank').where('schoolId', '==', actor.schoolId).get();
+    const todo = snap.docs.filter((d) => (d.data()?.shared === true) !== shareQuestionBank);
+    await inChunks(todo, 50, (d) => db.collection('questionBank').doc(d.id).set({ shared: shareQuestionBank }, { merge: true }));
+    return res.json({ ok: true, shareQuestionBank, updatedQuestions: todo.length });
+  } catch (error) {
+    return sendError(res, error, 'save school settings failed');
   }
 });
 
@@ -671,7 +733,7 @@ const legacyPageMap = {};
 
 // Every client-side route in web/src/App.jsx; keep in sync when adding pages.
 const spaRoutes = new Set(['/', '/dashboard', '/teacher', '/student', '/admin', '/chat', '/analytics', '/teacher-homework', '/student-homework',
-  '/teacher-question-bank', '/classroom', '/assignments', '/progress', '/reports', '/parents', '/parent', '/teacher-homework-legacy', '/admin/ai-settings']);
+  '/teacher-question-bank', '/classroom', '/assignments', '/progress', '/reports', '/parents', '/parent', '/teacher-homework-legacy', '/admin/ai-settings', '/admin/schools']);
 const spaRoutePrefixes = ['/teacher-homework', '/student-homework', '/teacher-question-bank', '/teacher-homework-old'];
 
 app.get('*', (req, res) => {

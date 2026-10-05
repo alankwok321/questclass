@@ -121,7 +121,12 @@ function seedUsers(extra = {}) {
     fbState.tokens[uid] = { uid, email: u.email, email_verified: u.email_verified !== false, name: u.name };
     if (u.role) {
       fbState.data.users = fbState.data.users || {};
-      fbState.data.users[uid] = { role: u.role, email: u.email, ...(u.accountStatus ? { accountStatus: u.accountStatus } : {}) };
+      fbState.data.users[uid] = {
+        role: u.role, email: u.email,
+        ...(u.accountStatus ? { accountStatus: u.accountStatus } : {}),
+        ...(u.schoolId ? { schoolId: u.schoolId } : {}),
+        ...(u.platformAdmin ? { platformAdmin: true } : {}),
+      };
     }
   }
   const expired = new Error('Firebase ID token has expired.');

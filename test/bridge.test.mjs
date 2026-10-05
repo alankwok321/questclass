@@ -2,17 +2,21 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { makeBridge, TS } from './helpers/bridge-harness.mjs';
 
-const users = () => ({
-  stu1: { role: 'student', name: 'Ada', classroomIds: ['5A'], class: '' },
+// Everyone and everything below belongs to school A unless noted.
+const inA = (o) => Object.fromEntries(Object.entries(o).map(([k, v]) => [k, { schoolId: 'A', ...v }]));
+const users = () => inA({
+  stu1: { role: 'student', name: 'Ada', class: '5A' },
   stu2: { role: 'student', name: 'Ben', class: ' 6b ' },
   stu3: { role: 'student', name: 'Cat' },
-  t1: { role: 'teacher', name: 'T1', classroomIds: ['5A'] },
+  t1: { role: 'teacher', name: 'T1' },
   t2: { role: 'Teacher', name: 'T2' },
   adm: { role: 'admin', name: 'Boss' },
   par: { role: 'parent', name: 'Mrs Wong', childUids: ['stu1', 'ghost'] },
   par0: { role: 'parent', name: 'No kids' },
+  stuB: { role: 'student', name: 'Bea', class: '5A', schoolId: 'B' },
+  tB: { role: 'teacher', name: 'TB', schoolId: 'B' },
 });
-const homework = () => ({
+const homework = () => inA({
   h1: { status: 'published', targetType: 'class', targetClass: '5a', createdAt: '2026-01-02', title: 'H1' },
   h2: { status: 'published', targetType: 'class', targetClass: '6B', createdAt: '2026-01-01', title: 'H2' },
   h3: { status: 'published', targetType: 'students', targetStudentUids: ['stu1'], createdAt: '2026-01-03', title: 'H3' },
@@ -20,11 +24,12 @@ const homework = () => ({
   h5: { status: 'published', targetType: 'all', createdAt: '2026-01-04', createdBy: 't1', title: 'H5' },
   h6: { status: 'published', createdAt: '2026-01-05', title: 'H6 no targetType' },
   h7: { status: 'published', targetType: 'class', targetClass: '', createdAt: '2026-01-06', title: 'H7 empty class' },
+  hB: { status: 'published', targetType: 'all', createdAt: '2026-01-07', title: 'school B', schoolId: 'B' },
 });
 const ids = (items) => items.map((i) => i.id);
 
 // --- listMyHomework ---
-test('listMyHomework: student via classroomIds (case-insensitive) + own + all, newest first, drafts excluded', async () => {
+test('listMyHomework: student via class (case-insensitive) + own + all, newest first, drafts and other schools excluded', async () => {
   const b = makeBridge({ users: users(), homeworkAssignments: homework() }, { uid: 'stu1' });
   const r = await b.fb.listMyHomework();
   assert.equal(r.ok, true);
@@ -42,9 +47,9 @@ test('listMyHomework: student with no class only gets "all" homework', async () 
   assert.deepEqual(ids((await b.fb.listMyHomework()).items), ['h6', 'h5']);
 });
 
-test('listMyHomework: missing profile still works; signed out is refused', async () => {
+test('listMyHomework: no profile / no school gets nothing; signed out is refused', async () => {
   let b = makeBridge({ users: {}, homeworkAssignments: homework() }, { uid: 'nobody' });
-  assert.deepEqual(ids((await b.fb.listMyHomework()).items), ['h6', 'h5']);
+  assert.deepEqual((await b.fb.listMyHomework()).items, []);
   b = makeBridge({ users: users(), homeworkAssignments: homework() }, { uid: null });
   const r = await b.fb.listMyHomework();
   assert.equal(r.ok, false);
@@ -56,17 +61,23 @@ test('listMyHomework queries only published homework', async () => {
   await b.fb.listMyHomework();
   const q = b.queries.find((x) => x.col === 'homeworkAssignments');
   assert.ok(q.cons.some((c) => c.type === 'where' && c.field === 'status' && c.op === '==' && c.value === 'published'));
+  assert.ok(q.cons.some((c) => c.type === 'where' && c.field === 'schoolId' && c.value === 'A'), 'scoped to my school');
+});
+
+test('listMyHomework: a student of school B only sees school B homework', async () => {
+  const b = makeBridge({ users: users(), homeworkAssignments: homework() }, { uid: 'stuB' });
+  assert.deepEqual(ids((await b.fb.listMyHomework()).items), ['hB']);
 });
 
 // --- getMyChildrenOverview ---
 const parentStore = () => ({
   users: users(),
   homeworkAssignments: homework(),
-  submissions: {
+  submissions: inA({
     s1: { studentUid: 'stu1', assignmentId: 'h1', score: 80, submittedAt: '2026-01-03' },
     s3: { studentUid: 'stu1', assignmentId: 'h3', submittedAt: '2026-01-05' },
     s2: { studentUid: 'stu2', assignmentId: 'h2', submittedAt: '2026-01-04' },
-  },
+  }),
 });
 
 test('getMyChildrenOverview: parent sees only linked children (missing child skipped)', async () => {
@@ -108,24 +119,26 @@ test('_ensureProfile: existing profile only writes photoURL/lastLoginAt/updatedA
   assert.equal(out.role, 'teacher');
 });
 
-test('_ensureProfile: new profile is a student; "teacher" in email only sets requestedRole', async () => {
+test('_ensureProfile: a new profile is a student awaiting approval, with only basic fields', async () => {
   const b = makeBridge({ users: {} }, { uid: 'n1' });
   const out = await b.fb._ensureProfile({ uid: 'n1', email: 'mr.teacher@gmail.com', displayName: 'Mr T' }, null);
   const w = b.writes[0];
   assert.equal(w.path, 'users/n1');
   assert.equal(w.data.role, 'student');
-  assert.equal(w.data.requestedRole, 'teacher');
+  assert.equal(w.data.accountStatus, 'review');
   assert.deepEqual(w.data.createdAt, TS);
   assert.equal(w.data.name, 'Mr T');
+  assert.deepEqual(Object.keys(w.data).sort(), ['accountStatus', 'createdAt', 'email', 'lastLoginAt', 'name', 'photoURL', 'role', 'updatedAt']);
   assert.equal(out.role, 'student');
 });
 
-test('_ensureProfile: new profile without "teacher" in email has no requestedRole', async () => {
-  const b = makeBridge({ users: {} }, { uid: 'n2' });
-  await b.fb._ensureProfile({ uid: 'n2', email: 'kid@gmail.com' }, null);
-  assert.equal(b.writes[0].data.role, 'student');
-  assert.equal(b.writes[0].data.requestedRole, '');
-  assert.equal(b.writes[0].data.name, 'kid');
+test('joinSchool: a new account sets only its school', async () => {
+  const b = makeBridge({ users: { n1: { role: 'student', accountStatus: 'review' } } }, { uid: 'n1' });
+  const r = await b.fb.joinSchool('A');
+  assert.equal(r.ok, true);
+  assert.deepEqual(Object.keys(b.writes[0].data).sort(), ['schoolId', 'updatedAt']);
+  assert.equal(b.writes[0].data.schoolId, 'A');
+  assert.equal((await b.fb.joinSchool('')).ok, false);
 });
 
 test('_normalizeUser: role from profile is lower-cased; missing profile → student', () => {
@@ -146,14 +159,23 @@ test('adminUpdateUserAccount: admin sets parent role with deduped, trimmed child
   assert.deepEqual(w.opts, { merge: true });
 });
 
-test('adminUpdateUserAccount: classroomIds from string, invalid role ignored, unknown status → active', async () => {
+test('adminUpdateUserAccount: class is trimmed, invalid role ignored, unknown status → active, no old fields', async () => {
   const b = makeBridge({ users: users() }, { uid: 'adm' });
-  await b.fb.adminUpdateUserAccount('stu3', { role: 'superuser', accountStatus: 'banned', classroomIds: '5A, 6B ,' });
+  await b.fb.adminUpdateUserAccount('stu3', { role: 'superuser', accountStatus: 'banned', class: ' 5B ', classroomIds: '5A', adminNote: 'x' });
   const w = b.writes[0].data;
   assert.ok(!('role' in w));
   assert.equal(w.accountStatus, 'active');
-  assert.deepEqual(w.classroomIds, ['5A', '6B']);
-  assert.ok(!('childUids' in w));
+  assert.equal(w.class, '5B');
+  assert.ok(!('classroomIds' in w) && !('adminNote' in w) && !('childUids' in w));
+});
+
+test('adminUpdateUserAccount: only the platform admin may move someone to another school', async () => {
+  let b = makeBridge({ users: users() }, { uid: 'adm' });
+  await b.fb.adminUpdateUserAccount('stu3', { role: 'student', schoolId: 'B' });
+  assert.ok(!('schoolId' in b.writes[0].data), 'school admin cannot');
+  b = makeBridge({ users: { ...users(), boss: { role: 'admin', platformAdmin: true, schoolId: 'A' } } }, { uid: 'boss' });
+  await b.fb.adminUpdateUserAccount('stu3', { role: 'student', schoolId: 'B' });
+  assert.equal(b.writes[0].data.schoolId, 'B');
 });
 
 for (const who of ['t1', 'stu1', 'par']) {
@@ -175,6 +197,8 @@ test('createHomeworkAssignment: new homework gets createdBy/createdAt and an aut
   assert.equal(w.path, `homeworkAssignments/${r.assignmentId}`);
   assert.equal(w.data.id, r.assignmentId);
   assert.equal(w.data.createdBy, 't1');
+  assert.equal(w.data.schoolId, 'A');
+  assert.equal(b.writes.find((x) => x.path.startsWith('homeworkAnswerKeys/')).data.schoolId, 'A');
   assert.deepEqual(w.data.createdAt, TS);
   assert.equal(w.data.title, 'New');
   assert.equal(w.data.targetClass, '5A');
@@ -211,6 +235,13 @@ test('createHomeworkAssignment: teacher role with capital letters is accepted', 
   assert.equal((await b.fb.createHomeworkAssignment({ id: 'h4', title: 'mine' })).ok, true);
 });
 
+test('createHomeworkAssignment: a teacher cannot edit another school\'s homework', async () => {
+  const b = makeBridge({ users: users(), homeworkAssignments: homework() }, { uid: 'tB' });
+  const r = await b.fb.createHomeworkAssignment({ id: 'h5', title: 'x' });
+  assert.equal(r.ok, false);
+  assert.equal(b.writes.length, 0);
+});
+
 for (const who of ['stu1', 'par']) {
   test(`createHomeworkAssignment: ${who} is refused`, async () => {
     const b = makeBridge({ users: users(), homeworkAssignments: homework() }, { uid: who });
@@ -223,11 +254,16 @@ for (const who of ['stu1', 'par']) {
 // --- upsertQuestionBankItem / listQuestionBank ---
 const qbStore = () => ({
   users: users(),
+  schools: { A: { name: 'School A', shareQuestionBank: true }, B: { name: 'School B' } },
   questionBank: {
-    q1: { id: 'q1', deleted: true, createdBy: 't1' },
-    q2: { id: 'q2', createdBy: 't1', question_text: 'A' },
-    q3: { id: 'q3', createdBy: 't2', question_text: 'B' },
-    q4: { id: 'q4', question_text: 'legacy, no owner' },
+    ...inA({
+      q1: { id: 'q1', deleted: true, createdBy: 't1' },
+      q2: { id: 'q2', createdBy: 't1', question_text: 'A' },
+      q3: { id: 'q3', createdBy: 't2', question_text: 'B' },
+      q4: { id: 'q4', question_text: 'legacy, no owner' },
+    }),
+    q5: { id: 'q5', schoolId: 'B', shared: true, createdBy: 'tB', question_text: 'shared by B' },
+    q6: { id: 'q6', schoolId: 'B', shared: false, createdBy: 'tB', question_text: 'private to B' },
   },
 });
 
@@ -241,6 +277,16 @@ test('upsertQuestionBankItem: new item gets createdBy/createdAt', async () => {
   assert.equal(w.question_text, '1+1=?');
   assert.equal(w.prompt, '1+1=?');
   assert.equal(w.deleted, false);
+  assert.equal(w.schoolId, 'A');
+  assert.equal(w.shared, true, 'follows the school\'s sharing setting');
+});
+
+test('upsertQuestionBankItem: a shared question from another school cannot be edited', async () => {
+  const b = makeBridge(qbStore(), { uid: 't1' });
+  const r = await b.fb.upsertQuestionBankItem({ id: 'q5', question_text: 'hijack' });
+  assert.equal(r.ok, false);
+  assert.match(r.error, /其他學校/);
+  assert.equal(b.writes.length, 0);
 });
 
 test('upsertQuestionBankItem: owner update does not resend createdBy/createdAt', async () => {
@@ -282,7 +328,11 @@ test('listQuestionBank hides deleted items', async () => {
   const b = makeBridge(qbStore(), { uid: 't1' });
   const r = await b.fb.listQuestionBank();
   assert.equal(r.ok, true);
-  assert.deepEqual(ids(r.items).sort(), ['q2', 'q3', 'q4']);
+  assert.deepEqual(ids(r.items).sort(), ['q2', 'q3', 'q4', 'q5'], 'own school + shared from others; not B\'s private one');
+  const q5 = r.items.find((i) => i.id === 'q5');
+  assert.equal(q5.readOnly, true);
+  assert.equal(q5.sharedFromSchool, 'School B');
+  assert.ok(!r.items.find((i) => i.id === 'q2').readOnly);
 });
 
 test('listQuestionBank refuses students', async () => {
@@ -304,12 +354,12 @@ for (const who of ['stu1', 'par']) {
 }
 
 test('getTeacherDashboard: teacher sees students of their first class and metrics', async () => {
-  const store = { users: { ...users(), stu1: { ...users().stu1, studentProfile: { mastery: 60 } }, stu4: { role: 'student', name: 'Dee', classroomIds: ['5A'], studentProfile: { mastery: 90 } } } };
+  const store = { users: { ...users(), stu1: { ...users().stu1, studentProfile: { mastery: 60 } }, stu4: { role: 'student', name: 'Dee', class: '5A', schoolId: 'A', studentProfile: { mastery: 90 } } } };
   const b = makeBridge(store, { uid: 't1' });
   const r = await b.fb.getTeacherDashboard();
   assert.equal(r.ok, true);
   assert.equal(r.classroom.id, '5A');
-  assert.deepEqual(r.students.map((s) => s.uid).sort(), ['stu1', 'stu4']);
+  assert.deepEqual(r.students.map((s) => s.uid).sort(), ['stu1', 'stu4'], 'not school B\'s 5A');
   assert.equal(r.metrics.find((m) => m.label === '平均掌握度').value, '75%');
   assert.equal(r.metrics.find((m) => m.label === '需關注學生').value, '1 人');
 });
@@ -346,6 +396,7 @@ test('listUsers is admin-only', async () => {
   const r = await b.fb.listUsers();
   assert.equal(r.ok, true);
   assert.ok(r.users.some((u) => u.uid === 'par'));
+  assert.ok(!r.users.some((u) => u.uid === 'stuB'), 'only my school');
 });
 
 test('listSubmissionsForAssignment: staff only, enriched with student names', async () => {
@@ -363,7 +414,8 @@ test('submitHomework records the student\'s class for the teacher dashboard', as
   const b = makeBridge({ users: users(), homeworkAssignments: homework() }, { uid: 'stu1' });
   const r = await b.fb.submitHomework({ assignmentId: 'h1', answers: [] });
   assert.equal(r.ok, true);
-  assert.equal(b.writes[0].data.classroomId, '5A');
+  assert.equal(b.writes[0].data.class, '5A');
+  assert.equal(b.writes[0].data.schoolId, 'A');
   assert.ok(!('score' in b.writes[0].data) && !('feedback' in b.writes[0].data));
 });
 
@@ -405,8 +457,8 @@ test('saving homework: students\' copy has no answers; the full set goes to the 
 test('staff list shows the full questions from the answer key', async () => {
   const b = makeBridge({
     users: users(),
-    homeworkAssignments: { hx: { status: 'published', createdBy: 't1', createdAt: '1', questions: [{ id: 'q2', type: 'TRUE_FALSE', question_text: 'x' }] } },
-    homeworkAnswerKeys: { hx: { questions: [{ id: 'q2', type: 'TRUE_FALSE', question_text: 'x', correct_answer: false }] } },
+    homeworkAssignments: inA({ hx: { status: 'published', createdBy: 't1', createdAt: '1', questions: [{ id: 'q2', type: 'TRUE_FALSE', question_text: 'x' }] } }),
+    homeworkAnswerKeys: inA({ hx: { questions: [{ id: 'q2', type: 'TRUE_FALSE', question_text: 'x', correct_answer: false }] } }),
   }, { uid: 't1' });
   const r = await b.fb.listHomeworkAssignments();
   assert.equal(r.items[0].questions[0].correct_answer, false);
@@ -416,10 +468,10 @@ test('staff list shows the full questions from the answer key', async () => {
 test('older homework with answers inside is moved into an answer key by its owner or an admin', async () => {
   const store = () => ({
     users: users(),
-    homeworkAssignments: {
+    homeworkAssignments: inA({
       own: { status: 'published', createdBy: 't1', createdAt: '2', questions: fullQuestions() },
       other: { status: 'published', createdBy: 't2', createdAt: '1', questions: fullQuestions() },
-    },
+    }),
   });
   const t = makeBridge(store(), { uid: 't1' });
   const r = await t.fb.listHomeworkAssignments();
@@ -446,7 +498,7 @@ test('students never receive answers in their homework list', async () => {
 
 test('hand-ins after the deadline are refused', async () => {
   const past = '2020-01-01T08:00';
-  const b = makeBridge({ users: users(), homeworkAssignments: { late: { status: 'published', targetType: 'all', dueAt: past, title: 'L' } } }, { uid: 'stu1' });
+  const b = makeBridge({ users: users(), homeworkAssignments: inA({ late: { status: 'published', targetType: 'all', dueAt: past, title: 'L' } }) }, { uid: 'stu1' });
   const r = await b.fb.submitHomework({ assignmentId: 'late', answers: [] });
   assert.equal(r.ok, false);
   assert.match(r.error, /截止/);

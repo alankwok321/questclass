@@ -9,11 +9,15 @@ beforeEach(() => {
   // The made-up provider hosts used below must be allow-listed, like a school's own AI gateway would be.
   h.setEnv({ ...h.FIREBASE_ON, AI_CONFIG_ENCRYPTION_KEY: 'enc-key-for-tests', OPENROUTER_API_KEY: 'sk-server', AI_ALLOWED_HOSTS: 'x.example,school-llm.example' });
   h.seedUsers();
+  // Everyone below belongs to school A, except adm2 (school B).
+  for (const u of Object.values(h.fbState.data.users)) u.schoolId = 'sch_a';
+  h.seedUsers({ adm2: { email: 'adm2@other.hk', role: 'admin', schoolId: 'sch_b' }, stuB: { email: 'stub@other.hk', role: 'student', schoolId: 'sch_b' } });
+  for (const [uid, sch] of Object.entries({ stu: 'sch_a', stu2: 'sch_a', tea: 'sch_a', adm: 'sch_a', par: 'sch_a', sus: 'sch_a' })) h.fbState.data.users[uid].schoolId = sch;
 });
 const getS = (body) => h.post(app, '/api/admin/ai-settings/get', body);
 const saveS = (body) => h.post(app, '/api/admin/ai-settings/save', body);
 const testS = (body) => h.post(app, '/api/admin/ai-settings/test', body);
-const stored = () => h.fbState.data.appSettings?.ai;
+const stored = (school = 'sch_a') => h.fbState.data.schoolSecrets?.[school];
 
 test('the old per-user /api/ai-config endpoints are gone', () => {
   assert.equal(app.routes['POST /api/ai-config/get'], undefined);
@@ -145,35 +149,26 @@ test('test connection with no key anywhere → 400', async () => {
   assert.equal(h.ai.calls.length, 0);
 });
 
-test('admin seed / migrate: admin only', async () => {
-  for (const path of ['/api/admin/seed', '/api/admin/migrate-users-only']) {
-    assert.equal((await h.post(app, path, {})).status, 401, path);
-    for (const who of ['stu', 'tea', 'par']) assert.equal((await h.post(app, path, { idToken: who })).status, 403, `${path} ${who}`);
-  }
-  assert.equal(h.fbState.writes.length, 0);
+test('each school has its own key: school B never uses school A\'s key', async () => {
+  await saveS({ idToken: 'adm', apiKey: 'sk-school-a-1234', model: 'm-a' });
+  await saveS({ idToken: 'adm2', apiKey: 'sk-school-b-5678', model: 'm-b' });
+  assert.equal(stored('sch_a').schoolId, 'sch_a');
+  await h.post(app, '/api/chat', { idToken: 'stu', message: 'hi' });
+  assert.equal(h.ai.last.headers.Authorization, 'Bearer sk-school-a-1234');
+  await h.post(app, '/api/chat', { idToken: 'stuB', message: 'hi' });
+  assert.equal(h.ai.last.headers.Authorization, 'Bearer sk-school-b-5678');
+  assert.equal(h.ai.last.body.model, 'm-b');
+  const r = await getS({ idToken: 'adm2' });
+  assert.equal(r.body.keyHint, 'sk-…5678');
 });
 
-test('admin seed writes every seed collection and converts serverTimestamp markers', async () => {
-  const r = await h.post(app, '/api/admin/seed', { idToken: 'adm' });
-  assert.equal(r.status, 200);
-  const seed = require('../seeds/sample-firestore-data.json');
-  for (const col of ['classrooms', 'students', 'progressSummaries', 'submissions', 'users']) {
-    assert.equal(r.body.written[col], Object.keys(seed[col] || {}).length, col);
-  }
-  assert.ok(!JSON.stringify(h.fbState.writes).includes('"__type":"serverTimestamp"'));
-  assert.ok(h.fbState.writes.every((w) => w.opts.merge === true));
+test('an admin without a school cannot manage AI settings', async () => {
+  delete h.fbState.data.users.adm.schoolId;
+  assert.equal((await getS({ idToken: 'adm' })).status, 400);
+  assert.equal((await saveS({ idToken: 'adm', apiKey: 'k', model: 'm' })).status, 400);
 });
 
-test('admin migrate-users-only copies student profiles onto users/{userUid}', async () => {
-  h.fbState.data.students = { s1: { userUid: 'u9', classroomIds: ['5A'], xp: 10, streak: 3 }, s2: { name: 'no uid' } };
-  h.fbState.data.progressSummaries = { s1: { focusAreas: ['分數'] } };
-  const r = await h.post(app, '/api/admin/migrate-users-only', { idToken: 'adm' });
-  assert.equal(r.status, 200);
-  assert.equal(r.body.merged, 1);
-  assert.equal(r.body.skipped, 1);
-  const u = h.fbState.data.users.u9;
-  assert.equal(u.role, 'student');
-  assert.deepEqual(u.classroomIds, ['5A']);
-  assert.equal(u.studentProfile.xp, 10);
-  assert.deepEqual(u.studentProfile.focusAreas, ['分數']);
+test('the old seed and migration endpoints are gone', () => {
+  assert.equal(app.routes['POST /api/admin/seed'], undefined);
+  assert.equal(app.routes['POST /api/admin/migrate-users-only'], undefined);
 });

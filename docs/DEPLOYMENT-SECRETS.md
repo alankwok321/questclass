@@ -48,13 +48,24 @@ Set these as project environment variables in Vercel:
 - `AI_CONFIG_ENCRYPTION_KEY`: any long random string; encrypts the AI key saved on the 「AI 設定」 page.
   Without it the page cannot save a key. Changing it later makes the saved key unreadable (save it again).
 
+### Schools
+Each school's data is separate: users, homework, answer keys, submissions and the question bank all
+carry a `schoolId`, and `firestore.rules` only lets people see their own school's documents.
+- **Platform admin** = the accounts in `ADMIN_EMAILS` (the server sets `platformAdmin` on sign-in and
+  removes it if the email is taken off the list). They create and rename schools on
+  **管理後台 → 學校管理** (`/admin/schools`), and can view any school and move users between schools.
+- **School admin** = role `admin` in a school. Approves new accounts, sets roles, 班別 and parent links,
+  and chooses whether to share the school's question bank with other schools.
+- New accounts sign in, choose their school, and wait (`accountStatus: review`) for that school's admin.
+- The **first school** created takes over everything that existed before schools (and the old AI key);
+  old user fields (requestedRole, learnerStage, roleNote, adminNote, classroomIds, …) are removed then.
+
 ### AI key
-There is one AI key for the whole school. Only an admin sets it, on **管理後台 → AI 設定**
-(`/admin/ai-settings`). It is stored encrypted in Firestore at `appSettings/ai`, which browsers
-cannot read (Firestore rules deny it by default); the server reads it with the Admin SDK.
-Teachers, students and parents have no key settings, and any key a browser sends is ignored.
-If no key is saved, the server falls back to `OPENROUTER_API_KEY`. When Firebase is configured,
-only signed-in, active users can use AI.
+Each school has its own AI key, set by that school's admin on **管理後台 → AI 設定**
+(`/admin/ai-settings`). It is stored encrypted in Firestore at `schoolSecrets/{schoolId}`, which
+browsers cannot read; the server reads it with the Admin SDK. Any key a browser sends is ignored.
+If a school has no key, the server falls back to `OPENROUTER_API_KEY` when that is set.
+When Firebase is configured, only signed-in, active users can use AI.
 
 ### Firestore rules
 `firestore.rules` is not deployed by Vercel. After changing it run

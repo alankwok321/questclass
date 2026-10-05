@@ -888,9 +888,12 @@ export default function TeacherQuestionBank() {
                       {it.topic && <span>· {it.topic}</span>}
                       {it.target_level && <span>· {it.target_level}</span>}
                       <span>· {it.points ?? 1} 分</span>
+                      {it.readOnly && <span style={{ color: '#248A3D', fontWeight: 600 }}>· 來自 {it.sharedFromSchool}</span>}
                     </div>
                   </div>
-                  <button onClick={() => openEdit(it)} style={btnGhost}>編輯</button>
+                  {it.readOnly
+                    ? <span style={{ fontSize: 12, color: '#86868B', whiteSpace: 'nowrap' }}>共享題目</span>
+                    : <button onClick={() => openEdit(it)} style={btnGhost}>編輯</button>}
                 </div>
               ))}
             </div>

@@ -72,3 +72,15 @@ export async function getMyChildrenOverview() {
 export async function listStudents(limit = 200) {
   return await window.QuestClassFirebase?.listStudents?.(limit);
 }
+
+export async function listSchools() {
+  return await window.QuestClassFirebase?.listSchools?.();
+}
+
+export async function getSchool(schoolId) {
+  return await window.QuestClassFirebase?.getSchool?.(schoolId);
+}
+
+export async function joinSchool(schoolId) {
+  return await window.QuestClassFirebase?.joinSchool?.(schoolId);
+}

@@ -1,6 +1,6 @@
 'use strict';
 // Fixes from the 2026-10-05 code review: provider allow-list, school-key model, upstream error
-// bodies, only admins manage the school AI key, review/suspended accounts, and the users migration.
+// bodies, only admins manage the school AI key, review/suspended accounts, and suspended admins.
 const { test, beforeEach } = require('node:test');
 const assert = require('node:assert/strict');
 const h = require('./helpers/server-harness.cjs');
@@ -51,7 +51,8 @@ test('saving refuses a non-allowed provider URL', async () => {
 });
 
 test('stored settings pointing at a non-allowed host are never used', async () => {
-  h.fbState.data.appSettings = { ai: { provider: { apiBaseUrl: 'https://attacker.example/v1' }, secret: { ciphertext: 'x', iv: 'y', tag: 'z' } } };
+  h.fbState.data.users.stu.schoolId = 'a';
+  h.fbState.data.schoolSecrets = { a: { provider: { apiBaseUrl: 'https://attacker.example/v1' }, secret: { ciphertext: 'x', iv: 'y', tag: 'z' } } };
   const r = await chat({ idToken: 'stu', message: 'hi' });
   assert.notEqual(r.status, 200);
   assert.ok(!h.ai.calls.some((c) => c.url.includes('attacker.example')));
@@ -63,21 +64,14 @@ test('accounts under review cannot use AI', async () => {
   assert.equal(h.ai.calls.length, 0);
 });
 
-test('migration keeps an existing teacher/admin role', async () => {
-  h.fbState.data.students = { s1: { userUid: 'tea', classroomIds: ['5A'] }, s2: { userUid: 'stu9' } };
-  const r = await h.post(app, '/api/admin/migrate-users-only', { idToken: 'adm' });
-  assert.equal(r.status, 200);
-  assert.equal(String(h.fbState.data.users.tea.role).toLowerCase(), 'teacher');
-  assert.equal(h.fbState.data.users.stu9.role, 'student');
-});
-
 test('suspended or under-review accounts cannot use the admin-SDK endpoints', async () => {
   h.seedUsers({
     rev: { email: 'rev@school.hk', role: 'teacher', accountStatus: 'review' },
-    sadm: { email: 'sadm@school.hk', role: 'admin', accountStatus: 'suspended' },
+    sadm: { email: 'sadm@school.hk', role: 'admin', accountStatus: 'suspended', schoolId: 'a', platformAdmin: true },
   });
   assert.equal((await h.post(app, '/api/admin/ai-settings/save', { idToken: 'sadm', apiKey: 'k', model: 'm' })).status, 403);
   assert.equal((await h.post(app, '/api/admin/ai-settings/get', { idToken: 'sadm' })).status, 403);
-  assert.equal((await h.post(app, '/api/admin/seed', { idToken: 'sadm' })).status, 403);
-  assert.equal((await h.post(app, '/api/admin/migrate-users-only', { idToken: 'sadm' })).status, 403);
+  assert.equal((await h.post(app, '/api/school/settings/save', { idToken: 'sadm', shareQuestionBank: true })).status, 403);
+  assert.equal((await h.post(app, '/api/platform/schools/create', { idToken: 'sadm', name: 'X' })).status, 403);
+  assert.equal(h.fbState.data.schools, undefined);
 });

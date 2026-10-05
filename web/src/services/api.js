@@ -65,3 +65,17 @@ export async function saveAiSettings(settings) {
 export async function testAiSettings() {
   return postJson('/api/admin/ai-settings/test', await withAuth({}));
 }
+
+// Platform admin: schools.
+export async function createSchool(name) {
+  return postJson('/api/platform/schools/create', await withAuth({ name }));
+}
+
+export async function renameSchool(schoolId, name) {
+  return postJson('/api/platform/schools/rename', await withAuth({ schoolId, name }));
+}
+
+// School admin: share the question bank with other schools.
+export async function saveSchoolSettings(settings) {
+  return postJson('/api/school/settings/save', await withAuth(settings));
+}

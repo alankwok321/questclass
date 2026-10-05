@@ -17,17 +17,29 @@ function docRef(col, id) {
       for (const k of Object.keys(next)) if (isDelete(next[k])) delete next[k]; // FieldValue.delete() (top-level fields)
       state.data[col][id] = next;
     },
+    async delete() {
+      state.writes.push({ path: `${col}/${id}`, delete: true });
+      if (state.data[col]) delete state.data[col][id];
+    },
+  };
+}
+function query(col, filters) {
+  return {
+    where(field, op, value) {
+      if (op !== '==') throw new Error('fake firestore only supports ==');
+      return query(col, [...filters, [field, value]]);
+    },
+    async get() {
+      const docs = Object.keys(state.data[col] || {})
+        .filter((id) => filters.every(([f, v]) => (state.data[col][id] || {})[f] === v))
+        .map((id) => ({ id, data: () => clone(state.data[col][id]) }));
+      return { docs, size: docs.length, empty: docs.length === 0 };
+    },
   };
 }
 const db = {
   collection(col) {
-    return {
-      doc: (id) => docRef(col, id),
-      async get() {
-        const docs = Object.keys(state.data[col] || {}).map((id) => ({ id, data: () => clone(state.data[col][id]) }));
-        return { docs, size: docs.length };
-      },
-    };
+    return { doc: (id) => docRef(col, id), ...query(col, []) };
   },
 };
 module.exports = {

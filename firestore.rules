@@ -1,6 +1,7 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    // ── Who is asking ─────────────────────────────────────────────────────────
     function isSignedIn() {
       return request.auth != null;
     }
@@ -9,23 +10,24 @@ service cloud.firestore {
       return isSignedIn() && request.auth.uid == userId;
     }
 
+    function hasProfile() {
+      return isSignedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
     function userDoc() {
       return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
     }
 
-    // Accounts an admin set to "review" or "suspended" lose every role-based permission here,
-    // not just in the app's screens.
+    // Accounts set to "review" or "suspended" lose every role-based permission here,
+    // not just in the app's screens. (Older profiles without the field are active.)
     function isActiveAccount() {
       return isSignedIn()
-        && (!exists(/databases/$(database)/documents/users/$(request.auth.uid))
-          || string(userDoc().get('accountStatus', 'active')).lower() == 'active');
+        && (!hasProfile() || string(userDoc().get('accountStatus', 'active')).lower() == 'active');
     }
 
     function userRole() {
       // Case-insensitive, and safe when the role field is missing.
-      return isSignedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid)) && isActiveAccount()
-        ? string(userDoc().get('role', '')).lower()
-        : null;
+      return hasProfile() && isActiveAccount() ? string(userDoc().get('role', '')).lower() : null;
     }
 
     function isTeacherLike() {
@@ -36,7 +38,36 @@ service cloud.firestore {
       return userRole() == 'admin';
     }
 
-    // A parent may read data about the students linked to them in users/{parent}.childUids.
+    // Runs the whole platform: creates schools and moves people between them.
+    // Only the server sets this flag (for the ADMIN_EMAILS accounts).
+    function isPlatformAdmin() {
+      return hasProfile() && isActiveAccount() && userDoc().get('platformAdmin', false) == true;
+    }
+
+    // ── Schools ───────────────────────────────────────────────────────────────
+    // Every user and every piece of school data carries a schoolId. People only see data
+    // from their own school; '' (no school yet) matches nothing.
+    function mySchool() {
+      return hasProfile() ? string(userDoc().get('schoolId', '')) : '';
+    }
+
+    // Plain field access (not .get) so Firestore can prove it from a query's where('schoolId', '==', …).
+    // A document without a schoolId fails the check.
+    function inMySchool(data) {
+      return mySchool() != '' && data.schoolId == mySchool();
+    }
+
+    function schoolExists(schoolId) {
+      return schoolId is string && schoolId != ''
+        && exists(/databases/$(database)/documents/schools/$(schoolId));
+    }
+
+    function mySchoolSharesQuestions() {
+      return get(/databases/$(database)/documents/schools/$(mySchool())).data.get('shareQuestionBank', false) == true;
+    }
+
+    // A parent may read data about the students linked to them in users/{parent}.childUids
+    // (callers also require the data to be in the parent's own school).
     function isParentOf(studentUid) {
       return userRole() == 'parent' && studentUid in userDoc().get('childUids', []);
     }
@@ -45,170 +76,151 @@ service cloud.firestore {
       return r in ['student', 'teacher', 'admin', 'parent'];
     }
 
-    function allowedUserKeys() {
-      return ['name', 'email', 'role', 'requestedRole', 'learnerStage', 'roleNote', 'photoURL', 'createdAt', 'updatedAt', 'lastLoginAt', 'accountStatus', 'adminNote', 'disabledReason', 'resolvedAt', 'issueFlag', 'studentId', 'classroomIds', 'class', 'childUids'];
+    // School list: names only, readable by anyone signed in (new users pick their school).
+    // Created, renamed and configured only by the server.
+    match /schools/{schoolId} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+    // schoolSecrets/{schoolId} (each school's encrypted AI key) has no rule: server only.
+
+    // ── Users ─────────────────────────────────────────────────────────────────
+    // Every field a user document may hold.
+    function userKeys() {
+      return ['name', 'email', 'photoURL', 'role', 'schoolId', 'accountStatus', 'class', 'childUids',
+        'studentProfile', 'platformAdmin', 'createdAt', 'updatedAt', 'lastLoginAt'];
     }
 
-    function allowedStudentKeys() {
-      return ['userUid', 'name', 'gradeLevel', 'classroomIds', 'primaryTeacherUid', 'status', 'currentLevel', 'xp', 'nextLevelXp', 'streak', 'mastery', 'weaknessLabel', 'weaknessScore', 'focusSkills', 'createdAt', 'updatedAt'];
+    // What a school admin may change on a member of their school.
+    function schoolAdminEditableKeys() {
+      return ['name', 'role', 'accountStatus', 'class', 'childUids', 'updatedAt'];
     }
 
-    function allowedClassroomKeys() {
-      return ['name', 'grade', 'subject', 'teacherUid', 'teacherUids', 'studentIds', 'studentUids', 'activeStudents', 'completionRate', 'createdAt', 'updatedAt'];
+    function userUpdateIsValid() {
+      return (!('role' in request.resource.data) || validRole(request.resource.data.role))
+        && (!('childUids' in request.resource.data) || request.resource.data.childUids is list)
+        && (!('class' in request.resource.data) || request.resource.data['class'] is string)
+        && (!('accountStatus' in request.resource.data) || request.resource.data.accountStatus in ['active', 'review', 'suspended']);
     }
 
+    match /users/{userId} {
+      allow read: if isSelf(userId)
+        || isPlatformAdmin()
+        || (isTeacherLike() && inMySchool(resource.data))
+        || (isParentOf(userId) && inMySchool(resource.data));
+
+      // Sign-up: always a student awaiting approval, optionally already choosing a school.
+      allow create: if isSelf(userId)
+        && request.resource.data.keys().hasOnly(['name', 'email', 'photoURL', 'role', 'schoolId', 'accountStatus', 'createdAt', 'updatedAt', 'lastLoginAt'])
+        && request.resource.data.email == request.auth.token.email
+        && request.resource.data.role == 'student'
+        && request.resource.data.accountStatus == 'review'
+        && (!('schoolId' in request.resource.data) || schoolExists(request.resource.data.schoolId));
+
+      allow update: if (
+          // Anyone: their name, photo and sign-in time.
+          isSelf(userId)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'photoURL', 'updatedAt', 'lastLoginAt'])
+        ) || (
+          // While awaiting approval: choose (or change) which school to join.
+          isSelf(userId)
+          && resource.data.get('accountStatus', 'active') == 'review'
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['schoolId', 'name', 'photoURL', 'updatedAt', 'lastLoginAt'])
+          && schoolExists(request.resource.data.schoolId)
+        ) || (
+          // School admin: members of their own school (not the platform admin, not the school itself).
+          isAdmin()
+          && inMySchool(resource.data)
+          && resource.data.get('platformAdmin', false) != true
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(schoolAdminEditableKeys())
+          && userUpdateIsValid()
+        ) || (
+          // Platform admin: anyone, including which school they belong to.
+          isPlatformAdmin()
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'role', 'schoolId', 'accountStatus', 'class', 'childUids', 'updatedAt'])
+          && (!('schoolId' in request.resource.data) || request.resource.data.schoolId == '' || schoolExists(request.resource.data.schoolId))
+          // Taken out of every school: back to awaiting approval.
+          && (request.resource.data.get('schoolId', '') != '' || request.resource.data.get('accountStatus', 'active') == 'review')
+          && userUpdateIsValid()
+        );
+
+      allow delete: if isPlatformAdmin()
+        || (isAdmin() && inMySchool(resource.data) && resource.data.get('platformAdmin', false) != true);
+    }
+
+    // ── Submissions ───────────────────────────────────────────────────────────
+    // What staff may change when marking: score, feedback and status.
     function allowedSubmissionKeys() {
-      return ['id', 'assignmentId', 'answers', 'classroomId', 'studentId', 'studentUid', 'assignmentTitle', 'topic', 'score', 'status', 'feedback', 'submittedAt', 'updatedAt'];
+      return ['id', 'schoolId', 'assignmentId', 'answers', 'class', 'studentUid', 'assignmentTitle', 'topic', 'score', 'status', 'feedback', 'submittedAt', 'updatedAt'];
     }
 
     // What a student may change when re-submitting their own, not-yet-marked homework.
     function studentResubmitKeys() {
-      return ['id', 'assignmentId', 'answers', 'assignmentTitle', 'topic', 'status', 'submittedAt', 'updatedAt', 'classroomId'];
+      return ['answers', 'assignmentTitle', 'topic', 'status', 'submittedAt', 'updatedAt', 'class'];
     }
 
     // Everything a student's first hand-in may contain (no score or feedback).
     function studentSubmissionKeys() {
-      return ['id', 'assignmentId', 'studentUid', 'answers', 'assignmentTitle', 'topic', 'status', 'submittedAt', 'updatedAt', 'classroomId'];
+      return ['id', 'schoolId', 'assignmentId', 'studentUid', 'answers', 'assignmentTitle', 'topic', 'status', 'submittedAt', 'updatedAt', 'class'];
     }
 
-    // A student may only tag a hand-in with one of their own classes.
-    function classroomIdIsOwn() {
-      return !('classroomId' in request.resource.data)
-        || request.resource.data.classroomId in userDoc().get('classroomIds', []);
+    // A student may only tag a hand-in with their own class.
+    function classIsOwn() {
+      return !('class' in request.resource.data)
+        || request.resource.data['class'] == userDoc().get('class', '');
     }
 
-    function homeworkIsPublished(assignmentId) {
-      return string(get(/databases/$(database)/documents/homeworkAssignments/$(assignmentId)).data.get('status', '')) == 'published';
-    }
-
-    // Fields a user may set on their own profile when it is first created.
-    function selfCreateKeys() {
-      return ['name', 'email', 'role', 'requestedRole', 'learnerStage', 'roleNote', 'photoURL', 'createdAt', 'updatedAt', 'lastLoginAt'];
-    }
-
-    function allowedProgressKeys() {
-      return ['studentId', 'userUid', 'classroomId', 'mastery', 'level', 'xp', 'nextLevelXp', 'streak', 'weaknessLabel', 'weaknessScore', 'focusAreas', 'recentQuestTitles', 'updatedAt'];
-    }
-
-    function selfProfileKeysAreSafe() {
-      return request.resource.data.diff(resource.data).changedKeys().hasOnly(['name', 'requestedRole', 'learnerStage', 'roleNote', 'photoURL', 'updatedAt', 'lastLoginAt']);
-    }
-
-    match /users/{userId} {
-      allow read: if isSelf(userId) || isTeacherLike() || isParentOf(userId);
-
-      // Self-registration always starts as a student; only an admin can grant other roles.
-      // (Previously a new user could create their own doc with role "admin".)
-      // Only basic profile fields: no classes, status, notes or child links.
-      allow create: if isSelf(userId)
-        && request.resource.data.keys().hasOnly(selfCreateKeys())
-        && request.resource.data.email == request.auth.token.email
-        && request.resource.data.role == 'student'
-        && request.resource.data.get('requestedRole', '') in ['', 'student', 'teacher', 'admin', 'parent'];
-
-      allow update: if (
-          isSelf(userId)
-          && request.resource.data.diff(resource.data).changedKeys().hasOnly(allowedUserKeys())
-          && request.resource.data.get('role', null) == resource.data.get('role', null)
-          && request.resource.data.get('email', null) == resource.data.get('email', null)
-          && (!('requestedRole' in request.resource.data) || request.resource.data.requestedRole in ['', 'student', 'teacher', 'admin', 'parent'])
-          && selfProfileKeysAreSafe()
-        ) || (
-          isAdmin()
-          && request.resource.data.diff(resource.data).changedKeys().hasOnly(allowedUserKeys())
-          && (!('requestedRole' in request.resource.data) || request.resource.data.requestedRole in ['', 'student', 'teacher', 'admin', 'parent'])
-          && (!('role' in request.resource.data) || validRole(request.resource.data.role))
-          && (!('childUids' in request.resource.data) || request.resource.data.childUids is list)
-          && (!('accountStatus' in request.resource.data) || request.resource.data.accountStatus in ['active', 'review', 'suspended'])
-          && (!('issueFlag' in request.resource.data) || request.resource.data.issueFlag is bool)
-        );
-
-      allow delete: if isAdmin();
-    }
-
-    match /students/{studentId} {
-      allow read: if isTeacherLike() || (isSignedIn() && resource.data.userUid == request.auth.uid);
-      allow create: if isTeacherLike() && request.resource.data.keys().hasOnly(allowedStudentKeys());
-      allow update: if isTeacherLike() && request.resource.data.diff(resource.data).changedKeys().hasOnly(allowedStudentKeys());
-      allow delete: if isAdmin();
-    }
-
-    match /classrooms/{classroomId} {
-      allow read: if isTeacherLike() || (isSignedIn() && request.auth.uid in resource.data.studentUids);
-      allow create: if isTeacherLike() && request.resource.data.keys().hasOnly(allowedClassroomKeys());
-      allow update: if isTeacherLike() && request.resource.data.diff(resource.data).changedKeys().hasOnly(allowedClassroomKeys());
-      allow delete: if isAdmin();
-
-      match /members/{memberId} {
-        allow read: if isTeacherLike() || isSelf(memberId);
-        allow write: if isTeacherLike();
-      }
+    function homeworkIsPublishedInMySchool(assignmentId) {
+      let hw = get(/databases/$(database)/documents/homeworkAssignments/$(assignmentId)).data;
+      return string(hw.get('status', '')) == 'published' && inMySchool(hw);
     }
 
     match /submissions/{submissionId} {
-      allow read: if isTeacherLike()
+      allow read: if (isTeacherLike() && inMySchool(resource.data))
         || (isSignedIn() && resource.data.studentUid == request.auth.uid)
-        || isParentOf(resource.data.studentUid);
-      // A student may only hand in their own work, under the id "<assignmentId>_<uid>", to published
-      // homework, without a score or feedback. (Before, a student could grade themselves or create
-      // someone else's id first and block that student's hand-in.)
-      allow create: if isTeacherLike()
-        || (
+        || (isParentOf(resource.data.studentUid) && inMySchool(resource.data));
+      // Only students create hand-ins: their own work, under the id "<assignmentId>_<uid>", to published
+      // homework of their school, without a score or feedback.
+      allow create: if (
           isActiveAccount()
+          && inMySchool(request.resource.data)
           && request.resource.data.studentUid == request.auth.uid
           && submissionId == request.resource.data.assignmentId + '_' + request.auth.uid
           && request.resource.data.keys().hasOnly(studentSubmissionKeys())
-          && classroomIdIsOwn()
+          && classIsOwn()
           && request.resource.data.status == 'submitted'
-          && homeworkIsPublished(request.resource.data.assignmentId)
+          && homeworkIsPublishedInMySchool(request.resource.data.assignmentId)
         );
-      allow update: if (isTeacherLike() && request.resource.data.diff(resource.data).changedKeys().hasOnly(allowedSubmissionKeys()))
-        || (
+      allow update: if (
+          isTeacherLike()
+          && inMySchool(resource.data)
+          && request.resource.data.schoolId == resource.data.schoolId
+          && request.resource.data.studentUid == resource.data.studentUid
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(allowedSubmissionKeys())
+        ) || (
           isActiveAccount()
           && resource.data.studentUid == request.auth.uid
-          && request.resource.data.studentUid == request.auth.uid
           && resource.data.get('status', 'submitted') == 'submitted'
           && request.resource.data.status == 'submitted'
-          && request.resource.data.diff(resource.data).changedKeys().hasOnly(studentResubmitKeys())
-          && classroomIdIsOwn()
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(studentResubmitKeys())
+          && classIsOwn()
+          && homeworkIsPublishedInMySchool(resource.data.assignmentId)
         );
-      allow delete: if isAdmin();
+      allow delete: if isAdmin() && inMySchool(resource.data);
     }
 
-    match /progressSummaries/{summaryId} {
-      allow read: if isTeacherLike() || (isSignedIn() && resource.data.userUid == request.auth.uid);
-      allow create: if isTeacherLike() && request.resource.data.keys().hasOnly(allowedProgressKeys());
-      allow update: if isTeacherLike() && request.resource.data.diff(resource.data).changedKeys().hasOnly(allowedProgressKeys());
-      allow delete: if isAdmin();
-    }
-
-    match /units/{unitId} {
-      allow read: if isSignedIn();
-      allow write: if isTeacherLike();
-    }
-
-    match /assignments/{assignmentId} {
-      allow read: if isSignedIn();
-      allow write: if isTeacherLike();
-    }
-
-    match /aiRuns/{runId} {
-      allow read: if isTeacherLike();
-      allow create: if isActiveAccount();
-      allow update, delete: if isTeacherLike();
-    }
-
-    // --- Homework assignments ---
+    // ── Homework ──────────────────────────────────────────────────────────────
     function allowedHomeworkKeys() {
       return [
         'id',
+        'schoolId',
         'title',
         'description',
         'dueAt',
         'status', // draft | published | archived
         'totalPoints',
-        'questions', // legacy
-        'questionRefs', // Kahoot-style
+        'questions', // answer-free copy
+        'questionRefs',
         'createdBy',
         'createdAt',
         'updatedAt',
@@ -224,99 +236,86 @@ service cloud.firestore {
     }
 
     match /homeworkAssignments/{assignmentId} {
-      // Staff see everything; everyone else only published homework (the app queries status == published).
-      allow read: if isTeacherLike() || (isActiveAccount() && resource.data.status == 'published');
+      // Staff see all of their school's homework; everyone else only its published homework.
+      allow read: if inMySchool(resource.data)
+        && (isTeacherLike() || (isActiveAccount() && resource.data.status == 'published'));
 
       allow create: if isTeacherLike()
+        && inMySchool(request.resource.data)
         && request.resource.data.keys().hasOnly(allowedHomeworkKeys())
         && homeworkStatusValid()
         && request.resource.data.createdBy == request.auth.uid;
 
       allow update: if isTeacherLike()
-        && request.resource.data.diff(resource.data).changedKeys().hasOnly(allowedHomeworkKeys())
+        && inMySchool(resource.data)
+        && request.resource.data.schoolId == resource.data.schoolId
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(allowedHomeworkKeys())
         && homeworkStatusValid()
-        && (
-          isAdmin()
-          || resource.data.get('createdBy', null) == request.auth.uid
-        );
+        && (isAdmin() || resource.data.get('createdBy', null) == request.auth.uid);
 
-      allow delete: if isAdmin();
+      allow delete: if isAdmin() && inMySchool(resource.data);
     }
 
-    // --- Answer keys: the full questions (with answers) for each homework. Staff only. ---
+    // Answer keys: the full questions (with answers) for each homework. Staff of that school only.
     // homeworkAssignments/{id} holds an answer-free copy that students may read.
     match /homeworkAnswerKeys/{assignmentId} {
-      allow read: if isTeacherLike();
-      allow write: if isTeacherLike()
+      allow read: if isTeacherLike() && inMySchool(resource.data);
+      allow create: if isTeacherLike()
+        && inMySchool(request.resource.data)
+        && (
+          !exists(/databases/$(database)/documents/homeworkAssignments/$(assignmentId))
+          || (
+            inMySchool(get(/databases/$(database)/documents/homeworkAssignments/$(assignmentId)).data)
+            && (isAdmin() || get(/databases/$(database)/documents/homeworkAssignments/$(assignmentId)).data.get('createdBy', null) == request.auth.uid)
+          )
+        );
+      allow update: if isTeacherLike()
+        && inMySchool(resource.data)
+        && inMySchool(request.resource.data)
         && (
           isAdmin()
-          || !exists(/databases/$(database)/documents/homeworkAssignments/$(assignmentId))
           || get(/databases/$(database)/documents/homeworkAssignments/$(assignmentId)).data.get('createdBy', null) == request.auth.uid
         );
+      allow delete: if isAdmin() && inMySchool(resource.data);
     }
 
-    // --- Question Bank (Kahoot-style, shape aligned to UI mockDatabase) ---
+    // ── Question bank ─────────────────────────────────────────────────────────
     function allowedQuestionBankKeys() {
       return [
-        // common
-        'id',
-        'type',
-        'topic',
-        'points',
-        'timeLimitSec',
-        'media',
-        'tags',
-        'difficulty',
-
-        // UI-aligned content fields
-        'target_level',
-        'question_text',
-        'options',
-        'correct_answer',
-        'blanks',
-        'pairs',
-        'ideal_answer',
-        'grading_rubric',
-        'max_word_count',
-        'deleted',
-
+        'id', 'schoolId', 'shared',
+        'type', 'topic', 'points', 'timeLimitSec', 'media', 'tags', 'difficulty',
+        'target_level', 'question_text', 'options', 'correct_answer', 'blanks', 'pairs',
+        'ideal_answer', 'grading_rubric', 'max_word_count', 'deleted',
         // backward-compatible aliases (older editor/bridge)
-        'prompt',
-        'choices',
-        'correctChoiceIds',
-
-        // audit
-        'createdBy',
-        'createdAt',
-        'updatedAt',
-
-        // legacy
-        'classroomId'
+        'prompt', 'choices', 'correctChoiceIds',
+        'createdBy', 'createdAt', 'updatedAt'
       ];
     }
 
     match /questionBank/{questionId} {
-      allow read: if isTeacherLike();
+      // Own school's questions, plus questions from schools that chose to share theirs.
+      allow read: if isTeacherLike()
+        && mySchool() != ''
+        && (inMySchool(resource.data) || resource.data.shared == true);
 
+      // "shared" always follows the school's setting (the server updates it when the setting changes).
       allow create: if isTeacherLike()
+        && inMySchool(request.resource.data)
         && request.resource.data.keys().hasOnly(allowedQuestionBankKeys())
-        && request.resource.data.createdBy == request.auth.uid;
+        && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.get('shared', false) == mySchoolSharesQuestions();
 
       allow update: if isTeacherLike()
-        && request.resource.data.diff(resource.data).changedKeys().hasOnly(allowedQuestionBankKeys())
-        && (
-          isAdmin()
-          || resource.data.get('createdBy', null) == request.auth.uid
-        );
+        && inMySchool(resource.data)
+        && request.resource.data.schoolId == resource.data.schoolId
+        && request.resource.data.get('shared', false) == resource.data.get('shared', false)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(allowedQuestionBankKeys())
+        && (isAdmin() || resource.data.get('createdBy', null) == request.auth.uid);
 
-      allow delete: if isAdmin();
+      allow delete: if isAdmin() && inMySchool(resource.data);
     }
 
-    // Per-user AI provider config. Only the server (Admin SDK) writes it; a browser write could
-    // point someone else's stored key at a URL the writer controls.
-    match /aiProviderConfigs/{uid} {
-      allow read: if isAdmin() || isSelf(uid);
-      allow write: if false;
-    }
+    // Everything else (old collections such as students, classrooms, progressSummaries,
+    // aiProviderConfigs, appSettings, schoolSecrets) is closed to browsers.
   }
 }

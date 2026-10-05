@@ -17,6 +17,7 @@ import {
   Activity,
   Heart,
   KeyRound,
+  Building2,
 } from 'lucide-react';
 
 import TeacherHomeworkPage from './pages/TeacherHomeworkPage.jsx';
@@ -27,13 +28,15 @@ import './style.css';
 import Teacher from './pages/Teacher.jsx';
 import AdminPage from './pages/Admin.jsx';
 import AiSettingsPage from './pages/AiSettings.jsx';
+import SchoolsPage from './pages/Schools.jsx';
+import JoinSchool from './pages/JoinSchool.jsx';
 import Dashboard from './pages/Dashboard.jsx';
 import PlaceholderTab from './pages/PlaceholderTab.jsx';
 import Landing from './pages/Landing.jsx';
 import ParentPage from './pages/Parent.jsx';
 import AssistantBubble from './components/AssistantBubble.jsx';
 import { ToastProvider, useToast } from './components/Toast.jsx';
-import { firebaseEnabled, firebaseInit, signInWithGoogle, signOut } from './services/firebase.js';
+import { firebaseEnabled, firebaseInit, getSchool, signInWithGoogle, signOut } from './services/firebase.js';
 import { ROLE_LABELS, canAccess, homePathFor, isBlockedAccount, normalizeRole } from './permissions.js';
 
 // Every sidebar entry; each one is shown only to roles that may open it (see permissions.js).
@@ -65,6 +68,7 @@ const NAV_GROUPS = [
       { to: '/analytics', label: '分析', icon: Activity },
       { to: '/admin', label: '管理後台', icon: Settings, end: true },
       { to: '/admin/ai-settings', label: 'AI 設定', icon: KeyRound },
+      { to: '/admin/schools', label: '學校管理', icon: Building2, platformOnly: true },
     ],
   },
 ];
@@ -77,6 +81,7 @@ const TITLES = [
   ['/parents', '家長通知'],
   ['/parent', '我的孩子'],
   ['/admin/ai-settings', 'AI 設定'],
+  ['/admin/schools', '學校管理'],
   ['/admin', '管理後台'],
   ['/analytics', '分析'],
   ['/classroom', '班級管理'],
@@ -127,7 +132,7 @@ function OpenAssistant({ role }) {
   return <Navigate to={homePathFor(role)} replace />;
 }
 
-function Shell({ user, onLogout, children }) {
+function Shell({ user, schoolName, onLogout, children }) {
   const location = useLocation();
   const role = normalizeRole(user?.role);
 
@@ -138,7 +143,7 @@ function Shell({ user, onLogout, children }) {
   }, [location.pathname]);
 
   const groups = NAV_GROUPS
-    .map((g) => ({ ...g, items: g.items.filter((it) => canAccess(role, it.to)) }))
+    .map((g) => ({ ...g, items: g.items.filter((it) => canAccess(role, it.to) && (!it.platformOnly || user?.platformAdmin)) }))
     .filter((g) => g.items.length);
 
   const initials = String(user?.name || '')
@@ -152,7 +157,7 @@ function Shell({ user, onLogout, children }) {
     .toUpperCase();
 
   const displayName = String(user?.name || '').replace(/\s*\(.*\)\s*/, '');
-  const eyebrow = `${displayName}${ROLE_LABELS[role] ? ` · ${ROLE_LABELS[role]}` : ''}${user?.demo ? ' · 示範模式' : ''}`;
+  const eyebrow = `${schoolName ? `${schoolName} · ` : ''}${displayName}${ROLE_LABELS[role] ? ` · ${ROLE_LABELS[role]}` : ''}${user?.demo ? ' · 示範模式' : ''}`;
 
   return (
     <div className="appShell">
@@ -248,6 +253,7 @@ function AppRoutes({ user }) {
       <Route path="/chat" element={<OpenAssistant role={normalizeRole(user?.role)} />} />
       <Route path="/admin" element={<AdminPage user={user} />} />
       <Route path="/admin/ai-settings" element={<AiSettingsPage user={user} />} />
+      <Route path="/admin/schools" element={<SchoolsPage user={user} />} />
       <Route path="/analytics" element={<PlaceholderTab title="分析" />} />
 
       <Route path="*" element={<PlaceholderTab title="找不到頁面" />} />
@@ -261,6 +267,14 @@ function AppBody() {
   const [fbReady, setFbReady] = useState(false);
   const [authReady, setAuthReady] = useState(false);
   const [signingIn, setSigningIn] = useState(false);
+  const [schoolName, setSchoolName] = useState('');
+
+  useEffect(() => {
+    let live = true;
+    setSchoolName('');
+    if (user?.schoolId && !user?.demo) getSchool(user.schoolId).then((s) => { if (live) setSchoolName(s?.name || ''); });
+    return () => { live = false; };
+  }, [user?.schoolId, user?.demo]);
 
   useEffect(() => {
     let mounted = true;
@@ -319,12 +333,17 @@ function AppBody() {
     return <Landing fbReady={fbReady} signingIn={signingIn} onLogin={onLogin} onDemo={onDemo} />;
   }
 
+  // New accounts first choose a school (the platform admin can work without one).
+  if (!user.demo && !user.schoolId && !user.platformAdmin) {
+    return <JoinSchool user={user} onLogout={onLogout} onJoined={(u) => { if (u) { setUser(u); window.__qc_user = u; } }} />;
+  }
+
   const blocked = isBlockedAccount(user);
   if (blocked) {
     return (
       <FullScreenNotice
         title={blocked === 'suspended' ? '帳戶已停用' : '帳戶審核中'}
-        body={blocked === 'suspended' ? '此帳戶已被學校管理員停用。如有疑問，請聯絡學校。' : '學校管理員確認你的帳戶後，便可以開始使用。'}
+        body={blocked === 'suspended' ? '此帳戶已被學校管理員停用。如有疑問，請聯絡學校。' : `${schoolName || '學校'}的管理員確認你的帳戶並設定角色後，便可以開始使用。`}
         action={<button type="button" className="qcBtn qcBtnSecondary" onClick={onLogout}>登出</button>}
       />
     );
@@ -342,7 +361,7 @@ function AppBody() {
   }
 
   return (
-    <Shell user={user} onLogout={onLogout}>
+    <Shell user={user} schoolName={schoolName} onLogout={onLogout}>
       <RoleGate role={role}>
         <AppRoutes user={user} />
       </RoleGate>
