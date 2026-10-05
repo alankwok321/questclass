@@ -36,6 +36,7 @@ import PlaceholderTab from './pages/PlaceholderTab.jsx';
 import Landing from './pages/Landing.jsx';
 import ParentPage from './pages/Parent.jsx';
 import AssistantBubble from './components/AssistantBubble.jsx';
+import Avatar from './components/Avatar.jsx';
 import { ToastProvider, useToast } from './components/Toast.jsx';
 import { ConfirmProvider } from './components/Confirm.jsx';
 import { firebaseEnabled, firebaseInit, getSchool, listSchools, signInWithGoogle, signOut } from './services/firebase.js';
@@ -177,15 +178,6 @@ function Shell({ user, schoolName, activeSchoolId = '', platformOnly = false, on
       && (!platformOnly || it.to.startsWith('/admin'))) }))
     .filter((g) => g.items.length);
 
-  const initials = String(user?.name || '')
-    .replace(/\(.*\)/, '')
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean)
-    .map((w) => w[0])
-    .join('')
-    .slice(0, 2)
-    .toUpperCase();
 
   const displayName = String(user?.name || '').replace(/\s*\(.*\)\s*/, '');
   const roleLabel = user?.platformAdmin ? '平台管理員' : ROLE_LABELS[role];
@@ -213,19 +205,7 @@ function Shell({ user, schoolName, activeSchoolId = '', platformOnly = false, on
 
         <div className="sidebarFooter">
           <div className="profileCard">
-            <div
-              aria-hidden="true"
-              style={{
-                width: 34, height: 34, borderRadius: 999, flexShrink: 0, overflow: 'hidden',
-                background: role === 'parent' ? '#248A3D' : '#0071E3', color: '#fff',
-                display: 'grid', placeItems: 'center', fontSize: 13, fontWeight: 600,
-              }}
-            >
-              {user?.photoURL ? (
-                <img src={user.photoURL} alt="" width={34} height={34} style={{ width: 34, height: 34, objectFit: 'cover' }}
-                  onError={(e) => { e.currentTarget.style.display = 'none'; }} />
-              ) : (initials || '?')}
-            </div>
+            <Avatar photoURL={user?.photoURL} name={user?.name} size={34} tint={role === 'parent' ? '#248A3D' : '#0071E3'} />
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontWeight: 600, fontSize: 13, lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {displayName || '—'}

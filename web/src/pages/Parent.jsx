@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Flame, Users } from 'lucide-react';
 import { getMyChildrenOverview } from '../services/firebase.js';
+import Avatar from '../components/Avatar.jsx';
 
 const DAY = 24 * 60 * 60 * 1000;
 
@@ -101,12 +102,14 @@ export default function ParentPage() {
                 <button key={c.uid} type="button" role="tab" aria-selected={on} onClick={() => setActive(i)} style={{
                   height: 32, padding: '0 16px', border: 0, borderRadius: 7, cursor: 'pointer', fontSize: 13, color: '#1D1D1F',
                   fontWeight: on ? 600 : 500, background: on ? '#FFFFFF' : 'transparent', boxShadow: on ? '0 1px 3px rgba(0,0,0,0.12)' : 'none',
-                }}>{c.name || '子女'}</button>
+                }}><span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Avatar photoURL={c.photoURL} name={c.name} size={20} tint="#248A3D" />{c.name || '子女'}</span></button>
               );
             })}
           </div>
         ) : (
-          <div style={{ fontSize: 15, fontWeight: 600 }}>{child.name}</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 15, fontWeight: 600 }}>
+            <Avatar photoURL={child.photoURL} name={child.name} size={32} tint="#248A3D" />{child.name}
+          </div>
         )}
       </div>
 

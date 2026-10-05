@@ -537,3 +537,20 @@ test('submitHomework: marked homework cannot be handed in again', async () => {
   assert.match(r.error, /已批改/);
   assert.equal(b.writes.length, 0);
 });
+
+test('the Google account photo is used (and kept up to date) for the signed-in user', async () => {
+  const b = makeBridge({ users: users() }, { uid: 't1' });
+  const u = b.fb._normalizeUser({ uid: 't1', email: 't@x.hk', photoURL: 'https://lh3.googleusercontent.com/new' }, { role: 'teacher', photoURL: 'https://old' });
+  assert.equal(u.photoURL, 'https://lh3.googleusercontent.com/new');
+  await b.fb._ensureProfile({ uid: 't1', email: 't@x.hk', photoURL: 'https://lh3.googleusercontent.com/new' }, { id: 't1', ...users().t1, photoURL: 'https://old' });
+  assert.equal(b.writes[0].data.photoURL, 'https://lh3.googleusercontent.com/new');
+});
+
+test('student lists carry each student\'s photo', async () => {
+  const store = { users: { ...users(), stu1: { ...users().stu1, photoURL: 'https://p/1' } }, submissions: { s1: { schoolId: 'A', studentUid: 'stu1', assignmentId: 'h1' } } };
+  const b = makeBridge(store, { uid: 't1' });
+  const cls = await b.fb.listStudentsForClassroom('5A');
+  assert.equal(cls.students.find((s) => s.uid === 'stu1').photoURL, 'https://p/1');
+  const subs = await b.fb.listSubmissionsForAssignment('h1');
+  assert.equal(subs.submissions[0].studentPhotoURL, 'https://p/1');
+});

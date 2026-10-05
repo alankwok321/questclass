@@ -11,6 +11,7 @@ import {
 import { generateQuestions, suggestHomeworkDetails } from '../services/api.js';
 import QuestionTypeBadge, { formatTypeLabel } from '../components/QuestionTypeBadge.jsx';
 import QuestionPreview from '../components/QuestionPreview.jsx';
+import Avatar from '../components/Avatar.jsx';
 
 const EMPTY_FORM = { title: '', description: '', dueAt: '', targetType: 'all', targetClass: '', targetStudentUids: [] };
 
@@ -519,14 +520,7 @@ function SubmissionsView({ assignment, onBack }) {
                       display: 'flex', alignItems: 'center', gap: 14,
                     }}
                   >
-                    <div style={{
-                      width: 36, height: 36, borderRadius: 999, flexShrink: 0,
-                      background: 'linear-gradient(135deg,#0071E3,#60A5FA)',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      color: '#fff', fontWeight: 700, fontSize: 14,
-                    }}>
-                      {(sub.studentName || '?')[0].toUpperCase()}
-                    </div>
+                    <Avatar photoURL={sub.studentPhotoURL} name={sub.studentName} size={36} />
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontWeight: 700, fontSize: 14, color: '#1D1D1F' }}>
                         {sub.studentName || '未知學生'}

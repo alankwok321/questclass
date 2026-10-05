@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Flame } from 'lucide-react';
 import { loadDashboardData } from '../services/dashboard.js';
+import Avatar from '../components/Avatar.jsx';
 
 // Students below this mastery are flagged (matches the Firestore bridge's 需關注學生 metric).
 const FOCUS_THRESHOLD = 75;
@@ -57,6 +58,7 @@ function profileOf(s) {
   return {
     id: s?.uid || s?.id || s?.name,
     name: s?.name || p.name || '—',
+    photoURL: s?.photoURL || '',
     level: p.currentLevel ?? p.level ?? null,
     xp,
     next,
@@ -184,9 +186,7 @@ export default function Dashboard() {
                 return (
                   <div role="row" key={s.id || i} style={{ display: 'grid', gridTemplateColumns: '1.3fr 1.6fr 0.8fr 0.8fr 1.3fr', gap: 12, alignItems: 'center', padding: '12px 4px', borderBottom: '1px solid #F0F0F3' }}>
                     <div role="cell" style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
-                      <span aria-hidden="true" style={{ width: 36, height: 36, borderRadius: 999, background: TINTS[i % TINTS.length], color: '#fff', display: 'grid', placeItems: 'center', fontWeight: 600, fontSize: 15, flexShrink: 0 }}>
-                        {String(s.name).charAt(0)}
-                      </span>
+                      <Avatar photoURL={s.photoURL} name={s.name} size={36} tint={TINTS[i % TINTS.length]} />
                       <span style={{ fontSize: 15, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.name}</span>
                     </div>
                     <div role="cell" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -217,9 +217,7 @@ export default function Dashboard() {
             <h2 id="dash-focus" className="qcSectionTitle" style={{ marginBottom: 6 }}>今天值得跟進</h2>
             {focus.length ? focus.map((s, i) => (
               <div key={s.id || i} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 0', borderTop: i ? '1px solid #F0F0F3' : 0 }}>
-                <span aria-hidden="true" style={{ width: 36, height: 36, borderRadius: 999, background: '#FFE5E3', color: '#D70015', display: 'grid', placeItems: 'center', fontWeight: 700, fontSize: 15, flexShrink: 0 }}>
-                  {String(s.name).charAt(0)}
-                </span>
+                <Avatar photoURL={s.photoURL} name={s.name} size={36} tint="#FFE5E3" color="#D70015" />
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 2, flexGrow: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 15, fontWeight: 600 }}>{s.name} · 掌握度 {s.mastery}%</div>
                   {s.weakness ? <div style={{ fontSize: 13, color: '#6E6E73' }}>弱項：{s.weakness}</div> : null}

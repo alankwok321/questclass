@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useToast } from '../components/Toast.jsx';
+import Avatar from '../components/Avatar.jsx';
 import { listSchools } from '../services/firebase.js';
 import { saveSchoolSettings } from '../services/api.js';
 import { useConfirm } from '../components/Confirm.jsx';
@@ -191,12 +192,16 @@ export default function AdminPage({ user }) {
               <button key={u.uid} type="button" onClick={() => setSelectedUid(u.uid)} style={{
                 textAlign: 'left', border: 0, borderRadius: 14, padding: 10, cursor: 'pointer',
                 background: u.uid === selectedUid ? 'rgba(0,113,227,0.10)' : '#F2F2F7',
+                display: 'flex', alignItems: 'center', gap: 10,
               }}>
+                <Avatar photoURL={u.photoURL} name={u.name || u.email} size={32} />
+                <div style={{ minWidth: 0, flex: 1 }}>
                 <div style={{ fontWeight: 600, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{u.name || u.email || u.uid}</div>
                 <div style={{ marginTop: 2, color: '#6E6E73', fontSize: 11, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {ROLE_NAMES[String(u.role || '').toLowerCase()] || '—'}
                   {u.class ? ` · ${u.class}` : ''}
                   {(u.accountStatus || 'active') !== 'active' ? <span style={{ color: u.accountStatus === 'review' ? '#B25000' : '#D70015' }}> · {STATUS_NAMES[u.accountStatus] || u.accountStatus}</span> : null}
+                </div>
                 </div>
               </button>
             ))}
@@ -208,9 +213,12 @@ export default function AdminPage({ user }) {
             <div style={{ color: '#6E6E73' }}>尚未選擇使用者</div>
           ) : (
             <div style={{ display: 'grid', gap: 14 }}>
-              <div>
-                <div style={{ fontWeight: 700, fontSize: 17 }}>{selectedUser.name || '—'}</div>
-                <div style={{ color: '#6E6E73', fontSize: 13, marginTop: 2 }}>{selectedUser.email || selectedUser.uid}</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <Avatar photoURL={selectedUser.photoURL} name={selectedUser.name || selectedUser.email} size={48} />
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontWeight: 700, fontSize: 17 }}>{selectedUser.name || '—'}</div>
+                  <div style={{ color: '#6E6E73', fontSize: 13, marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis' }}>{selectedUser.email || selectedUser.uid}</div>
+                </div>
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 10 }}>
@@ -266,6 +274,7 @@ export default function AdminPage({ user }) {
                         return (
                           <label key={u.uid} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderBottom: '1px solid #F0F0F3', cursor: 'pointer', background: on ? 'rgba(0,113,227,0.06)' : 'transparent' }}>
                             <input type="checkbox" checked={on} onChange={() => setForm((f) => ({ ...f, childUids: on ? f.childUids.filter((x) => x !== u.uid) : [...f.childUids, u.uid] }))} />
+                            <Avatar photoURL={u.photoURL} name={u.name || u.email} size={24} />
                             <span style={{ fontSize: 14, fontWeight: 500 }}>{u.name || u.email || u.uid}</span>
                             <span style={{ fontSize: 12, color: '#6E6E73', marginLeft: 'auto' }}>{u.class || u.email || ''}</span>
                           </label>

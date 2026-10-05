@@ -74,7 +74,7 @@ window.QuestClassFirebase = {
       email,
       name,
       role,
-      photoURL: profile?.photoURL || user.photoURL || '',
+      photoURL: user.photoURL || profile?.photoURL || '', // the Google account's current photo first
       schoolId: String(profile?.schoolId || ''),
       platformAdmin: profile?.platformAdmin === true,
       class: String(profile?.class || ''),
@@ -691,6 +691,7 @@ window.QuestClassFirebase = {
           uid: childUid,
           name: child.name || '',
           class: child.class || '',
+          photoURL: child.photoURL || '',
           studentProfile: child.studentProfile || {},
           homework: this._homeworkFor(all, childUid, child),
           submissions,
@@ -979,7 +980,7 @@ window.QuestClassFirebase = {
         sdk.where('schoolId', '==', me.schoolId), sdk.where('role', '==', 'student'), sdk.where('class', '==', cls), sdk.limit(200)));
       const students = snap.docs.map((doc) => {
         const u = this._docData(doc);
-        return u ? { id: doc.id, uid: doc.id, name: u.name || '', class: u.class || '', studentProfile: u.studentProfile || {} } : null;
+        return u ? { id: doc.id, uid: doc.id, name: u.name || '', photoURL: u.photoURL || '', class: u.class || '', studentProfile: u.studentProfile || {} } : null;
       }).filter(Boolean);
       return { ok: true, classroom: { id: cls, name: cls }, students };
     } catch (error) {
@@ -1077,16 +1078,18 @@ window.QuestClassFirebase = {
       // Fetch student names in one batch (up to 10 per IN query)
       const uids = [...new Set(submissions.map(s => s.studentUid).filter(Boolean))];
       const nameMap = {};
+      const photoMap = {};
       await Promise.all(uids.map(async (uid) => {
         try {
           const u = this._docData(await sdk.getDoc(sdk.doc(db, 'users', uid)));
-          if (u) nameMap[uid] = u.name || u.email || uid;
+          if (u) { nameMap[uid] = u.name || u.email || uid; photoMap[uid] = u.photoURL || ''; }
         } catch { /* ignore */ }
       }));
 
       const enriched = submissions.map(s => ({
         ...s,
         studentName: nameMap[s.studentUid] || s.studentUid || '未知學生',
+        studentPhotoURL: photoMap[s.studentUid] || '',
       }));
 
       return { ok: true, submissions: enriched };
