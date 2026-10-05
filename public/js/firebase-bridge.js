@@ -960,7 +960,9 @@ window.QuestClassFirebase = {
       }
       const me = check.me || {};
       const isStudent = String(me.role || 'student').toLowerCase() === 'student';
-      if (isStudent && !this._homeworkFor([a], check.authUser.uid, me).length) {
+      // Teachers and admins only preview 我的作業; a hand-in from them would count as a student's.
+      if (!isStudent || me.platformAdmin) return { ok: false, error: '只有學生可以提交作業（老師和管理員只能預覽）' };
+      if (!this._homeworkFor([a], check.authUser.uid, me).length) {
         return { ok: false, error: '這份作業沒有指派給你' };
       }
       if (!me.schoolId || a.schoolId !== me.schoolId) return { ok: false, error: '這份作業不屬於你的學校' };

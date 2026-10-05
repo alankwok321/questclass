@@ -262,7 +262,7 @@ function AppRoutes({ user }) {
 
       <Route path="/teacher-homework" element={<TeacherHomeworkPage />} />
       <Route path="/teacher-question-bank" element={<TeacherQuestionBank />} />
-      <Route path="/student-homework" element={<StudentHomework />} />
+      <Route path="/student-homework" element={<StudentHomework user={user} />} />
       <Route path="/parent" element={<ParentPage />} />
 
       {/* The old homework editors were replaced by 出作業; their addresses now lead there. */}

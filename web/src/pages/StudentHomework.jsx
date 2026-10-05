@@ -262,8 +262,10 @@ function CompletedDetail({ assignment, submission, onBack, onGraded }) {
 }
 
 // ── Main Page ─────────────────────────────────────────────────────────────────
-export default function StudentHomework() {
+export default function StudentHomework({ user }) {
   const confirm = useConfirm();
+  // Teachers and admins can open this page to see what students see, but not hand in.
+  const preview = Boolean(user) && (String(user.role || '').toLowerCase() !== 'student' || Boolean(user.platformAdmin));
   const [view, setView] = useState('list');      // 'list' | 'answer' | 'review'
   const [items, setItems] = useState([]);
   const [mySubmissions, setMySubmissions] = useState({}); // assignmentId → submission
@@ -281,7 +283,7 @@ export default function StudentHomework() {
     try {
       const [hwRes, subRes] = await Promise.all([
         listMyHomework(50),
-        listMySubmissions(100),
+        preview ? null : listMySubmissions(100),
       ]);
       if (hwRes?.ok) setItems(hwRes.items || []);
       if (subRes?.ok) {
@@ -292,7 +294,7 @@ export default function StudentHomework() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [preview]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -437,9 +439,13 @@ export default function StudentHomework() {
                   已作答 {answeredCount} / {questions.length} 題
                 </span>
                 <button onClick={() => setView('list')} style={btnGhost} disabled={submitting}>取消</button>
-                <button onClick={onSubmit} style={btnPrimary} disabled={submitting}>
-                  {submitting ? '送出中…' : '送出作業'}
-                </button>
+                {preview ? (
+                  <button style={btnPrimary} disabled title="老師和管理員只能預覽，不能提交">預覽模式 · 不能提交</button>
+                ) : (
+                  <button onClick={onSubmit} style={btnPrimary} disabled={submitting}>
+                    {submitting ? '送出中…' : '送出作業'}
+                  </button>
+                )}
               </div>
             </>
           )}
@@ -469,7 +475,7 @@ export default function StudentHomework() {
   return (
     <div style={{ display: 'grid', gap: 16, gridTemplateColumns: 'minmax(0, 1fr)' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-        <div style={{ color: '#6E6E73', fontSize: 15 }}>查看並完成老師指派的作業</div>
+        <div style={{ color: '#6E6E73', fontSize: 15 }}>{preview ? '預覽模式：這裡顯示學生看到的作業。老師和管理員可以打開作答畫面，但不能提交。' : '查看並完成老師指派的作業'}</div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <div role="tablist" aria-label="篩選作業" style={{ display: 'inline-flex', padding: 2, borderRadius: 9, background: '#E3E3E8' }}>
             {tabs.map((t) => {
@@ -571,7 +577,7 @@ export default function StudentHomework() {
                 ) : due?.tone === 'danger' && due.text === '已過期' ? (
                   <button type="button" className="qcBtn qcBtnSecondary" disabled title="已過截止時間，不能再提交">已過期</button>
                 ) : (
-                  <button type="button" onClick={() => openAnswer(a)} className="qcBtn qcBtnPrimary">開始作答</button>
+                  <button type="button" onClick={() => openAnswer(a)} className="qcBtn qcBtnPrimary">{preview ? '預覽' : '開始作答'}</button>
                 )}
               </div>
             );

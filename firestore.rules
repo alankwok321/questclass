@@ -200,6 +200,8 @@ service cloud.firestore {
       // homework of their school, without a score or feedback.
       allow create: if (
           isActiveAccount()
+          && userRole() == 'student'
+          && !isPlatformAdmin()
           && inMySchool(request.resource.data)
           && request.resource.data.studentUid == request.auth.uid
           && submissionId == request.resource.data.assignmentId + '_' + request.auth.uid

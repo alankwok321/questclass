@@ -428,6 +428,16 @@ test('submitHomework refuses drafts and homework not assigned to the student', a
   assert.equal((await other.fb.submitHomework({ assignmentId: 'h2' })).ok, true, 'own class (6b vs 6B)');
 });
 
+test('submitHomework: teachers and admins only preview, they cannot hand in', async () => {
+  for (const uid of ['t1', 'adm']) {
+    const b = makeBridge({ users: users(), homeworkAssignments: homework() }, { uid });
+    const r = await b.fb.submitHomework({ assignmentId: 'h1', answers: [] });
+    assert.equal(r.ok, false, uid);
+    assert.match(r.error, /只有學生/);
+    assert.equal(b.writes.length, 0);
+  }
+});
+
 // --- answer keys kept out of student-readable homework ---
 const fullQuestions = () => ([
   { id: 'q1', type: 'MULTIPLE_CHOICE', question_text: 'Pick', options: [{ id: 'A', text: '4/6', is_correct: true }, { id: 'B', text: '3/4', is_correct: false }], points: 2 },
