@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { useToast } from '../components/Toast.jsx';
 import Avatar from '../components/Avatar.jsx';
 import { listSchools } from '../services/firebase.js';
-import { renameClass, saveSchoolSettings } from '../services/api.js';
+import { saveSchoolSettings } from '../services/api.js';
 import { useConfirm } from '../components/Confirm.jsx';
 
 function isAdmin(user) {
@@ -30,7 +30,6 @@ export default function AdminPage({ user }) {
   const selectedUser = useMemo(() => users.find((u) => u.uid === selectedUid) || null, [users, selectedUid]);
   const [form, setForm] = useState({ role: 'student', accountStatus: 'active', class: '', childUids: [], schoolId: '', teacherClasses: null });
   const [newClass, setNewClass] = useState('');
-  const [renaming, setRenaming] = useState({ from: '', to: '' });
   const [childSearch, setChildSearch] = useState('');
 
   // The school whose settings (question-bank sharing) are shown.
@@ -111,24 +110,6 @@ export default function AdminPage({ user }) {
     }
   };
 
-  const onRenameClass = async (e) => {
-    e.preventDefault();
-    const to = renaming.to.trim();
-    if (!renaming.from || !to || to === renaming.from) { setRenaming({ from: '', to: '' }); return; }
-    setSaving(true);
-    try {
-      const r = await renameClass(renaming.from, to, platform ? viewSchool : undefined);
-      const u = r.updated || {};
-      toast.show(`已改為 ${to}：${u.students || 0} 位學生、${u.teachers || 0} 位老師、${u.homework || 0} 份作業、${u.submissions || 0} 份提交`);
-      setRenaming({ from: '', to: '' });
-      await refresh();
-    } catch (err) {
-      toast.show(err.message || '改名失敗');
-    } finally {
-      setSaving(false);
-    }
-  };
-
   const onToggleShare = async () => {
     if (!settingsSchool) return;
     const next = !settingsSchool.shareQuestionBank;
@@ -156,8 +137,6 @@ export default function AdminPage({ user }) {
     ...students.map((u) => String(u.class || '').trim()),
     ...users.flatMap((u) => (Array.isArray(u.teacherClasses) ? u.teacherClasses : [])),
   ].filter(Boolean))].sort((a, b) => a.localeCompare(b, 'zh-Hant', { numeric: true }));
-  const classCount = (c) => students.filter((u) => String(u.class || '').trim() === c).length;
-  const teachersOf = (c) => users.filter((u) => String(u.role || '').toLowerCase() === 'teacher' && Array.isArray(u.teacherClasses) && u.teacherClasses.includes(c)).length;
   const pickedClasses = Array.isArray(form.teacherClasses) ? form.teacherClasses : [];
   const toggleTeacherClass = (c) => setForm((f) => {
     const list = Array.isArray(f.teacherClasses) ? f.teacherClasses : [];
@@ -207,34 +186,6 @@ export default function AdminPage({ user }) {
             <span style={{ display: 'block', width: 27, height: 27, borderRadius: 999, background: '#fff', boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
               transform: settingsSchool.shareQuestionBank ? 'translateX(20px)' : 'none', transition: 'transform .2s' }} />
           </button>
-        </div>
-      ) : null}
-
-      {settingsSchool && classNames.length ? (
-        <div className="qcCard" style={{ display: 'grid', gap: 10 }}>
-          <div>
-            <div style={{ fontWeight: 700 }}>班別</div>
-            <div style={{ fontSize: 13, color: '#6E6E73', marginTop: 4 }}>改名會同時更新學生、老師權限、作業和提交記錄。</div>
-          </div>
-          <div style={{ display: 'grid', gap: 6 }}>
-            {classNames.map((c) => (
-              <div key={c} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderRadius: 12, background: '#F5F5F7', flexWrap: 'wrap' }}>
-                {renaming.from === c ? (
-                  <form onSubmit={onRenameClass} style={{ display: 'flex', gap: 8, flex: 1, minWidth: 220 }}>
-                    <input autoFocus value={renaming.to} onChange={(e) => setRenaming({ from: c, to: e.target.value })} maxLength={40} aria-label="新的班別名稱" style={{ ...inputStyle, padding: '6px 10px' }} />
-                    <button type="submit" className="qcBtn qcBtnPrimary qcBtnSmall" disabled={saving}>儲存</button>
-                    <button type="button" className="qcBtn qcBtnSecondary qcBtnSmall" onClick={() => setRenaming({ from: '', to: '' })}>取消</button>
-                  </form>
-                ) : (
-                  <>
-                    <span style={{ fontWeight: 600, fontSize: 14, minWidth: 60 }}>{c}</span>
-                    <span style={{ fontSize: 12, color: '#6E6E73', flex: 1 }}>{classCount(c)} 位學生 · {teachersOf(c)} 位指定老師</span>
-                    <button type="button" className="qcLink" style={{ fontSize: 13 }} onClick={() => setRenaming({ from: c, to: c })}>改名</button>
-                  </>
-                )}
-              </div>
-            ))}
-          </div>
         </div>
       ) : null}
 
