@@ -39,20 +39,50 @@ function getServerProviderConfig() {
   };
 }
 
+// AI providers the server will talk to. Without this, anyone could use the server to send
+// requests to any address (including internal ones). Extend with AI_ALLOWED_HOSTS (comma-separated).
+function allowedProviderHosts() {
+  const hosts = new Set(['openrouter.ai', 'api.openai.com', 'api.deepseek.com', 'generativelanguage.googleapis.com', 'api.groq.com', 'api.together.xyz', 'api.mistral.ai']);
+  for (const v of [process.env.OPENAI_BASE_URL, process.env.OPENROUTER_BASE_URL]) {
+    try { if (v) hosts.add(new URL(v).hostname.toLowerCase()); } catch { /* ignore */ }
+  }
+  String(process.env.AI_ALLOWED_HOSTS || '').split(',').map((h) => h.trim().toLowerCase()).filter(Boolean).forEach((h) => hosts.add(h));
+  return hosts;
+}
+
+function isAllowedProviderUrl(raw) {
+  try {
+    const u = new URL(String(raw || ''));
+    return u.protocol === 'https:' && !u.username && !u.password && !u.search && !u.hash
+      && allowedProviderHosts().has(u.hostname.toLowerCase());
+  } catch {
+    return false;
+  }
+}
+
+function providerUrlError() {
+  const err = new Error('不支援這個 AI 服務網址（只接受已允許的 https 服務，例如 https://openrouter.ai/api/v1）');
+  err.status = 400;
+  return err;
+}
+
 function getProviderConfig(body = {}) {
   const bodyKey = String(body.apiKey || '').trim();
   const server = getServerProviderConfig();
-  // A caller-supplied base URL is only honoured together with the caller's own key.
-  // Otherwise anyone could point the server's secret key at a URL they control.
+  // A caller-supplied base URL is only honoured together with the caller's own key,
+  // and only for allowed provider hosts.
   if (bodyKey) {
+    const apiBaseUrl = String(body.apiBaseUrl || server.apiBaseUrl).trim().replace(/\/+$/, '');
+    if (!isAllowedProviderUrl(apiBaseUrl)) throw providerUrlError();
     return {
       apiKey: bodyKey,
-      apiBaseUrl: String(body.apiBaseUrl || server.apiBaseUrl).trim().replace(/\/+$/, ''),
+      apiBaseUrl,
       model: String(body.model || server.model).trim(),
       source: 'request',
     };
   }
-  return { ...server, model: String(body.model || server.model).trim() };
+  // On the school's key the model is fixed by AI_MODEL, so nobody can pick an expensive one.
+  return { ...server };
 }
 
 function getEncryptionKey() {
@@ -104,11 +134,28 @@ function getFirebaseAdmin() {
   };
 }
 
+function httpError(status, message) {
+  const err = new Error(message);
+  err.status = status;
+  return err;
+}
+
 async function verifyUserFromToken(idToken) {
   if (!idToken) return null;
   const { auth, db } = getFirebaseAdmin();
-  const decoded = await auth.verifyIdToken(idToken);
-  const userSnap = await db.collection('users').doc(decoded.uid).get();
+  let decoded;
+  try {
+    decoded = await auth.verifyIdToken(idToken);
+  } catch {
+    throw httpError(401, '登入已過期，請重新登入');
+  }
+  let userSnap;
+  try {
+    userSnap = await db.collection('users').doc(decoded.uid).get();
+  } catch (e) {
+    // Usually FIREBASE_SERVICE_ACCOUNT_JSON is missing on the server.
+    throw httpError(500, '伺服器無法讀取 Firestore（請檢查 FIREBASE_SERVICE_ACCOUNT_JSON 設定）：' + (e?.message || 'unknown error'));
+  }
   const profile = userSnap.exists ? userSnap.data() : {};
   return {
     uid: decoded.uid,
@@ -118,10 +165,27 @@ async function verifyUserFromToken(idToken) {
   };
 }
 
-function canManageStudent(user, targetUid) {
+// Admins: anyone. Teachers: themselves and student accounts only (not admins or other teachers).
+// Everyone else: only themselves.
+async function canManageStudent(user, targetUid) {
   if (!user || !targetUid) return false;
-  if (user.role === 'admin' || user.role === 'teacher') return true;
-  return user.uid === targetUid;
+  if (user.uid === targetUid) return true;
+  if (user.role === 'admin') return true;
+  if (user.role !== 'teacher') return false;
+  const { db } = getFirebaseAdmin();
+  const snap = await db.collection('users').doc(targetUid).get();
+  return snap.exists && String(snap.data()?.role || '').toLowerCase() === 'student';
+}
+
+// Admin-SDK endpoints bypass the Firestore rules, so they must check the account status themselves.
+function requireActive(actor) {
+  if (actor && actor.accountStatus && actor.accountStatus !== 'active') {
+    throw httpError(403, actor.accountStatus === 'suspended' ? '此帳號已停用' : '帳戶審核中，暫時不能使用這個功能');
+  }
+}
+
+function sendError(res, e, fallback) {
+  return res.status(e?.status || 500).json({ error: e?.message || fallback });
 }
 
 // Same page permissions as web/src/permissions.js, applied to the AI endpoints.
@@ -131,7 +195,7 @@ const AI_ROLES = {
 };
 
 async function resolveProviderConfig(body = {}, allowedRoles = null) {
-  let cfg = getProviderConfig(body);
+  let cfg = getProviderConfig(body); // throws 400 for a non-allowed provider URL
   const firebaseOn = getFirebaseRuntimeConfig().enabled;
 
   if (!body?.idToken) {
@@ -144,19 +208,10 @@ async function resolveProviderConfig(body = {}, allowedRoles = null) {
     return cfg;
   }
 
-  let actor;
-  try {
-    actor = await verifyUserFromToken(body.idToken);
-  } catch {
-    const err = new Error('登入已過期，請重新登入');
-    err.status = 401;
-    throw err;
-  }
+  const actor = await verifyUserFromToken(body.idToken); // 401 bad token, 500 config problem
   if (!actor) return cfg;
-  if (actor.accountStatus === 'suspended') {
-    const err = new Error('此帳號已停用');
-    err.status = 403;
-    throw err;
+  if (actor.accountStatus === 'suspended' || actor.accountStatus === 'review') {
+    throw httpError(403, actor.accountStatus === 'suspended' ? '此帳號已停用' : '帳戶審核中，暫時不能使用 AI 功能');
   }
   if (allowedRoles && !allowedRoles.includes(actor.role)) {
     const err = new Error('你的角色不能使用這個 AI 功能');
@@ -164,7 +219,7 @@ async function resolveProviderConfig(body = {}, allowedRoles = null) {
     throw err;
   }
   const targetUid = String(body.uid || '').trim() || actor.uid;
-  if (!canManageStudent(actor, targetUid)) {
+  if (!(await canManageStudent(actor, targetUid))) {
     const err = new Error('Insufficient role to use this student config');
     err.status = 403;
     throw err;
@@ -182,9 +237,12 @@ async function resolveProviderConfig(body = {}, allowedRoles = null) {
     err.status = 500;
     throw err;
   }
+  const storedBase = String(data?.provider?.apiBaseUrl || cfg.apiBaseUrl || 'https://openrouter.ai/api/v1').replace(/\/+$/, '');
+  // Never send a stored key to a host that isn't an allowed provider.
+  if (!isAllowedProviderUrl(storedBase)) throw providerUrlError();
   return {
     apiKey: storedKey,
-    apiBaseUrl: String(data?.provider?.apiBaseUrl || cfg.apiBaseUrl || 'https://openrouter.ai/api/v1').replace(/\/+$/, ''),
+    apiBaseUrl: storedBase,
     model: String(data?.provider?.model || cfg.model || 'openai/gpt-4.1-mini')
   };
 }
@@ -235,7 +293,9 @@ async function callChatCompletion({ system, user, history = [], apiKey, apiBaseU
         return { ok: true, status: 200, text, data, usedBaseUrl: b };
       }
 
-      last = { status: response.status, error: data.error?.message || raw || 'Upstream API error', usedBaseUrl: b };
+      // Only pass on the provider's own error message, never its raw response body.
+      const upstreamMsg = typeof data.error?.message === 'string' ? data.error.message.slice(0, 300) : '';
+      last = { status: response.status, error: upstreamMsg || `AI 服務回應錯誤（${response.status}）`, usedBaseUrl: b };
       // Only fallback baseUrl variants on 404/405.
       if (![404, 405].includes(response.status)) break;
     }
@@ -309,9 +369,10 @@ app.post('/api/ai-config/get', async (req, res) => {
     const { idToken, uid } = req.body || {};
     const actor = await verifyUserFromToken(idToken);
     if (!actor) return res.status(401).json({ error: 'Unauthorized' });
+    requireActive(actor);
 
     const targetUid = String(uid || '').trim() || actor.uid;
-    if (!canManageStudent(actor, targetUid)) return res.status(403).json({ error: 'Insufficient role to manage this user config' });
+    if (!(await canManageStudent(actor, targetUid))) return res.status(403).json({ error: 'Insufficient role to manage this user config' });
 
     const { db } = getFirebaseAdmin();
     const snap = await db.collection('aiProviderConfigs').doc(targetUid).get();
@@ -330,7 +391,7 @@ app.post('/api/ai-config/get', async (req, res) => {
       updatedAt: data.updatedAt || null,
     });
   } catch (error) {
-    return res.status(500).json({ error: error?.message || 'get ai config failed' });
+    return sendError(res, error, 'get ai config failed');
   }
 });
 
@@ -339,10 +400,13 @@ app.post('/api/ai-config/upsert', async (req, res) => {
     const { idToken, uid, apiKey, apiBaseUrl, model } = req.body || {};
     const actor = await verifyUserFromToken(idToken);
     if (!actor) return res.status(401).json({ error: 'Unauthorized' });
+    requireActive(actor);
 
     const targetUid = String(uid || '').trim() || actor.uid;
-    if (!canManageStudent(actor, targetUid)) return res.status(403).json({ error: 'Insufficient role to manage this student config' });
+    if (!(await canManageStudent(actor, targetUid))) return res.status(403).json({ error: 'Insufficient role to manage this student config' });
     if (!String(apiKey || '').trim()) return res.status(400).json({ error: 'apiKey required' });
+    const wantedBase = String(apiBaseUrl || 'https://openrouter.ai/api/v1').trim().replace(/\/+$/, '');
+    if (!isAllowedProviderUrl(wantedBase)) throw providerUrlError();
 
     const enc = encryptApiKey(apiKey);
     const { db } = getFirebaseAdmin();
@@ -359,7 +423,7 @@ app.post('/api/ai-config/upsert', async (req, res) => {
 
     return res.json({ ok: true, uid: targetUid });
   } catch (error) {
-    return res.status(500).json({ error: error?.message || 'save ai config failed' });
+    return sendError(res, error, 'save ai config failed');
   }
 });
 
@@ -368,6 +432,7 @@ app.post('/api/admin/seed', async (req, res) => {
     const { idToken, mode = 'merge' } = req.body || {};
     const actor = await verifyUserFromToken(idToken);
     if (!actor) return res.status(401).json({ error: 'Unauthorized' });
+    requireActive(actor);
     if (String(actor.role || '').toLowerCase() !== 'admin') return res.status(403).json({ error: 'Admin only' });
 
     const seedPath = path.join(__dirname, 'seeds', 'sample-firestore-data.json');
@@ -404,7 +469,7 @@ app.post('/api/admin/seed', async (req, res) => {
 
     return res.json({ ...result, ts: new Date().toISOString() });
   } catch (error) {
-    return res.status(500).json({ error: error?.message || 'seed failed' });
+    return sendError(res, error, 'seed failed');
   }
 });
 
@@ -413,6 +478,7 @@ app.post('/api/admin/migrate-users-only', async (req, res) => {
     const { idToken, mode = 'merge' } = req.body || {};
     const actor = await verifyUserFromToken(idToken);
     if (!actor) return res.status(401).json({ error: 'Unauthorized' });
+    requireActive(actor);
     if (String(actor.role || '').toLowerCase() !== 'admin') return res.status(403).json({ error: 'Admin only' });
 
     const { db } = getFirebaseAdmin();
@@ -446,8 +512,11 @@ app.post('/api/admin/migrate-users-only', async (req, res) => {
         migratedFrom: { studentId: doc.id, at: new Date().toISOString() }
       };
 
+      // Keep an existing role: a teacher or admin who also has a students record must not be demoted.
+      const existing = await db.collection('users').doc(uid).get();
+      const existingRole = existing.exists ? String(existing.data()?.role || '').trim() : '';
       await db.collection('users').doc(uid).set({
-        role: 'student',
+        role: existingRole || 'student',
         classroomIds: Array.isArray(s.classroomIds) ? s.classroomIds : [],
         studentProfile,
         updatedAt: FieldValue.serverTimestamp(),
@@ -458,7 +527,7 @@ app.post('/api/admin/migrate-users-only', async (req, res) => {
 
     return res.json({ ok: true, merged, skipped, ts: new Date().toISOString() });
   } catch (error) {
-    return res.status(500).json({ error: error?.message || 'migrate failed' });
+    return sendError(res, error, 'migrate failed');
   }
 });
 

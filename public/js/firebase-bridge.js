@@ -782,9 +782,24 @@ window.QuestClassFirebase = {
     if (!assignmentId) return { ok: false, error: 'assignmentId required' };
 
     try {
-      const aSnap = await sdk.getDoc(sdk.doc(db, 'homeworkAssignments', assignmentId));
+      let aSnap;
+      try {
+        aSnap = await sdk.getDoc(sdk.doc(db, 'homeworkAssignments', assignmentId));
+      } catch (e) {
+        // Students can only read published homework, so a draft or archived one is a permission error.
+        if (/permission/i.test(String(e?.code || e?.message || ''))) return { ok: false, error: '這份作業目前不接受提交' };
+        throw e;
+      }
       const a = this._docData(aSnap);
-      if (!a) return { ok: false, error: 'assignment not found' };
+      if (!a) return { ok: false, error: '找不到這份作業' };
+      if (a.status !== 'published') return { ok: false, error: '這份作業目前不接受提交' };
+      const me = check.me || {};
+      const isStudent = String(me.role || 'student').toLowerCase() === 'student';
+      if (isStudent && !this._homeworkFor([a], check.authUser.uid, me).length) {
+        return { ok: false, error: '這份作業沒有指派給你' };
+      }
+      // Recorded so the teacher dashboard can count hand-ins per class.
+      const classroomId = Array.isArray(me.classroomIds) && me.classroomIds.length ? String(me.classroomIds[0]) : '';
 
       const answers = Array.isArray(payload.answers) ? payload.answers : [];
       const subId = `${assignmentId}_${check.authUser.uid}`;
@@ -796,6 +811,7 @@ window.QuestClassFirebase = {
         assignmentTitle: a.title || '',
         topic: 'homework',
         status: 'submitted',
+        ...(classroomId ? { classroomId } : {}),
         answers,
         submittedAt: sdk.serverTimestamp(),
         updatedAt: sdk.serverTimestamp(),

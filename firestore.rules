@@ -13,9 +13,17 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
     }
 
+    // Accounts an admin set to "review" or "suspended" lose every role-based permission here,
+    // not just in the app's screens.
+    function isActiveAccount() {
+      return isSignedIn()
+        && (!exists(/databases/$(database)/documents/users/$(request.auth.uid))
+          || string(userDoc().get('accountStatus', 'active')).lower() == 'active');
+    }
+
     function userRole() {
       // Case-insensitive, and safe when the role field is missing.
-      return isSignedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+      return isSignedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid)) && isActiveAccount()
         ? string(userDoc().get('role', '')).lower()
         : null;
     }
@@ -55,7 +63,27 @@ service cloud.firestore {
 
     // What a student may change when re-submitting their own, not-yet-marked homework.
     function studentResubmitKeys() {
-      return ['id', 'assignmentId', 'answers', 'assignmentTitle', 'topic', 'status', 'submittedAt', 'updatedAt'];
+      return ['id', 'assignmentId', 'answers', 'assignmentTitle', 'topic', 'status', 'submittedAt', 'updatedAt', 'classroomId'];
+    }
+
+    // Everything a student's first hand-in may contain (no score or feedback).
+    function studentSubmissionKeys() {
+      return ['id', 'assignmentId', 'studentUid', 'answers', 'assignmentTitle', 'topic', 'status', 'submittedAt', 'updatedAt', 'classroomId'];
+    }
+
+    // A student may only tag a hand-in with one of their own classes.
+    function classroomIdIsOwn() {
+      return !('classroomId' in request.resource.data)
+        || request.resource.data.classroomId in userDoc().get('classroomIds', []);
+    }
+
+    function homeworkIsPublished(assignmentId) {
+      return string(get(/databases/$(database)/documents/homeworkAssignments/$(assignmentId)).data.get('status', '')) == 'published';
+    }
+
+    // Fields a user may set on their own profile when it is first created.
+    function selfCreateKeys() {
+      return ['name', 'email', 'role', 'requestedRole', 'learnerStage', 'roleNote', 'photoURL', 'createdAt', 'updatedAt', 'lastLoginAt'];
     }
 
     function allowedProgressKeys() {
@@ -71,20 +99,18 @@ service cloud.firestore {
 
       // Self-registration always starts as a student; only an admin can grant other roles.
       // (Previously a new user could create their own doc with role "admin".)
+      // Only basic profile fields: no classes, status, notes or child links.
       allow create: if isSelf(userId)
-        && request.resource.data.keys().hasOnly(allowedUserKeys())
+        && request.resource.data.keys().hasOnly(selfCreateKeys())
         && request.resource.data.email == request.auth.token.email
         && request.resource.data.role == 'student'
-        && !('childUids' in request.resource.data)
-        && request.resource.data.requestedRole in ['', 'student', 'teacher', 'admin', 'parent']
-        && (!('accountStatus' in request.resource.data) || request.resource.data.accountStatus in ['active', 'review', 'suspended'])
-        && (!('issueFlag' in request.resource.data) || request.resource.data.issueFlag is bool);
+        && request.resource.data.get('requestedRole', '') in ['', 'student', 'teacher', 'admin', 'parent'];
 
       allow update: if (
           isSelf(userId)
           && request.resource.data.diff(resource.data).changedKeys().hasOnly(allowedUserKeys())
-          && request.resource.data.role == resource.data.role
-          && request.resource.data.email == resource.data.email
+          && request.resource.data.get('role', null) == resource.data.get('role', null)
+          && request.resource.data.get('email', null) == resource.data.get('email', null)
           && (!('requestedRole' in request.resource.data) || request.resource.data.requestedRole in ['', 'student', 'teacher', 'admin', 'parent'])
           && selfProfileKeysAreSafe()
         ) || (
@@ -123,15 +149,28 @@ service cloud.firestore {
       allow read: if isTeacherLike()
         || (isSignedIn() && resource.data.studentUid == request.auth.uid)
         || isParentOf(resource.data.studentUid);
-      allow create: if (isSignedIn() && request.resource.data.studentUid == request.auth.uid) || isTeacherLike();
+      // A student may only hand in their own work, under the id "<assignmentId>_<uid>", to published
+      // homework, without a score or feedback. (Before, a student could grade themselves or create
+      // someone else's id first and block that student's hand-in.)
+      allow create: if isTeacherLike()
+        || (
+          isActiveAccount()
+          && request.resource.data.studentUid == request.auth.uid
+          && submissionId == request.resource.data.assignmentId + '_' + request.auth.uid
+          && request.resource.data.keys().hasOnly(studentSubmissionKeys())
+          && classroomIdIsOwn()
+          && request.resource.data.status == 'submitted'
+          && homeworkIsPublished(request.resource.data.assignmentId)
+        );
       allow update: if (isTeacherLike() && request.resource.data.diff(resource.data).changedKeys().hasOnly(allowedSubmissionKeys()))
         || (
-          isSignedIn()
+          isActiveAccount()
           && resource.data.studentUid == request.auth.uid
           && request.resource.data.studentUid == request.auth.uid
           && resource.data.get('status', 'submitted') == 'submitted'
           && request.resource.data.status == 'submitted'
           && request.resource.data.diff(resource.data).changedKeys().hasOnly(studentResubmitKeys())
+          && classroomIdIsOwn()
         );
       allow delete: if isAdmin();
     }
@@ -154,7 +193,8 @@ service cloud.firestore {
     }
 
     match /aiRuns/{runId} {
-      allow read, create: if isSignedIn();
+      allow read: if isTeacherLike();
+      allow create: if isActiveAccount();
       allow update, delete: if isTeacherLike();
     }
 
@@ -184,7 +224,8 @@ service cloud.firestore {
     }
 
     match /homeworkAssignments/{assignmentId} {
-      allow read: if isSignedIn() || isTeacherLike();
+      // Staff see everything; everyone else only published homework (the app queries status == published).
+      allow read: if isTeacherLike() || (isActiveAccount() && resource.data.status == 'published');
 
       allow create: if isTeacherLike()
         && request.resource.data.keys().hasOnly(allowedHomeworkKeys())
@@ -196,7 +237,7 @@ service cloud.firestore {
         && homeworkStatusValid()
         && (
           isAdmin()
-          || resource.data.createdBy == request.auth.uid
+          || resource.data.get('createdBy', null) == request.auth.uid
         );
 
       allow delete: if isAdmin();
@@ -253,16 +294,17 @@ service cloud.firestore {
         && request.resource.data.diff(resource.data).changedKeys().hasOnly(allowedQuestionBankKeys())
         && (
           isAdmin()
-          || resource.data.createdBy == request.auth.uid
+          || resource.data.get('createdBy', null) == request.auth.uid
         );
 
       allow delete: if isAdmin();
     }
 
-    // NEW: Per-user AI provider config (server stores encrypted secret; do not expose writes to students)
+    // Per-user AI provider config. Only the server (Admin SDK) writes it; a browser write could
+    // point someone else's stored key at a URL the writer controls.
     match /aiProviderConfigs/{uid} {
-      allow read: if isAdmin() || isTeacherLike() || isSelf(uid);
-      allow write: if isAdmin() || isTeacherLike();
+      allow read: if isAdmin() || isSelf(uid);
+      allow write: if false;
     }
   }
 }

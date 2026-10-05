@@ -17,8 +17,13 @@ async function withAuth(payload = {}) {
     let settings = {};
     try { settings = JSON.parse(settingsRaw) || {}; } catch { settings = {}; }
 
-    const getIdToken = window.QuestClassFirebase?.getIdToken;
-    const idToken = payload?.idToken || (getIdToken ? await getIdToken() : null);
+    // Call it as a method: the bridge's getIdToken uses `this`, so a detached reference threw
+    // and the request silently went out without a sign-in token.
+    const fb = window.QuestClassFirebase;
+    let idToken = payload?.idToken || null;
+    if (!idToken && typeof fb?.getIdToken === 'function') {
+      try { idToken = await fb.getIdToken(); } catch { idToken = null; }
+    }
 
     // Default: use logged-in user (actor) config on server.
     // If caller explicitly sets uid, keep it (admin/teacher acting for that user).

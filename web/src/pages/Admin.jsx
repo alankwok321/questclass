@@ -71,7 +71,8 @@ export default function AdminPage({ user }) {
 
   useEffect(() => {
     if (!selectedUser) return;
-    setAccountRole(selectedUser.role || '');
+    // Roles are stored case-insensitively elsewhere ("Teacher" works in the rules), so match the dropdown.
+    setAccountRole(String(selectedUser.role || 'student').trim().toLowerCase());
     setAccountStatus(selectedUser.accountStatus || 'active');
     setAdminNote(selectedUser.adminNote || '');
     setChildUids(Array.isArray(selectedUser.childUids) ? selectedUser.childUids : []);
@@ -103,6 +104,9 @@ export default function AdminPage({ user }) {
     try {
       const fb = window.QuestClassFirebase;
       if (!selectedUid) return toast.show('請先選擇使用者');
+      if (selectedUid === user?.uid && (accountRole !== 'admin' || accountStatus !== 'active')) {
+        return toast.show('不能移除自己的管理員權限或停用自己的帳戶，以免失去管理權限。');
+      }
 
       // 1) Save account settings (Firestore)
       const res = await fb.adminUpdateUserAccount?.(selectedUid, {
