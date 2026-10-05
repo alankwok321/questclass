@@ -18,6 +18,7 @@ import {
   Heart,
   KeyRound,
   Building2,
+  Menu,
 } from 'lucide-react';
 
 import TeacherHomeworkPage from './pages/TeacherHomeworkPage.jsx';
@@ -161,6 +162,9 @@ function SchoolSwitcher({ value }) {
 function Shell({ user, schoolName, activeSchoolId = '', platformOnly = false, onLogout, children }) {
   const location = useLocation();
   const role = normalizeRole(user?.role);
+  // Narrow screens: the sidebar is a drawer; close it after moving to another page.
+  const [navOpen, setNavOpen] = useState(false);
+  useEffect(() => { setNavOpen(false); }, [location.pathname]);
 
   const title = useMemo(() => {
     const p = location.pathname;
@@ -189,7 +193,8 @@ function Shell({ user, schoolName, activeSchoolId = '', platformOnly = false, on
 
   return (
     <div className="appShell">
-      <aside className="sidebar">
+      <div className={`navBackdrop ${navOpen ? 'navBackdropOpen' : ''}`} onClick={() => setNavOpen(false)} aria-hidden="true" />
+      <aside className={`sidebar ${navOpen ? 'sidebarOpen' : ''}`}>
         <div className="brand">
           <div className="brandMark" aria-hidden="true"><Star size={18} strokeWidth={2.2} /></div>
           QuestClass
@@ -237,7 +242,10 @@ function Shell({ user, schoolName, activeSchoolId = '', platformOnly = false, on
 
       <main className="canvas">
         <header className="header">
-          <div style={{ minWidth: 0 }}>
+          <button type="button" className="iconButton menuButton" aria-label="打開選單" aria-expanded={navOpen} onClick={() => setNavOpen(true)}>
+            <Menu size={20} strokeWidth={1.8} />
+          </button>
+          <div style={{ minWidth: 0, flex: 1 }}>
             <div className="hEyebrow">{eyebrow}</div>
             <h1 className="hTitle">{title}</h1>
           </div>

@@ -33,6 +33,7 @@ export default function SchoolsPage({ user }) {
   const counts = useMemo(() => {
     const out = {};
     for (const u of users) {
+      if (u.platformAdmin === true) continue; // platform admins belong to no school
       const k = u.schoolId || '';
       out[k] = out[k] || { total: 0 };
       out[k].total += 1;
