@@ -37,12 +37,31 @@ test('chat() attaches the signed-in user\'s ID token', async () => {
   assert.equal(sent[0].body.message, 'hi');
 });
 
-test('lessonLoop() attaches the token and local key settings', async () => {
+test('lessonLoop() and generateQuestions() send the token but never an API key, even if an old one is stored', async () => {
   const sent = setup({ settings: { apiKey: ' sk-local ', apiBaseUrl: 'https://openrouter.ai/api/v1', apiModel: 'm' } });
   await api.lessonLoop({ topic: 'x' });
-  assert.equal(sent[0].body.idToken, 'tok-123');
-  assert.equal(sent[0].body.apiKey, 'sk-local');
-  assert.equal(sent[0].body.model, 'm');
+  globalThis.fetch = async (url, init) => {
+    sent.push({ url, body: JSON.parse(init.body) });
+    return { ok: true, status: 200, json: async () => ({ questions: [{ q: '1' }] }) };
+  };
+  await api.generateQuestions({ message: 'make' });
+  for (const s of sent) {
+    assert.equal(s.body.idToken, 'tok-123');
+    assert.equal(s.body.apiKey, undefined);
+    assert.equal(s.body.apiBaseUrl, undefined);
+    assert.equal(s.body.model, undefined);
+  }
+  assert.equal(sent[1].body.format, 'json');
+});
+
+test('admin AI settings helpers call the admin endpoints with the token', async () => {
+  const sent = setup();
+  await api.getAiSettings();
+  await api.saveAiSettings({ apiKey: 'sk-new', model: 'm' });
+  await api.testAiSettings();
+  assert.deepEqual(sent.map((s) => s.url), ['/api/admin/ai-settings/get', '/api/admin/ai-settings/save', '/api/admin/ai-settings/test']);
+  assert.ok(sent.every((s) => s.body.idToken === 'tok-123'));
+  assert.equal(sent[1].body.apiKey, 'sk-new');
 });
 
 test('signed out: no token, request still goes out', async () => {

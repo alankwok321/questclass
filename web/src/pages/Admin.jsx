@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useToast } from '../components/Toast.jsx';
-import { loadSettings } from '../services/settings.js';
-import { getAiConfig, upsertAiConfig } from '../services/api.js';
+import { Link } from 'react-router-dom';
 import { getIdToken } from '../services/firebase.js';
 
 function isAdmin(user) {
@@ -14,16 +13,6 @@ export default function AdminPage({ user }) {
   const [err, setErr] = useState('');
   const [remoteSaving, setRemoteSaving] = useState(false);
   const [classroomIdsText, setClassroomIdsText] = useState('');
-
-  const initialSettings = useMemo(() => {
-    const s = loadSettings();
-    return {
-      apiBaseUrl: s.apiBaseUrl || 'https://openrouter.ai/api/v1',
-      apiModel: s.apiModel || 'openai/gpt-4.1-mini',
-      apiKey: s.apiKey || ''
-    };
-  }, []);
-  const [apiForm, setApiForm] = useState(initialSettings);
 
   const [users, setUsers] = useState([]);
 
@@ -79,24 +68,6 @@ export default function AdminPage({ user }) {
     setChildSearch('');
     setClassroomIdsText(Array.isArray(selectedUser.classroomIds) ? selectedUser.classroomIds.join(', ') : String(selectedUser.classroomIds || ''));
 
-    // Load per-user AI config from Firestore when selection changes
-    (async () => {
-      try {
-        const idToken = await getIdToken();
-        if (!idToken) return;
-        const res = await getAiConfig({ idToken, uid: selectedUser.uid });
-        if (!res?.ok) return;
-        setApiForm(s => ({
-          ...s,
-          // do not prefill apiBaseUrl/model/key from server
-          apiBaseUrl: '',
-          apiModel: '',
-          apiKey: ''
-        }));
-      } catch {
-        // ignore
-      }
-    })();
   }, [selectedUser]);
 
   const onSaveAll = async () => {
@@ -108,7 +79,7 @@ export default function AdminPage({ user }) {
         return toast.show('不能移除自己的管理員權限或停用自己的帳戶，以免失去管理權限。');
       }
 
-      // 1) Save account settings (Firestore)
+      // Save account settings (Firestore)
       const res = await fb.adminUpdateUserAccount?.(selectedUid, {
         role: accountRole,
         accountStatus,
@@ -118,19 +89,6 @@ export default function AdminPage({ user }) {
         childUids: accountRole === 'parent' ? childUids : []
       });
       if (!res?.ok) throw new Error(res?.error || 'update failed');
-
-      // 2) Save per-user AI config only when a new key was typed ("留空=不更新 key").
-      if (String(apiForm.apiKey || '').trim()) {
-        const idToken = await getIdToken();
-        if (!idToken) throw new Error('帳號已儲存，但無法儲存 API Key：請先登入 Firebase');
-        await upsertAiConfig({
-        idToken,
-        uid: selectedUid,
-        apiKey: apiForm.apiKey || '',
-        apiBaseUrl: apiForm.apiBaseUrl || '',
-        model: apiForm.apiModel || ''
-        });
-      }
 
       toast.show('已儲存');
       await refresh();
@@ -189,9 +147,12 @@ export default function AdminPage({ user }) {
             <div style={{ fontWeight: 700, fontSize: 16 }}>Admin 控制台</div>
             <div style={{ color: '#6E6E73', fontWeight: 500, marginTop: 4, fontSize: 13 }}>users / students（Firestore）</div>
           </div>
-          <button type="button" onClick={refresh} disabled={loading} style={btnGhost}>
-            {loading ? '刷新中…' : '重新整理'}
-          </button>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <Link to="/admin/ai-settings" style={{ ...btnGhost, textDecoration: 'none', color: '#0071E3' }}>AI 設定</Link>
+            <button type="button" onClick={refresh} disabled={loading} style={btnGhost}>
+              {loading ? '刷新中…' : '重新整理'}
+            </button>
+          </div>
         </div>
         {err ? <div style={{ marginTop: 10, color: '#D70015', fontWeight: 600 }}>{err}</div> : null}
       </div>
@@ -291,24 +252,6 @@ export default function AdminPage({ user }) {
                 <label style={{ display: 'grid', gap: 6 }}>
                   <div style={label}>Classroom IDs（逗號分隔）</div>
                   <input value={classroomIdsText} onChange={(e) => setClassroomIdsText(e.target.value)} style={inputStyle} placeholder="classroom-001, classroom-002" />
-                </label>
-
-                <div style={{ height: 6 }} />
-                <div style={{ fontWeight: 700, marginBottom: 6 }}>API 設定</div>
-
-                <label style={{ display: 'grid', gap: 6 }}>
-                  <div style={label}>API Base URL</div>
-                  <input value={apiForm.apiBaseUrl} onChange={(e) => setApiForm(s => ({ ...s, apiBaseUrl: e.target.value }))} style={inputStyle} placeholder="https://openrouter.ai/api/v1" />
-                </label>
-
-                <label style={{ display: 'grid', gap: 6 }}>
-                  <div style={label}>Model</div>
-                  <input value={apiForm.apiModel} onChange={(e) => setApiForm(s => ({ ...s, apiModel: e.target.value }))} style={inputStyle} placeholder="openai/gpt-4.1-mini" />
-                </label>
-
-                <label style={{ display: 'grid', gap: 6 }}>
-                  <div style={label}>API Key（不會回填顯示）</div>
-                  <input value={apiForm.apiKey} onChange={(e) => setApiForm(s => ({ ...s, apiKey: e.target.value }))} style={inputStyle} placeholder="留空=不更新 key" type="password" />
                 </label>
 
                 <div style={{ display: 'flex', gap: 10, justifyContent: 'space-between', flexWrap: 'wrap' }}>

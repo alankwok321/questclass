@@ -1,5 +1,7 @@
 const state = require('../state.js');
 const SERVER_TS = { __fake: 'serverTimestamp' };
+const DELETE = { __fake: 'delete' };
+const isDelete = (v) => v && typeof v === 'object' && v.__fake === 'delete';
 const clone = (v) => (v === undefined ? v : JSON.parse(JSON.stringify(v)));
 function docRef(col, id) {
   return {
@@ -11,7 +13,9 @@ function docRef(col, id) {
     async set(payload, opts = {}) {
       state.writes.push({ path: `${col}/${id}`, data: clone(payload), opts: clone(opts) });
       state.data[col] = state.data[col] || {};
-      state.data[col][id] = opts.merge ? { ...(state.data[col][id] || {}), ...clone(payload) } : clone(payload);
+      const next = opts.merge ? { ...(state.data[col][id] || {}), ...clone(payload) } : clone(payload);
+      for (const k of Object.keys(next)) if (isDelete(next[k])) delete next[k]; // FieldValue.delete() (top-level fields)
+      state.data[col][id] = next;
     },
   };
 }
@@ -28,6 +32,7 @@ const db = {
 };
 module.exports = {
   getFirestore: () => db,
-  FieldValue: { serverTimestamp: () => SERVER_TS },
+  FieldValue: { serverTimestamp: () => SERVER_TS, delete: () => DELETE },
   SERVER_TS,
+  DELETE,
 };

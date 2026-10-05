@@ -66,23 +66,45 @@ function providerUrlError() {
   return err;
 }
 
-function getProviderConfig(body = {}) {
-  const bodyKey = String(body.apiKey || '').trim();
-  const server = getServerProviderConfig();
-  // A caller-supplied base URL is only honoured together with the caller's own key,
-  // and only for allowed provider hosts.
-  if (bodyKey) {
-    const apiBaseUrl = String(body.apiBaseUrl || server.apiBaseUrl).trim().replace(/\/+$/, '');
-    if (!isAllowedProviderUrl(apiBaseUrl)) throw providerUrlError();
-    return {
-      apiKey: bodyKey,
-      apiBaseUrl,
-      model: String(body.model || server.model).trim(),
-      source: 'request',
-    };
+// ── School AI settings ──────────────────────────────────────────────────────
+// One key for the whole school, set by an admin on the 「AI 設定」 page and stored encrypted in
+// Firestore (appSettings/ai, server-only). Falls back to the OPENROUTER_API_KEY / AI_MODEL env vars.
+// Keys sent by browsers are ignored.
+const AI_SETTINGS_DOC = ['appSettings', 'ai'];
+async function readStoredAiSettings() {
+  const { db } = getFirebaseAdmin();
+  const snap = await db.collection(AI_SETTINGS_DOC[0]).doc(AI_SETTINGS_DOC[1]).get();
+  return snap.exists ? (snap.data() || {}) : null;
+}
+
+async function getSchoolProviderConfig() {
+  const env = getServerProviderConfig();
+  let cfg = { ...env, source: env.apiKey ? 'env' : 'none' };
+  let stored = null;
+  try {
+    stored = await readStoredAiSettings();
+  } catch {
+    stored = null; // no Firestore access (e.g. demo mode): use the env vars
   }
-  // On the school's key the model is fixed by AI_MODEL, so nobody can pick an expensive one.
-  return { ...server };
+  if (stored) {
+    const base = String(stored?.provider?.apiBaseUrl || env.apiBaseUrl).replace(/\/+$/, '');
+    const model = String(stored?.provider?.model || env.model).trim();
+    let key = '';
+    if (stored?.secret?.ciphertext) {
+      try {
+        key = decryptApiKey(stored.secret);
+      } catch (e) {
+        throw httpError(500, '無法讀取已儲存的 AI key（請檢查 AI_CONFIG_ENCRYPTION_KEY）：' + (e?.message || 'decrypt failed'));
+      }
+    }
+    if (key) {
+      if (!isAllowedProviderUrl(base)) throw providerUrlError();
+      cfg = { apiKey: key, apiBaseUrl: base, model, source: 'school' };
+    } else if (env.apiKey) {
+      cfg = { ...env, model: model || env.model, source: 'env' };
+    }
+  }
+  return cfg;
 }
 
 function getEncryptionKey() {
@@ -93,7 +115,7 @@ function getEncryptionKey() {
 
 function encryptApiKey(value) {
   const key = getEncryptionKey();
-  if (!key) throw new Error('AI_CONFIG_ENCRYPTION_KEY is not configured');
+  if (!key) throw httpError(503, '伺服器未設定 AI_CONFIG_ENCRYPTION_KEY，無法儲存 API Key');
   const iv = crypto.randomBytes(12);
   const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
   const enc = Buffer.concat([cipher.update(String(value || ''), 'utf8'), cipher.final()]);
@@ -165,18 +187,6 @@ async function verifyUserFromToken(idToken) {
   };
 }
 
-// Admins: anyone. Teachers: themselves and student accounts only (not admins or other teachers).
-// Everyone else: only themselves.
-async function canManageStudent(user, targetUid) {
-  if (!user || !targetUid) return false;
-  if (user.uid === targetUid) return true;
-  if (user.role === 'admin') return true;
-  if (user.role !== 'teacher') return false;
-  const { db } = getFirebaseAdmin();
-  const snap = await db.collection('users').doc(targetUid).get();
-  return snap.exists && String(snap.data()?.role || '').toLowerCase() === 'student';
-}
-
 // Admin-SDK endpoints bypass the Firestore rules, so they must check the account status themselves.
 function requireActive(actor) {
   if (actor && actor.accountStatus && actor.accountStatus !== 'active') {
@@ -194,57 +204,18 @@ const AI_ROLES = {
   lessonLoop: ['admin', 'teacher'],
 };
 
+// Who may use AI, and with which settings. Always the school's settings; never a browser-sent key.
 async function resolveProviderConfig(body = {}, allowedRoles = null) {
-  let cfg = getProviderConfig(body); // throws 400 for a non-allowed provider URL
   const firebaseOn = getFirebaseRuntimeConfig().enabled;
-
-  if (!body?.idToken) {
-    // The school's own key is only for signed-in users when Firebase is set up.
-    if (cfg.source === 'server' && firebaseOn && cfg.apiKey) {
-      const err = new Error('請先登入才能使用 AI 功能');
-      err.status = 401;
-      throw err;
+  if (firebaseOn) {
+    if (!body?.idToken) throw httpError(401, '請先登入才能使用 AI 功能');
+    const actor = await verifyUserFromToken(body.idToken); // 401 bad token, 500 config problem
+    if (actor.accountStatus === 'suspended' || actor.accountStatus === 'review') {
+      throw httpError(403, actor.accountStatus === 'suspended' ? '此帳號已停用' : '帳戶審核中，暫時不能使用 AI 功能');
     }
-    return cfg;
+    if (allowedRoles && !allowedRoles.includes(actor.role)) throw httpError(403, '你的角色不能使用這個 AI 功能');
   }
-
-  const actor = await verifyUserFromToken(body.idToken); // 401 bad token, 500 config problem
-  if (!actor) return cfg;
-  if (actor.accountStatus === 'suspended' || actor.accountStatus === 'review') {
-    throw httpError(403, actor.accountStatus === 'suspended' ? '此帳號已停用' : '帳戶審核中，暫時不能使用 AI 功能');
-  }
-  if (allowedRoles && !allowedRoles.includes(actor.role)) {
-    const err = new Error('你的角色不能使用這個 AI 功能');
-    err.status = 403;
-    throw err;
-  }
-  const targetUid = String(body.uid || '').trim() || actor.uid;
-  if (!(await canManageStudent(actor, targetUid))) {
-    const err = new Error('Insufficient role to use this student config');
-    err.status = 403;
-    throw err;
-  }
-
-  const { db } = getFirebaseAdmin();
-  const snap = await db.collection('aiProviderConfigs').doc(targetUid).get();
-  if (!snap.exists || !snap.data()?.secret?.ciphertext) return cfg;
-  const data = snap.data() || {};
-  let storedKey;
-  try {
-    storedKey = decryptApiKey(data.secret || {});
-  } catch (e) {
-    const err = new Error('無法讀取已儲存的 AI key：' + (e?.message || 'decrypt failed'));
-    err.status = 500;
-    throw err;
-  }
-  const storedBase = String(data?.provider?.apiBaseUrl || cfg.apiBaseUrl || 'https://openrouter.ai/api/v1').replace(/\/+$/, '');
-  // Never send a stored key to a host that isn't an allowed provider.
-  if (!isAllowedProviderUrl(storedBase)) throw providerUrlError();
-  return {
-    apiKey: storedKey,
-    apiBaseUrl: storedBase,
-    model: String(data?.provider?.model || cfg.model || 'openai/gpt-4.1-mini')
-  };
+  return getSchoolProviderConfig();
 }
 
 // Keep the last few turns so the assistant remembers the conversation (bounded for cost).
@@ -364,66 +335,88 @@ app.post('/api/auth/sync-role', async (req, res) => {
   }
 });
 
-app.post('/api/ai-config/get', async (req, res) => {
+async function requireAdminActor(idToken) {
+  const actor = await verifyUserFromToken(idToken);
+  if (!actor) throw httpError(401, 'Unauthorized');
+  requireActive(actor);
+  if (actor.role !== 'admin') throw httpError(403, '只有管理員可以管理 AI 設定');
+  return actor;
+}
+
+function maskKey(key) {
+  const k = String(key || '');
+  return k.length > 8 ? `${k.slice(0, 3)}…${k.slice(-4)}` : (k ? '已設定' : '');
+}
+
+// Admin: read the school AI settings (never returns the key itself).
+app.post('/api/admin/ai-settings/get', async (req, res) => {
   try {
-    const { idToken, uid } = req.body || {};
-    const actor = await verifyUserFromToken(idToken);
-    if (!actor) return res.status(401).json({ error: 'Unauthorized' });
-    requireActive(actor);
-
-    const targetUid = String(uid || '').trim() || actor.uid;
-    if (!(await canManageStudent(actor, targetUid))) return res.status(403).json({ error: 'Insufficient role to manage this user config' });
-
-    const { db } = getFirebaseAdmin();
-    const snap = await db.collection('aiProviderConfigs').doc(targetUid).get();
-    if (!snap.exists) return res.json({ ok: true, uid: targetUid, provider: null, hasKey: false });
-    const data = snap.data() || {};
-
+    await requireAdminActor((req.body || {}).idToken);
+    const env = getServerProviderConfig();
+    const stored = await readStoredAiSettings();
     return res.json({
       ok: true,
-      uid: targetUid,
       provider: {
-        apiBaseUrl: String(data?.provider?.apiBaseUrl || '').trim(),
-        model: String(data?.provider?.model || '').trim(),
+        apiBaseUrl: String(stored?.provider?.apiBaseUrl || env.apiBaseUrl),
+        model: String(stored?.provider?.model || env.model),
       },
-      hasKey: Boolean(data?.secret?.ciphertext),
-      updatedBy: data.updatedBy || null,
-      updatedAt: data.updatedAt || null,
+      hasKey: Boolean(stored?.secret?.ciphertext),
+      keyHint: String(stored?.keyHint || ''),
+      envKeyConfigured: Boolean(env.apiKey),
+      encryptionConfigured: Boolean(getEncryptionKey()),
+      allowedHosts: [...allowedProviderHosts()].sort(),
+      updatedBy: stored?.updatedByEmail || stored?.updatedBy || null,
+      updatedAt: stored?.updatedAt?.toDate ? stored.updatedAt.toDate().toISOString() : (stored?.updatedAt || null),
     });
   } catch (error) {
-    return sendError(res, error, 'get ai config failed');
+    return sendError(res, error, 'get ai settings failed');
   }
 });
 
-app.post('/api/ai-config/upsert', async (req, res) => {
+// Admin: save the school AI settings. apiKey is optional (blank keeps the stored one);
+// clearKey removes it (AI then falls back to OPENROUTER_API_KEY, if set).
+app.post('/api/admin/ai-settings/save', async (req, res) => {
   try {
-    const { idToken, uid, apiKey, apiBaseUrl, model } = req.body || {};
-    const actor = await verifyUserFromToken(idToken);
-    if (!actor) return res.status(401).json({ error: 'Unauthorized' });
-    requireActive(actor);
+    const { idToken, apiKey, apiBaseUrl, model, clearKey } = req.body || {};
+    const actor = await requireAdminActor(idToken);
+    const base = String(apiBaseUrl || 'https://openrouter.ai/api/v1').trim().replace(/\/+$/, '');
+    if (!isAllowedProviderUrl(base)) throw providerUrlError();
+    const cleanModel = String(model || '').trim();
+    if (!cleanModel || cleanModel.length > 200) throw httpError(400, '請輸入模型名稱');
+    const key = String(apiKey || '').trim();
 
-    const targetUid = String(uid || '').trim() || actor.uid;
-    if (!(await canManageStudent(actor, targetUid))) return res.status(403).json({ error: 'Insufficient role to manage this student config' });
-    if (!String(apiKey || '').trim()) return res.status(400).json({ error: 'apiKey required' });
-    const wantedBase = String(apiBaseUrl || 'https://openrouter.ai/api/v1').trim().replace(/\/+$/, '');
-    if (!isAllowedProviderUrl(wantedBase)) throw providerUrlError();
-
-    const enc = encryptApiKey(apiKey);
-    const { db } = getFirebaseAdmin();
-    await db.collection('aiProviderConfigs').doc(targetUid).set({
-      uid: targetUid,
-      provider: {
-        apiBaseUrl: String(apiBaseUrl || 'https://openrouter.ai/api/v1').trim().replace(/\/+$/, ''),
-        model: String(model || 'openai/gpt-4.1-mini').trim()
-      },
-      secret: enc,
+    const update = {
+      provider: { apiBaseUrl: base, model: cleanModel },
       updatedBy: actor.uid,
-      updatedAt: FieldValue.serverTimestamp()
-    }, { merge: true });
-
-    return res.json({ ok: true, uid: targetUid });
+      updatedByEmail: actor.email || '',
+      updatedAt: FieldValue.serverTimestamp(),
+    };
+    if (key) {
+      update.secret = encryptApiKey(key); // needs AI_CONFIG_ENCRYPTION_KEY
+      update.keyHint = maskKey(key);
+    } else if (clearKey) {
+      update.secret = FieldValue.delete();
+      update.keyHint = '';
+    }
+    const { db } = getFirebaseAdmin();
+    await db.collection(AI_SETTINGS_DOC[0]).doc(AI_SETTINGS_DOC[1]).set(update, { merge: true });
+    return res.json({ ok: true });
   } catch (error) {
-    return sendError(res, error, 'save ai config failed');
+    return sendError(res, error, 'save ai settings failed');
+  }
+});
+
+// Admin: send a tiny request with the saved settings to check they work.
+app.post('/api/admin/ai-settings/test', async (req, res) => {
+  try {
+    await requireAdminActor((req.body || {}).idToken);
+    const cfg = await getSchoolProviderConfig();
+    if (!cfg.apiKey) return res.status(400).json({ ok: false, error: '尚未設定 API Key' });
+    const result = await callChatCompletion({ ...cfg, system: 'Reply with the single word: OK', user: 'ping', temperature: 0 });
+    if (!result.ok) return res.status(result.status || 502).json({ ok: false, error: result.error });
+    return res.json({ ok: true, model: cfg.model, source: cfg.source, reply: String(result.text || '').slice(0, 60) });
+  } catch (error) {
+    return sendError(res, error, 'ai test failed');
   }
 });
 
@@ -531,7 +524,7 @@ app.post('/api/admin/migrate-users-only', async (req, res) => {
   }
 });
 
-// Serve legacy static assets (but DO NOT auto-serve public/index.html on /)
+// Serve public/js (Firebase config + bridge). The old static pages were removed.
 app.use(express.static(publicDir, { index: false }));
 
 // Serve new React web app build at /app and for SPA routes (teacher/student/admin/chat/analytics)
@@ -567,60 +560,7 @@ app.post('/api/chat', async (req, res) => {
   }
 
   if (!cfg.apiKey) {
-    // Optional debug (no secrets): set {debug:true} in request body.
-    if (req.body?.debug) {
-      try {
-        const hasIdToken = Boolean(req.body?.idToken);
-        const hasBodyApiKey = Boolean(String(req.body?.apiKey || '').trim());
-        let actor = null;
-        let targetUid = null;
-        let cfgDoc = null;
-
-        if (hasIdToken) {
-          actor = await verifyUserFromToken(req.body.idToken);
-          if (actor) {
-            targetUid = String(req.body.uid || '').trim() || actor.uid;
-            const { db } = getFirebaseAdmin();
-            const snap = await db.collection('aiProviderConfigs').doc(targetUid).get();
-            if (snap.exists) {
-              const d = snap.data() || {};
-              const secret = d.secret || null;
-              cfgDoc = {
-                exists: true,
-                hasProvider: Boolean(d.provider),
-                hasSecret: Boolean(secret),
-                secretKeys: secret ? Object.keys(secret) : [],
-                providerKeys: d.provider ? Object.keys(d.provider) : [],
-                updatedBy: d.updatedBy || null,
-              };
-            } else {
-              cfgDoc = { exists: false };
-            }
-          }
-        }
-
-        return res.status(400).json({
-          error: 'AI chat is not configured. Ask admin/teacher to set student AI key or add one in settings.',
-          debug: {
-            hasIdToken,
-            hasBodyApiKey,
-            bodyKeys: Object.keys(req.body || {}),
-            actor,
-            targetUid,
-            cfgDoc,
-          }
-        });
-      } catch (e) {
-        return res.status(400).json({
-          error: 'AI chat is not configured. Ask admin/teacher to set student AI key or add one in settings.',
-          debug: { debugError: e?.message || String(e) }
-        });
-      }
-    }
-
-    return res.status(400).json({
-      error: 'AI chat is not configured. Ask admin/teacher to set student AI key or add one in settings.'
-    });
+    return res.status(400).json({ error: 'AI 尚未設定：請管理員到「AI 設定」頁面輸入 API Key。' });
   }
 
   const isStaff = actorRole === 'teacher' || actorRole === 'admin';
@@ -705,7 +645,7 @@ app.post('/api/teacher/lesson-loop', async (req, res) => {
 
   if (!cfg.apiKey) {
     return res.status(400).json({
-      error: 'Lesson loop is not configured. Ask admin/teacher to set student AI key or add one in settings.'
+      error: 'AI 尚未設定：請管理員到「AI 設定」頁面輸入 API Key。'
     });
   }
 
@@ -731,7 +671,7 @@ const legacyPageMap = {};
 
 // Every client-side route in web/src/App.jsx; keep in sync when adding pages.
 const spaRoutes = new Set(['/', '/dashboard', '/teacher', '/student', '/admin', '/chat', '/analytics', '/teacher-homework', '/student-homework',
-  '/teacher-question-bank', '/classroom', '/assignments', '/progress', '/reports', '/parents', '/parent', '/teacher-homework-legacy']);
+  '/teacher-question-bank', '/classroom', '/assignments', '/progress', '/reports', '/parents', '/parent', '/teacher-homework-legacy', '/admin/ai-settings']);
 const spaRoutePrefixes = ['/teacher-homework', '/student-homework', '/teacher-question-bank', '/teacher-homework-old'];
 
 app.get('*', (req, res) => {

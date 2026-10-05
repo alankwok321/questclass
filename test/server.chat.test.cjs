@@ -46,13 +46,20 @@ test('server key is never sent to a caller-supplied apiBaseUrl (Firebase off / d
   assert.equal(h.ai.last.headers.Authorization, 'Bearer ' + SERVER_KEY);
 });
 
-test('caller with their own key may use their own apiBaseUrl', async () => {
-  const r = await chat({ message: 'hi', apiKey: 'sk-mine', apiBaseUrl: 'https://my.llm.example/v1/', model: 'my-model' });
-  assert.equal(r.status, 200);
-  assert.equal(h.ai.last.url, 'https://my.llm.example/v1/chat/completions');
-  assert.equal(h.ai.last.headers.Authorization, 'Bearer sk-mine');
-  assert.equal(h.ai.last.body.model, 'my-model');
-  for (const c of h.ai.calls) assert.ok(!JSON.stringify(c).includes(SERVER_KEY));
+test('a caller-supplied apiKey / apiBaseUrl / model is ignored: only the school settings are used', async () => {
+  for (const body of [{ idToken: 'stu' }, { idToken: 'adm' }]) {
+    const r = await chat({ ...body, message: 'hi', apiKey: 'sk-mine', apiBaseUrl: 'https://my.llm.example/v1/', model: 'my-model' });
+    assert.equal(r.status, 200);
+    assert.equal(h.ai.last.url, 'https://openrouter.ai/api/v1/chat/completions');
+    assert.equal(h.ai.last.headers.Authorization, 'Bearer ' + SERVER_KEY);
+    assert.notEqual(h.ai.last.body.model, 'my-model');
+  }
+});
+
+test('with Firebase on, a caller key does not let a signed-out request through', async () => {
+  const r = await chat({ message: 'hi', apiKey: 'sk-mine' });
+  assert.equal(r.status, 401);
+  assert.equal(h.ai.calls.length, 0);
 });
 
 test('base URL without /v1 retries with /v1 only on 404, and the server key stays on the server URL', async () => {
@@ -114,9 +121,10 @@ test('user without a profile counts as a student', async () => {
   assert.match(sys().content, /learning coach/);
 });
 
-test('student cannot use another user\'s AI config (uid in body) → 403', async () => {
+test('a uid in the body changes nothing (there are no per-user AI configs)', async () => {
   const r = await chat({ idToken: 'stu', uid: 'stu2', message: 'hi' });
-  assert.equal(r.status, 403);
+  assert.equal(r.status, 200);
+  assert.equal(h.ai.last.headers.Authorization, 'Bearer ' + SERVER_KEY);
 });
 
 test('students get the tutor prompt and cannot override the system prompt', async () => {

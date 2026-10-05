@@ -1,26 +1,12 @@
-import React, { useEffect, useState } from 'react';
-import { lessonLoop, upsertAiConfig } from '../services/api.js';
-import { loadSettings, saveSettings, clearSettings } from '../services/settings.js';
-import { getIdToken } from '../services/firebase.js';
+import React, { useState } from 'react';
+import { lessonLoop } from '../services/api.js';
 import { useToast } from '../components/Toast.jsx';
 
 export default function Teacher() {
   const toast = useToast();
-  const [settings, setSettings] = useState(() => ({
-    apiBaseUrl: '',
-    apiModel: '',
-    apiKey: '',
-    aiStudentUid: '',
-    ...loadSettings(),
-  }));
-
   const [loop, setLoop] = useState({ steps: [], assignment: [], insight: '', teacherSummary: [] });
   const [loopLoading, setLoopLoading] = useState(false);
   const [loopErr, setLoopErr] = useState('');
-
-  useEffect(() => {
-    saveSettings(settings);
-  }, [settings]);
 
   const onRunLoop = async () => {
     setLoopErr('');
@@ -47,50 +33,8 @@ export default function Teacher() {
     }
   };
 
-  const onSaveRemote = async () => {
-    try {
-      const idToken = await getIdToken();
-      if (!idToken) {
-        toast.show('請先登入 Firebase');
-        return;
-      }
-      await upsertAiConfig({
-        idToken,
-        uid: String(settings.aiStudentUid || '').trim(),
-        apiKey: settings.apiKey || '',
-        apiBaseUrl: settings.apiBaseUrl || '',
-        model: settings.apiModel || ''
-      });
-      toast.show('已儲存到 Firebase');
-    } catch (e) {
-      toast.show(e.message || 'Save to Firebase failed');
-    }
-  };
-
   return (
     <div style={{ display: 'grid', gap: 16 }}>
-      <div className="card">
-        <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 12 }}>AI / Auth 設定</div>
-        <div style={{ display: 'grid', gap: 10 }}>
-          <label style={{ fontWeight: 600, fontSize: 12, color: '#6E6E73' }}>API Base URL</label>
-          <input value={settings.apiBaseUrl || ''} onChange={(e) => setSettings(s => ({ ...s, apiBaseUrl: e.target.value }))} placeholder="https://openrouter.ai/api/v1" style={inputStyle} />
-
-          <label style={{ fontWeight: 600, fontSize: 12, color: '#6E6E73' }}>Model</label>
-          <input value={settings.apiModel || ''} onChange={(e) => setSettings(s => ({ ...s, apiModel: e.target.value }))} placeholder="openai/gpt-4.1-mini" style={inputStyle} />
-
-          <label style={{ fontWeight: 600, fontSize: 12, color: '#6E6E73' }}>API Key</label>
-          <input type="password" value={settings.apiKey || ''} onChange={(e) => setSettings(s => ({ ...s, apiKey: e.target.value }))} placeholder="sk-..." style={inputStyle} />
-
-          <label style={{ fontWeight: 600, fontSize: 12, color: '#6E6E73' }}>Student UID（由 admin/teacher 代設可填）</label>
-          <input value={settings.aiStudentUid || ''} onChange={(e) => setSettings(s => ({ ...s, aiStudentUid: e.target.value }))} placeholder="留空=自己" style={inputStyle} />
-
-          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 4 }}>
-            <button type="button" onClick={() => { clearSettings(); setSettings({ apiBaseUrl: '', apiModel: '', apiKey: '', aiStudentUid: '' }); toast.show('已清除'); }} style={btnGhost}>清除</button>
-            <button type="button" onClick={onSaveRemote} style={btnGhost}>儲存到 Firebase（給學生）</button>
-          </div>
-        </div>
-      </div>
-
       <div className="card">
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
           <div style={{ fontWeight: 700, fontSize: 16 }}>AI 教學流程（lesson-loop）</div>
@@ -130,16 +74,6 @@ export default function Teacher() {
   );
 }
 
-const inputStyle = {
-  width: '100%',
-  padding: '10px 12px',
-  borderRadius: 10,
-  border: '1px solid #D2D2D7',
-  background: '#FFFFFF',
-  outline: 'none',
-  fontWeight: 500,
-};
-
 const btnPrimary = {
   border: 0,
   background: '#0071E3',
@@ -147,16 +81,6 @@ const btnPrimary = {
   padding: '10px 14px',
   borderRadius: 999,
   fontWeight: 600,
-  cursor: 'pointer',
-};
-
-const btnGhost = {
-  border: 0,
-  background: '#E3E3E8',
-  color: '#0071E3',
-  padding: '10px 14px',
-  borderRadius: 999,
-  fontWeight: 500,
   cursor: 'pointer',
 };
 

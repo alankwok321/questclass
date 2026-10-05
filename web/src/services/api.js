@@ -1,3 +1,9 @@
+// AI requests go through our server with the signed-in user's ID token. The server uses the
+// school's AI settings (set by an admin on 「AI 設定」); browsers never hold or send an API key.
+
+// Older versions stored API keys in this browser; remove them.
+try { window.localStorage?.removeItem('questclass_settings_v1'); } catch { /* ignore */ }
+
 export async function postJson(url, body) {
   const res = await fetch(url, {
     method: 'POST',
@@ -9,54 +15,24 @@ export async function postJson(url, body) {
   return data;
 }
 
+async function currentIdToken() {
+  // Call it as a method: the bridge's getIdToken uses `this`.
+  const fb = window.QuestClassFirebase;
+  if (typeof fb?.getIdToken !== 'function') return null;
+  try { return await fb.getIdToken(); } catch { return null; }
+}
+
 async function withAuth(payload = {}) {
-  // Attach idToken so server can resolve per-user provider config (aiProviderConfigs/{uid}).
-  // Also: if local settings has apiKey/baseUrl/model, attach them as a fallback.
-  try {
-    const settingsRaw = localStorage.getItem('questclass_settings_v1') || '{}';
-    let settings = {};
-    try { settings = JSON.parse(settingsRaw) || {}; } catch { settings = {}; }
-
-    // Call it as a method: the bridge's getIdToken uses `this`, so a detached reference threw
-    // and the request silently went out without a sign-in token.
-    const fb = window.QuestClassFirebase;
-    let idToken = payload?.idToken || null;
-    if (!idToken && typeof fb?.getIdToken === 'function') {
-      try { idToken = await fb.getIdToken(); } catch { idToken = null; }
-    }
-
-    // Default: use logged-in user (actor) config on server.
-    // If caller explicitly sets uid, keep it (admin/teacher acting for that user).
-    const uid = payload?.uid;
-
-    const withLocalFallback = {
-      ...payload,
-      // Only attach these if caller didn't already set them.
-      ...(payload?.apiKey ? {} : (settings.apiKey ? { apiKey: String(settings.apiKey).trim() } : {})),
-      ...(payload?.apiBaseUrl ? {} : (settings.apiBaseUrl ? { apiBaseUrl: String(settings.apiBaseUrl).trim() } : {})),
-      ...(payload?.model ? {} : (settings.apiModel ? { model: String(settings.apiModel).trim() } : {})),
-    };
-
-    if (!idToken) return withLocalFallback;
-
-    return {
-      ...withLocalFallback,
-      idToken,
-      ...(uid ? { uid } : {}),
-    };
-  } catch {
-    return payload;
-  }
+  const idToken = payload?.idToken || await currentIdToken();
+  return idToken ? { ...payload, idToken } : { ...payload };
 }
 
 export async function chat(payload) {
-  const body = await withAuth(payload);
-  return postJson('/api/chat', body);
+  return postJson('/api/chat', await withAuth(payload));
 }
 
 export async function lessonLoop(payload) {
-  const body = await withAuth(payload);
-  return postJson('/api/teacher/lesson-loop', body);
+  return postJson('/api/teacher/lesson-loop', await withAuth(payload));
 }
 
 // Ask the AI for questions as JSON. Surfaces the server's real error
@@ -65,7 +41,7 @@ export async function generateQuestions(body) {
   const res = await fetch('/api/chat', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ ...body, format: 'json' }),
+    body: JSON.stringify(await withAuth({ ...body, format: 'json' })),
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
@@ -77,10 +53,15 @@ export async function generateQuestions(body) {
   return questions;
 }
 
-export async function getAiConfig(payload) {
-  return postJson('/api/ai-config/get', payload);
+// Admin only: the school's AI settings.
+export async function getAiSettings() {
+  return postJson('/api/admin/ai-settings/get', await withAuth({}));
 }
 
-export async function upsertAiConfig(payload) {
-  return postJson('/api/ai-config/upsert', payload);
+export async function saveAiSettings(settings) {
+  return postJson('/api/admin/ai-settings/save', await withAuth(settings));
+}
+
+export async function testAiSettings() {
+  return postJson('/api/admin/ai-settings/test', await withAuth({}));
 }

@@ -16,6 +16,7 @@ import {
   Star,
   Activity,
   Heart,
+  KeyRound,
 } from 'lucide-react';
 
 import TeacherHomeworkPage from './pages/TeacherHomeworkPage.jsx';
@@ -25,6 +26,7 @@ import StudentHomework from './pages/StudentHomework.jsx';
 import './style.css';
 import Teacher from './pages/Teacher.jsx';
 import AdminPage from './pages/Admin.jsx';
+import AiSettingsPage from './pages/AiSettings.jsx';
 import Dashboard from './pages/Dashboard.jsx';
 import PlaceholderTab from './pages/PlaceholderTab.jsx';
 import Landing from './pages/Landing.jsx';
@@ -61,7 +63,8 @@ const NAV_GROUPS = [
     label: '更多',
     items: [
       { to: '/analytics', label: '分析', icon: Activity },
-      { to: '/admin', label: '管理後台', icon: Settings },
+      { to: '/admin', label: '管理後台', icon: Settings, end: true },
+      { to: '/admin/ai-settings', label: 'AI 設定', icon: KeyRound },
     ],
   },
 ];
@@ -73,6 +76,7 @@ const TITLES = [
   ['/student-homework', '我的作業'],
   ['/parents', '家長通知'],
   ['/parent', '我的孩子'],
+  ['/admin/ai-settings', 'AI 設定'],
   ['/admin', '管理後台'],
   ['/analytics', '分析'],
   ['/classroom', '班級管理'],
@@ -82,9 +86,9 @@ const TITLES = [
   ['/dashboard', '儀表板'],
 ];
 
-function NavItem({ to, label, icon: Icon }) {
+function NavItem({ to, label, icon: Icon, end = false }) {
   return (
-    <NavLink to={to} className={({ isActive }) => `navItem ${isActive ? 'navItemActive' : ''}`}>
+    <NavLink to={to} end={end} className={({ isActive }) => `navItem ${isActive ? 'navItemActive' : ''}`}>
       <Icon size={18} strokeWidth={1.8} />
       <span>{label}</span>
     </NavLink>
@@ -243,6 +247,7 @@ function AppRoutes({ user }) {
       <Route path="/teacher" element={<Teacher />} />
       <Route path="/chat" element={<OpenAssistant role={normalizeRole(user?.role)} />} />
       <Route path="/admin" element={<AdminPage user={user} />} />
+      <Route path="/admin/ai-settings" element={<AiSettingsPage user={user} />} />
       <Route path="/analytics" element={<PlaceholderTab title="分析" />} />
 
       <Route path="*" element={<PlaceholderTab title="找不到頁面" />} />

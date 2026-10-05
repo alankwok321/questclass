@@ -39,14 +39,22 @@ npm run seed:firestore
 
 Set these as project environment variables in Vercel:
 - all `FIREBASE_*` web config values
-- optional AI provider values (`OPENROUTER_API_KEY`, `OPENROUTER_BASE_URL`, `AI_MODEL`)
+- optional fallback AI provider values (`OPENROUTER_API_KEY`, `OPENROUTER_BASE_URL`, `AI_MODEL`), used only
+  when no key has been saved on the 「AI 設定」 page
 - `FIREBASE_SERVICE_ACCOUNT_JSON`: the service-account JSON on one line. The server needs it to
-  store per-user AI keys and run the admin tools. It is a server-only variable, never sent to the browser.
+  store the school AI key and run the admin tools. It is a server-only variable, never sent to the browser.
 - `ADMIN_EMAILS`: comma-separated Google accounts that become admin when they sign in
   (e.g. `danielkwok.ai@gmail.com`). Needs `FIREBASE_SERVICE_ACCOUNT_JSON`.
-- `AI_CONFIG_ENCRYPTION_KEY`: any long random string; encrypts AI keys saved from the admin page.
+- `AI_CONFIG_ENCRYPTION_KEY`: any long random string; encrypts the AI key saved on the 「AI 設定」 page.
+  Without it the page cannot save a key. Changing it later makes the saved key unreadable (save it again).
 
-When Firebase is configured, only signed-in users can use the school's `OPENROUTER_API_KEY` in chat.
+### AI key
+There is one AI key for the whole school. Only an admin sets it, on **管理後台 → AI 設定**
+(`/admin/ai-settings`). It is stored encrypted in Firestore at `appSettings/ai`, which browsers
+cannot read (Firestore rules deny it by default); the server reads it with the Admin SDK.
+Teachers, students and parents have no key settings, and any key a browser sends is ignored.
+If no key is saved, the server falls back to `OPENROUTER_API_KEY`. When Firebase is configured,
+only signed-in, active users can use AI.
 
 ### Firestore rules
 `firestore.rules` is not deployed by Vercel. After changing it run
