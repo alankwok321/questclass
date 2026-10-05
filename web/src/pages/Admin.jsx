@@ -21,7 +21,7 @@ export default function AdminPage({ user }) {
   const [schools, setSchools] = useState([]);
   // Which school's members are shown. School admins: always their own. The platform admin belongs
   // to no school and picks one (starting with the first school once the list has loaded).
-  const [viewSchool, setViewSchool] = useState(platform ? '' : (user?.schoolId || ''));
+  const [viewSchool, setViewSchool] = useState(platform ? (window.QuestClassFirebase?.getActiveSchool?.() || '') : (user?.schoolId || ''));
   const [users, setUsers] = useState([]);
   const [filter, setFilter] = useState('all');
 

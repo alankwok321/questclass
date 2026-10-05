@@ -504,3 +504,28 @@ test('hand-ins after the deadline are refused', async () => {
   assert.match(r.error, /截止/);
   assert.equal(b.writes.length, 0);
 });
+
+// --- platform admin: school switcher ---
+test('platform admin works in the school picked in the switcher', async () => {
+  const saved = {};
+  const b = makeBridge({ users: { ...users(), boss: { role: 'admin', platformAdmin: true } }, homeworkAssignments: homework() }, { uid: 'boss' });
+  b.window.localStorage = { getItem: (k) => saved[k] ?? null, setItem: (k, v) => { saved[k] = v; }, removeItem: (k) => { delete saved[k]; } };
+  {
+    let r = await b.fb.listHomeworkAssignments();
+    assert.equal(r.ok, false, 'no school picked yet');
+    b.fb.setActiveSchool('B');
+    r = await b.fb.listHomeworkAssignments();
+    assert.deepEqual(ids(r.items), ['hB']);
+    b.fb.setActiveSchool('A');
+    const c = await b.fb.createHomeworkAssignment({ title: 'by platform admin' });
+    assert.equal(c.ok, true);
+    assert.equal(b.writes.find((w) => w.path.startsWith('homeworkAssignments/')).data.schoolId, 'A');
+    b.fb.setActiveSchool('');
+    assert.equal(b.fb.getActiveSchool(), '');
+  }
+});
+
+test('the switcher does nothing for a school admin', async () => {
+  const b = makeBridge({ users: users(), homeworkAssignments: homework() }, { uid: 'adm' });
+  assert.equal(b.fb._withActiveSchool({ role: 'admin', schoolId: 'A' }).schoolId, 'A');
+});

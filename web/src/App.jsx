@@ -37,7 +37,7 @@ import ParentPage from './pages/Parent.jsx';
 import AssistantBubble from './components/AssistantBubble.jsx';
 import { ToastProvider, useToast } from './components/Toast.jsx';
 import { ConfirmProvider } from './components/Confirm.jsx';
-import { firebaseEnabled, firebaseInit, getSchool, signInWithGoogle, signOut } from './services/firebase.js';
+import { firebaseEnabled, firebaseInit, getSchool, listSchools, signInWithGoogle, signOut } from './services/firebase.js';
 import { ROLE_LABELS, canAccess, homePathFor, isBlockedAccount, normalizeRole } from './permissions.js';
 
 // Every sidebar entry; each one is shown only to roles that may open it (see permissions.js).
@@ -135,7 +135,30 @@ function OpenAssistant({ role }) {
   return <Navigate to={homePathFor(role)} replace />;
 }
 
-function Shell({ user, schoolName, platformOnly = false, onLogout, children }) {
+// Platform admin only: which school to work in. Switching reloads the app so every page
+// loads that school's data.
+function SchoolSwitcher({ value }) {
+  const [schools, setSchools] = useState([]);
+  useEffect(() => { listSchools().then((r) => setSchools(r?.schools || [])); }, []);
+  const onChange = (e) => {
+    const id = e.target.value;
+    window.QuestClassFirebase?.setActiveSchool?.(id);
+    window.location.assign(id ? '/dashboard' : '/admin/schools');
+  };
+  return (
+    <label style={{ display: 'grid', gap: 4, margin: '0 12px 12px' }}>
+      <span style={{ fontSize: 11, fontWeight: 600, color: '#86868B' }}>正在查看的學校</span>
+      <select value={value} onChange={onChange} aria-label="正在查看的學校" style={{
+        width: '100%', padding: '8px 10px', borderRadius: 10, border: '1px solid #D2D2D7', background: '#FFFFFF', fontSize: 13, fontWeight: 500,
+      }}>
+        <option value="">只管理學校（不選學校）</option>
+        {schools.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
+      </select>
+    </label>
+  );
+}
+
+function Shell({ user, schoolName, activeSchoolId = '', platformOnly = false, onLogout, children }) {
   const location = useLocation();
   const role = normalizeRole(user?.role);
 
@@ -161,7 +184,7 @@ function Shell({ user, schoolName, platformOnly = false, onLogout, children }) {
     .toUpperCase();
 
   const displayName = String(user?.name || '').replace(/\s*\(.*\)\s*/, '');
-  const roleLabel = platformOnly ? '平台管理員' : ROLE_LABELS[role];
+  const roleLabel = user?.platformAdmin ? '平台管理員' : ROLE_LABELS[role];
   const eyebrow = `${schoolName ? `${schoolName} · ` : ''}${displayName}${roleLabel ? ` · ${roleLabel}` : ''}${user?.demo ? ' · 示範模式' : ''}`;
 
   return (
@@ -171,6 +194,8 @@ function Shell({ user, schoolName, platformOnly = false, onLogout, children }) {
           <div className="brandMark" aria-hidden="true"><Star size={18} strokeWidth={2.2} /></div>
           QuestClass
         </div>
+
+        {user?.platformAdmin ? <SchoolSwitcher value={activeSchoolId} /> : null}
 
         <nav className="nav noScrollbar" aria-label="主選單">
           {groups.map((g) => (
@@ -273,13 +298,15 @@ function AppBody() {
   const [authReady, setAuthReady] = useState(false);
   const [signingIn, setSigningIn] = useState(false);
   const [schoolName, setSchoolName] = useState('');
+  // The platform admin belongs to no school; the sidebar switcher picks which one they work in.
+  const activeSchoolId = user?.platformAdmin ? (window.QuestClassFirebase?.getActiveSchool?.() || '') : (user?.schoolId || '');
 
   useEffect(() => {
     let live = true;
     setSchoolName('');
-    if (user?.schoolId && !user?.demo) getSchool(user.schoolId).then((s) => { if (live) setSchoolName(s?.name || ''); });
+    if (activeSchoolId && !user?.demo) getSchool(activeSchoolId).then((s) => { if (live) setSchoolName(s?.name || ''); });
     return () => { live = false; };
-  }, [user?.schoolId, user?.demo]);
+  }, [activeSchoolId, user?.demo]);
 
   useEffect(() => {
     let mounted = true;
@@ -355,7 +382,7 @@ function AppBody() {
   }
 
   const role = normalizeRole(user.role);
-  const platformOnly = user.platformAdmin === true && !user.schoolId;
+  const platformOnly = user.platformAdmin === true && !activeSchoolId;
   if (!role) {
     return (
       <FullScreenNotice
@@ -367,7 +394,7 @@ function AppBody() {
   }
 
   return (
-    <Shell user={user} schoolName={schoolName} platformOnly={platformOnly} onLogout={onLogout}>
+    <Shell user={user} schoolName={schoolName} activeSchoolId={activeSchoolId} platformOnly={platformOnly} onLogout={onLogout}>
       <RoleGate role={role} platformOnly={platformOnly}>
         <AppRoutes user={user} />
       </RoleGate>

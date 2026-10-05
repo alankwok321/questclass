@@ -19,7 +19,7 @@ export default function AiSettingsPage({ user }) {
   const platform = user?.platformAdmin === true;
   const [schools, setSchools] = useState([]);
   // School admins always work on their own school; the platform admin picks one.
-  const [schoolId, setSchoolId] = useState(platform ? '' : (user?.schoolId || ''));
+  const [schoolId, setSchoolId] = useState(platform ? (window.QuestClassFirebase?.getActiveSchool?.() || '') : (user?.schoolId || ''));
   const target = platform ? schoolId : undefined;
 
   useEffect(() => {

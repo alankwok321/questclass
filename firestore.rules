@@ -52,9 +52,10 @@ service cloud.firestore {
     }
 
     // Plain field access (not .get) so Firestore can prove it from a query's where('schoolId', '==', …).
-    // A document without a schoolId fails the check.
+    // A document without a schoolId fails the check. The platform admin belongs to no school but
+    // may work in any of them (the app's school switcher picks which).
     function inMySchool(data) {
-      return mySchool() != '' && data.schoolId == mySchool();
+      return isPlatformAdmin() || (mySchool() != '' && data.schoolId == mySchool());
     }
 
     function schoolExists(schoolId) {
@@ -295,7 +296,7 @@ service cloud.firestore {
     match /questionBank/{questionId} {
       // Own school's questions, plus questions from schools that chose to share theirs.
       allow read: if isTeacherLike()
-        && mySchool() != ''
+        && (isPlatformAdmin() || mySchool() != '')
         && (inMySchool(resource.data) || resource.data.shared == true);
 
       // "shared" always follows the school's setting (the server updates it when the setting changes).
@@ -303,7 +304,7 @@ service cloud.firestore {
         && inMySchool(request.resource.data)
         && request.resource.data.keys().hasOnly(allowedQuestionBankKeys())
         && request.resource.data.createdBy == request.auth.uid
-        && request.resource.data.get('shared', false) == mySchoolSharesQuestions();
+        && (isPlatformAdmin() || request.resource.data.get('shared', false) == mySchoolSharesQuestions());
 
       allow update: if isTeacherLike()
         && inMySchool(resource.data)

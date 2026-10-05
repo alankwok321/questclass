@@ -228,3 +228,17 @@ test('debug output for unconfigured AI never contains secrets', async () => {
   const s = JSON.stringify(r.body);
   assert.ok(!s.includes('enc-secret') && !s.includes('pk-secret'));
 });
+
+test('the platform admin uses the AI key of the school picked in the switcher; others cannot pick', async () => {
+  h.setEnv({ ...h.FIREBASE_ON, AI_CONFIG_ENCRYPTION_KEY: 'enc' });
+  h.seedUsers({ boss: { email: 'boss@school.hk', role: 'admin', platformAdmin: true } });
+  h.fbState.data.users.stu.schoolId = 'a';
+  h.fbState.data.schools = { a: { name: 'A' }, b: { name: 'B' } };
+  const save = (school, key) => h.post(app, '/api/admin/ai-settings/save', { idToken: 'boss', schoolId: school, apiKey: key, model: 'm' });
+  await save('a', 'sk-school-a-key');
+  await save('b', 'sk-school-b-key');
+  await chat({ idToken: 'boss', message: 'hi', schoolId: 'b' });
+  assert.equal(h.ai.last.headers.Authorization, 'Bearer sk-school-b-key');
+  await chat({ idToken: 'stu', message: 'hi', schoolId: 'b' });
+  assert.equal(h.ai.last.headers.Authorization, 'Bearer sk-school-a-key', 'a student stays on their own school');
+});

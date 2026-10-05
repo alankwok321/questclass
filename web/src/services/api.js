@@ -24,7 +24,13 @@ async function currentIdToken() {
 
 async function withAuth(payload = {}) {
   const idToken = payload?.idToken || await currentIdToken();
-  return idToken ? { ...payload, idToken } : { ...payload };
+  const out = idToken ? { ...payload, idToken } : { ...payload };
+  // The platform admin's chosen school (ignored by the server for everyone else).
+  if (out.schoolId === undefined) {
+    const active = window.QuestClassFirebase?.getActiveSchool?.();
+    if (active) out.schoolId = active;
+  }
+  return out;
 }
 
 export async function chat(payload) {

@@ -309,12 +309,31 @@ window.QuestClassFirebase = {
     }
   },
 
+  // The platform admin belongs to no school; the school switcher picks which school they work in.
+  // Remembered in this browser only.
+  getActiveSchool() {
+    try { return window.localStorage?.getItem('qc_platform_school') || ''; } catch { return ''; }
+  },
+
+  setActiveSchool(schoolId) {
+    try {
+      if (schoolId) window.localStorage?.setItem('qc_platform_school', String(schoolId));
+      else window.localStorage?.removeItem('qc_platform_school');
+    } catch { /* storage unavailable: nothing to remember */ }
+  },
+
+  // For the platform admin, act as a member of the school picked in the switcher.
+  _withActiveSchool(me) {
+    if (me && me.platformAdmin === true) return { ...me, schoolId: this.getActiveSchool() };
+    return me;
+  },
+
   async _requireAdmin() {
     const ready = await this._ensure();
     if (!ready) return { ok: false, error: 'Firebase config missing' };
     const authUser = await this.waitForAuthState();
     if (!authUser) return { ok: false, error: '請先登入' };
-    const me = await this._loadProfile(authUser.uid);
+    const me = this._withActiveSchool(await this._loadProfile(authUser.uid));
     if (String(me?.role || '').trim().toLowerCase() !== 'admin') return { ok: false, error: '只有 admin 可使用這個功能' };
     return { ok: true, authUser, me, ready };
   },
@@ -324,7 +343,7 @@ window.QuestClassFirebase = {
     if (!ready) return { ok: false, error: 'Firebase config missing' };
     const authUser = await this.waitForAuthState();
     if (!authUser) return { ok: false, error: '請先登入' };
-    const me = await this._loadProfile(authUser.uid);
+    const me = this._withActiveSchool(await this._loadProfile(authUser.uid));
     return { ok: true, authUser, me, ready };
   },
 

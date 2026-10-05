@@ -55,5 +55,5 @@ export function makeBridge(store = {}, { uid = null, email } = {}) {
   const fb = window.QuestClassFirebase;
   fb._ensure = async () => ({ db: {}, sdk });
   fb.waitForAuthState = async () => (auth.uid ? { uid: auth.uid, email: auth.email ?? `${auth.uid}@school.hk` } : null);
-  return { fb, writes, queries, store, auth, setUser(u) { auth.uid = u; auth.email = undefined; } };
+  return { fb, window, writes, queries, store, auth, setUser(u) { auth.uid = u; auth.email = undefined; } };
 }

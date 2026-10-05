@@ -216,7 +216,9 @@ async function resolveProviderConfig(body = {}, allowedRoles = null) {
       throw httpError(403, actor.accountStatus === 'suspended' ? '此帳號已停用' : '帳戶審核中，暫時不能使用 AI 功能');
     }
     if (allowedRoles && !allowedRoles.includes(actor.role)) throw httpError(403, '你的角色不能使用這個 AI 功能');
-    return getSchoolProviderConfig(actor.schoolId);
+    // The platform admin uses the AI key of the school they are working in.
+    const schoolId = actor.platformAdmin && body.schoolId ? String(body.schoolId) : actor.schoolId;
+    return getSchoolProviderConfig(schoolId);
   }
   return getSchoolProviderConfig(null);
 }
