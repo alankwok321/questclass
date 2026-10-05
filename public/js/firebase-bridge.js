@@ -1033,6 +1033,42 @@ window.QuestClassFirebase = {
     }
   },
 
+  // 班級管理: every hand-in of one class (teachers only see classes they may access).
+  async listClassSubmissions(className, limit = 500) {
+    const check = await this._requireSignedIn();
+    if (!check.ok) return { ok: false, error: check.error, submissions: [] };
+    const { db, sdk } = check.ready;
+    const me = check.me || {};
+    if (!['teacher', 'admin'].includes(String(me.role || '').toLowerCase())) return { ok: false, error: 'Teacher/admin only', submissions: [] };
+    if (!me.schoolId) return { ok: false, error: '你的帳戶尚未加入學校', submissions: [] };
+    const cls = String(className || '');
+    const classLimit = this._classLimit(me);
+    if (classLimit && !classLimit.includes(cls)) return { ok: false, error: '你沒有權限查看這個班別', submissions: [] };
+    try {
+      const snap = await sdk.getDocs(sdk.query(sdk.collection(db, 'submissions'),
+        sdk.where('schoolId', '==', me.schoolId), sdk.where('class', '==', cls), sdk.limit(limit)));
+      return { ok: true, submissions: snap.docs.map((d) => this._docData(d)).filter(Boolean) };
+    } catch (error) {
+      return { ok: false, error: error?.message || '載入提交失敗', submissions: [] };
+    }
+  },
+
+  // Admin: put a student in a class ('' = no class). Changes nothing else on the account.
+  async adminSetStudentClass(uid, className) {
+    const adminCheck = await this._requireAdmin();
+    if (!adminCheck.ok) return { ok: false, error: adminCheck.error };
+    const { db, sdk } = adminCheck.ready;
+    try {
+      await sdk.setDoc(sdk.doc(db, 'users', String(uid)), {
+        class: String(className || '').trim().slice(0, 40),
+        updatedAt: sdk.serverTimestamp(),
+      }, { merge: true });
+      return { ok: true };
+    } catch (error) {
+      return { ok: false, error: error?.message || '更新班別失敗' };
+    }
+  },
+
   async getStudentDashboard() {
     const check = await this._requireSignedIn();
     if (!check.ok) return { ok: false, error: check.error };

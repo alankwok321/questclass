@@ -30,6 +30,7 @@ import Teacher from './pages/Teacher.jsx';
 import AdminPage from './pages/Admin.jsx';
 import AiSettingsPage from './pages/AiSettings.jsx';
 import SchoolsPage from './pages/Schools.jsx';
+import ClassroomPage from './pages/Classroom.jsx';
 import JoinSchool from './pages/JoinSchool.jsx';
 import Dashboard from './pages/Dashboard.jsx';
 import PlaceholderTab from './pages/PlaceholderTab.jsx';
@@ -252,7 +253,7 @@ function AppRoutes({ user }) {
   return (
     <Routes>
       <Route path="/dashboard" element={<Dashboard />} />
-      <Route path="/classroom" element={<PlaceholderTab title="班級管理" />} />
+      <Route path="/classroom" element={<ClassroomPage user={user} />} />
       <Route path="/assignments" element={<PlaceholderTab title="作業批改" />} />
       <Route path="/progress" element={<PlaceholderTab title="進度追蹤" />} />
       <Route path="/reports" element={<PlaceholderTab title="學習報告" />} />

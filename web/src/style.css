@@ -453,3 +453,8 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   .search { width: 160px; }
   .content { padding: 8px 16px 24px; }
 }
+
+/* 班級管理: class list beside the class on wide screens, stacked on narrow ones. */
+@media (max-width: 900px) {
+  .qcClassLayout { grid-template-columns: minmax(0, 1fr) !important; }
+}

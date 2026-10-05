@@ -593,3 +593,25 @@ test('admin sets a teacher\'s classes (deduped, trimmed)', async () => {
   await b.fb.adminUpdateUserAccount('t1', { role: 'teacher', teacherClasses: [' 5A', '5A', '6B', ''] });
   assert.deepEqual(b.writes[0].data.teacherClasses, ['5A', '6B']);
 });
+
+// --- 班級管理 ---
+test('listClassSubmissions: one class of my school; class-limited teachers only their classes', async () => {
+  const store = { users: { ...users(), t1: { ...users().t1, teacherClasses: ['5A'] } },
+    submissions: inA({ s1: { class: '5A', studentUid: 'stu1' }, s2: { class: '6B', studentUid: 'stu2' } }) };
+  let b = makeBridge(store, { uid: 't2' });
+  assert.deepEqual((await b.fb.listClassSubmissions('5A')).submissions.map((s) => s.id), ['s1']);
+  b = makeBridge(store, { uid: 't1' });
+  assert.equal((await b.fb.listClassSubmissions('6B')).ok, false);
+  b = makeBridge(store, { uid: 'stu1' });
+  assert.equal((await b.fb.listClassSubmissions('5A')).ok, false);
+});
+
+test('adminSetStudentClass changes only the class (admins only)', async () => {
+  let b = makeBridge({ users: users() }, { uid: 'adm' });
+  assert.equal((await b.fb.adminSetStudentClass('stu3', ' 5B ')).ok, true);
+  assert.deepEqual(Object.keys(b.writes[0].data).sort(), ['class', 'updatedAt']);
+  assert.equal(b.writes[0].data.class, '5B');
+  b = makeBridge({ users: users() }, { uid: 't1' });
+  assert.equal((await b.fb.adminSetStudentClass('stu3', '5B')).ok, false);
+  assert.equal(b.writes.length, 0);
+});
