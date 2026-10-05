@@ -168,3 +168,24 @@ test('a school admin cannot pick another school', async () => {
   assert.equal(h.fbState.data.schoolSecrets.b, undefined);
   assert.ok(h.fbState.data.schoolSecrets.a);
 });
+
+test('renaming a class updates students, teacher permissions, homework and submissions of that school only', async () => {
+  h.fbState.data.schools = { a: { name: 'A' } };
+  Object.assign(h.fbState.data.users.adm, { schoolId: 'a' });
+  Object.assign(h.fbState.data.users.stu, { schoolId: 'a', class: 'cls-5a' });
+  Object.assign(h.fbState.data.users.stu2, { schoolId: 'b', class: 'cls-5a' });
+  Object.assign(h.fbState.data.users.tea, { schoolId: 'a', teacherClasses: ['CLS-5A', '6B'] });
+  h.fbState.data.homeworkAssignments = { h1: { schoolId: 'a', targetType: 'class', targetClass: 'cls-5a' }, h2: { schoolId: 'b', targetClass: 'cls-5a' } };
+  h.fbState.data.submissions = { s1: { schoolId: 'a', class: 'cls-5a' } };
+  assert.equal((await h.post(app, '/api/school/classes/rename', { idToken: 'tea', from: 'cls-5a', to: '5A' })).status, 403);
+  const r = await h.post(app, '/api/school/classes/rename', { idToken: 'adm', from: 'cls-5a', to: ' 5A ' });
+  assert.equal(r.status, 200);
+  assert.deepEqual(r.body.updated, { students: 1, teachers: 1, homework: 1, submissions: 1 });
+  assert.equal(h.fbState.data.users.stu.class, '5A');
+  assert.deepEqual(h.fbState.data.users.tea.teacherClasses, ['5A', '6B']);
+  assert.equal(h.fbState.data.homeworkAssignments.h1.targetClass, '5A');
+  assert.equal(h.fbState.data.submissions.s1.class, '5A');
+  assert.equal(h.fbState.data.users.stu2.class, 'cls-5a', 'other school untouched');
+  assert.equal(h.fbState.data.homeworkAssignments.h2.targetClass, 'cls-5a');
+  assert.equal((await h.post(app, '/api/school/classes/rename', { idToken: 'adm', from: '5A', to: '' })).status, 400);
+});

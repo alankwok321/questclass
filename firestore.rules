@@ -67,6 +67,21 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/schools/$(mySchool())).data.get('shareQuestionBank', false) == true;
     }
 
+    // Teachers can be limited to some 班別 (users/{teacher}.teacherClasses, set by the school admin).
+    // No list set = every class of the school (as before). Admins are never limited.
+    function hasClassLimit() {
+      return userRole() == 'teacher' && 'teacherClasses' in userDoc();
+    }
+
+    function myClasses() {
+      return userDoc().get('teacherClasses', []);
+    }
+
+    // Plain field access so a query with where('class', 'in', myClasses) can be proven.
+    function canSeeClassOf(data) {
+      return !hasClassLimit() || data['class'] in myClasses();
+    }
+
     // A parent may read data about the students linked to them in users/{parent}.childUids
     // (callers also require the data to be in the parent's own school).
     function isParentOf(studentUid) {
@@ -88,18 +103,19 @@ service cloud.firestore {
     // ── Users ─────────────────────────────────────────────────────────────────
     // Every field a user document may hold.
     function userKeys() {
-      return ['name', 'email', 'photoURL', 'role', 'schoolId', 'accountStatus', 'class', 'childUids',
+      return ['name', 'email', 'photoURL', 'role', 'schoolId', 'accountStatus', 'class', 'childUids', 'teacherClasses',
         'studentProfile', 'platformAdmin', 'createdAt', 'updatedAt', 'lastLoginAt'];
     }
 
     // What a school admin may change on a member of their school.
     function schoolAdminEditableKeys() {
-      return ['name', 'role', 'accountStatus', 'class', 'childUids', 'updatedAt'];
+      return ['name', 'role', 'accountStatus', 'class', 'childUids', 'teacherClasses', 'updatedAt'];
     }
 
     function userUpdateIsValid() {
       return (!('role' in request.resource.data) || validRole(request.resource.data.role))
         && (!('childUids' in request.resource.data) || request.resource.data.childUids is list)
+        && (!('teacherClasses' in request.resource.data) || request.resource.data.teacherClasses is list)
         && (!('class' in request.resource.data) || request.resource.data['class'] is string)
         && (!('accountStatus' in request.resource.data) || request.resource.data.accountStatus in ['active', 'review', 'suspended']);
     }
@@ -107,7 +123,7 @@ service cloud.firestore {
     match /users/{userId} {
       allow read: if isSelf(userId)
         || isPlatformAdmin()
-        || (isTeacherLike() && inMySchool(resource.data))
+        || (isTeacherLike() && inMySchool(resource.data) && canSeeClassOf(resource.data))
         || (isParentOf(userId) && inMySchool(resource.data));
 
       // Sign-up: always a student awaiting approval, optionally already choosing a school.
@@ -138,7 +154,7 @@ service cloud.firestore {
         ) || (
           // Platform admin: anyone, including which school they belong to.
           isPlatformAdmin()
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'role', 'schoolId', 'accountStatus', 'class', 'childUids', 'updatedAt'])
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'role', 'schoolId', 'accountStatus', 'class', 'childUids', 'teacherClasses', 'updatedAt'])
           && (!('schoolId' in request.resource.data) || request.resource.data.schoolId == '' || schoolExists(request.resource.data.schoolId))
           // Taken out of every school: back to awaiting approval.
           && (request.resource.data.get('schoolId', '') != '' || request.resource.data.get('accountStatus', 'active') == 'review')
@@ -177,7 +193,7 @@ service cloud.firestore {
     }
 
     match /submissions/{submissionId} {
-      allow read: if (isTeacherLike() && inMySchool(resource.data))
+      allow read: if (isTeacherLike() && inMySchool(resource.data) && canSeeClassOf(resource.data))
         || (isSignedIn() && resource.data.studentUid == request.auth.uid)
         || (isParentOf(resource.data.studentUid) && inMySchool(resource.data));
       // Only students create hand-ins: their own work, under the id "<assignmentId>_<uid>", to published
@@ -195,6 +211,7 @@ service cloud.firestore {
       allow update: if (
           isTeacherLike()
           && inMySchool(resource.data)
+          && canSeeClassOf(resource.data)
           && request.resource.data.schoolId == resource.data.schoolId
           && request.resource.data.studentUid == resource.data.studentUid
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(allowedSubmissionKeys())

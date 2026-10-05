@@ -652,6 +652,15 @@ export default function TeacherHomeworkPage() {
   const [originalDueAt, setOriginalDueAt] = useState('');
 
   const [form, setForm] = useState(EMPTY_FORM);
+  // Teachers the school admin limited to some classes may only target those classes.
+  const myClasses = String(window.__qc_user?.role || '').toLowerCase() === 'teacher' && Array.isArray(window.__qc_user?.teacherClasses)
+    ? window.__qc_user.teacherClasses : null;
+  const classLimited = Boolean(myClasses);
+  // The classes to choose from: the teacher's own, or every 班別 in the school.
+  const [classOptions, setClassOptions] = useState([]);
+  useEffect(() => {
+    window.QuestClassFirebase?.listClassrooms?.().then((r) => setClassOptions((r?.classrooms || []).map((c) => c.name))).catch(() => {});
+  }, []);
   const [questions, setQuestions] = useState([]);
   const [aiOpen, setAiOpen] = useState(false);
   const [bankOpen, setBankOpen] = useState(false);
@@ -711,7 +720,10 @@ export default function TeacherHomeworkPage() {
   };
 
   function openNew() {
-    setEditId(null); setOriginalDueAt(''); setForm({ ...EMPTY_FORM, dueAt: defaultDueAt() }); setQuestions([]);
+    setEditId(null); setOriginalDueAt('');
+    // Class-limited teachers start on their first class instead of the whole school.
+    setForm({ ...EMPTY_FORM, dueAt: defaultDueAt(), ...(classLimited ? { targetType: 'class', targetClass: myClasses[0] || '' } : {}) });
+    setQuestions([]);
     setTyped({ title: false, description: false }); setView('edit');
   }
   function openEdit(a) {
@@ -939,7 +951,7 @@ export default function TeacherHomeworkPage() {
                 { val: 'all',      label: '全部學生' },
                 { val: 'class',    label: '指定班別' },
                 { val: 'students', label: '指定學生' },
-              ].map(opt => (
+              ].filter(opt => !(classLimited && opt.val === 'all')).map(opt => (
                 <label key={opt.val} style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
                   <input type="radio" name="targetType" value={opt.val}
                     checked={form.targetType === opt.val}
@@ -949,12 +961,22 @@ export default function TeacherHomeworkPage() {
                 </label>
               ))}
               {form.targetType === 'class' && (
-                <input
-                  style={{ ...inputStyle, marginTop: 4 }}
-                  value={form.targetClass}
-                  placeholder="輸入班別名稱（例如：3A、S3B）"
-                  onChange={e => setForm(f => ({ ...f, targetClass: e.target.value }))}
-                />
+                classOptions.length || classLimited ? (
+                  <select style={{ ...inputStyle, marginTop: 4 }} value={form.targetClass}
+                    onChange={e => setForm(f => ({ ...f, targetClass: e.target.value }))}>
+                    <option value="">選擇班別…</option>
+                    {[...new Set([...(classOptions || []), ...(form.targetClass && !classLimited ? [form.targetClass] : [])])].map((c) => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    style={{ ...inputStyle, marginTop: 4 }}
+                    value={form.targetClass}
+                    placeholder="輸入班別名稱（例如：3A、S3B）"
+                    onChange={e => setForm(f => ({ ...f, targetClass: e.target.value }))}
+                  />
+                )
               )}
               {form.targetType === 'students' && (
                 <div style={{ marginTop: 4 }}>

@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { useToast } from '../components/Toast.jsx';
 import Avatar from '../components/Avatar.jsx';
 import { listSchools } from '../services/firebase.js';
-import { saveSchoolSettings } from '../services/api.js';
+import { renameClass, saveSchoolSettings } from '../services/api.js';
 import { useConfirm } from '../components/Confirm.jsx';
 
 function isAdmin(user) {
@@ -28,7 +28,9 @@ export default function AdminPage({ user }) {
 
   const [selectedUid, setSelectedUid] = useState('');
   const selectedUser = useMemo(() => users.find((u) => u.uid === selectedUid) || null, [users, selectedUid]);
-  const [form, setForm] = useState({ role: 'student', accountStatus: 'active', class: '', childUids: [], schoolId: '' });
+  const [form, setForm] = useState({ role: 'student', accountStatus: 'active', class: '', childUids: [], schoolId: '', teacherClasses: null });
+  const [newClass, setNewClass] = useState('');
+  const [renaming, setRenaming] = useState({ from: '', to: '' });
   const [childSearch, setChildSearch] = useState('');
 
   // The school whose settings (question-bank sharing) are shown.
@@ -75,7 +77,10 @@ export default function AdminPage({ user }) {
       class: selectedUser.class || '',
       childUids: Array.isArray(selectedUser.childUids) ? selectedUser.childUids : [],
       schoolId: selectedUser.schoolId || '',
+      // null = the teacher may see every class
+      teacherClasses: Array.isArray(selectedUser.teacherClasses) ? selectedUser.teacherClasses : null,
     });
+    setNewClass('');
     setChildSearch('');
   }, [selectedUser]);
 
@@ -93,6 +98,7 @@ export default function AdminPage({ user }) {
         // Only parents keep child links; changing the role away from parent clears them.
         childUids: form.role === 'parent' ? form.childUids : [],
       };
+      if (form.role === 'teacher') input.teacherClasses = form.teacherClasses;
       if (platform && form.schoolId !== (selectedUser?.schoolId || '')) input.schoolId = form.schoolId;
       const res = await window.QuestClassFirebase?.adminUpdateUserAccount?.(selectedUid, input);
       if (!res?.ok) throw new Error(res?.error || '儲存失敗');
@@ -100,6 +106,24 @@ export default function AdminPage({ user }) {
       await refresh();
     } catch (e) {
       toast.show(e.message || '儲存失敗');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const onRenameClass = async (e) => {
+    e.preventDefault();
+    const to = renaming.to.trim();
+    if (!renaming.from || !to || to === renaming.from) { setRenaming({ from: '', to: '' }); return; }
+    setSaving(true);
+    try {
+      const r = await renameClass(renaming.from, to, platform ? viewSchool : undefined);
+      const u = r.updated || {};
+      toast.show(`已改為 ${to}：${u.students || 0} 位學生、${u.teachers || 0} 位老師、${u.homework || 0} 份作業、${u.submissions || 0} 份提交`);
+      setRenaming({ from: '', to: '' });
+      await refresh();
+    } catch (err) {
+      toast.show(err.message || '改名失敗');
     } finally {
       setSaving(false);
     }
@@ -128,7 +152,17 @@ export default function AdminPage({ user }) {
   const reviewCount = users.filter((u) => u.accountStatus === 'review').length;
   const shown = filter === 'review' ? users.filter((u) => u.accountStatus === 'review') : users;
   const students = users.filter((u) => String(u.role || '').toLowerCase() === 'student');
-  const classNames = [...new Set(students.map((u) => String(u.class || '').trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'zh-Hant', { numeric: true }));
+  const classNames = [...new Set([
+    ...students.map((u) => String(u.class || '').trim()),
+    ...users.flatMap((u) => (Array.isArray(u.teacherClasses) ? u.teacherClasses : [])),
+  ].filter(Boolean))].sort((a, b) => a.localeCompare(b, 'zh-Hant', { numeric: true }));
+  const classCount = (c) => students.filter((u) => String(u.class || '').trim() === c).length;
+  const teachersOf = (c) => users.filter((u) => String(u.role || '').toLowerCase() === 'teacher' && Array.isArray(u.teacherClasses) && u.teacherClasses.includes(c)).length;
+  const pickedClasses = Array.isArray(form.teacherClasses) ? form.teacherClasses : [];
+  const toggleTeacherClass = (c) => setForm((f) => {
+    const list = Array.isArray(f.teacherClasses) ? f.teacherClasses : [];
+    return { ...f, teacherClasses: list.includes(c) ? list.filter((x) => x !== c) : [...list, c] };
+  });
   const viewName = viewSchool === UNASSIGNED ? '未分配學校' : (schools.find((s) => s.id === viewSchool)?.name || '');
 
   return (
@@ -176,6 +210,34 @@ export default function AdminPage({ user }) {
         </div>
       ) : null}
 
+      {settingsSchool && classNames.length ? (
+        <div className="qcCard" style={{ display: 'grid', gap: 10 }}>
+          <div>
+            <div style={{ fontWeight: 700 }}>班別</div>
+            <div style={{ fontSize: 13, color: '#6E6E73', marginTop: 4 }}>改名會同時更新學生、老師權限、作業和提交記錄。</div>
+          </div>
+          <div style={{ display: 'grid', gap: 6 }}>
+            {classNames.map((c) => (
+              <div key={c} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderRadius: 12, background: '#F5F5F7', flexWrap: 'wrap' }}>
+                {renaming.from === c ? (
+                  <form onSubmit={onRenameClass} style={{ display: 'flex', gap: 8, flex: 1, minWidth: 220 }}>
+                    <input autoFocus value={renaming.to} onChange={(e) => setRenaming({ from: c, to: e.target.value })} maxLength={40} aria-label="新的班別名稱" style={{ ...inputStyle, padding: '6px 10px' }} />
+                    <button type="submit" className="qcBtn qcBtnPrimary qcBtnSmall" disabled={saving}>儲存</button>
+                    <button type="button" className="qcBtn qcBtnSecondary qcBtnSmall" onClick={() => setRenaming({ from: '', to: '' })}>取消</button>
+                  </form>
+                ) : (
+                  <>
+                    <span style={{ fontWeight: 600, fontSize: 14, minWidth: 60 }}>{c}</span>
+                    <span style={{ fontSize: 12, color: '#6E6E73', flex: 1 }}>{classCount(c)} 位學生 · {teachersOf(c)} 位指定老師</span>
+                    <button type="button" className="qcLink" style={{ fontSize: 13 }} onClick={() => setRenaming({ from: c, to: c })}>改名</button>
+                  </>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(240px, 320px) minmax(0, 1fr)', gap: 14 }}>
         <div className="qcCard" style={{ padding: 12, overflow: 'hidden' }}>
           <div role="tablist" aria-label="篩選" style={{ display: 'inline-flex', padding: 2, borderRadius: 9, background: '#E3E3E8', marginBottom: 10 }}>
@@ -200,6 +262,7 @@ export default function AdminPage({ user }) {
                 <div style={{ marginTop: 2, color: '#6E6E73', fontSize: 11, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {ROLE_NAMES[String(u.role || '').toLowerCase()] || '—'}
                   {u.class ? ` · ${u.class}` : ''}
+                  {String(u.role || '').toLowerCase() === 'teacher' && Array.isArray(u.teacherClasses) ? ` · ${u.teacherClasses.join('、') || '未指定班別'}` : ''}
                   {(u.accountStatus || 'active') !== 'active' ? <span style={{ color: u.accountStatus === 'review' ? '#B25000' : '#D70015' }}> · {STATUS_NAMES[u.accountStatus] || u.accountStatus}</span> : null}
                 </div>
                 </div>
@@ -257,6 +320,52 @@ export default function AdminPage({ user }) {
                     style={inputStyle} placeholder="例如 5A" maxLength={40} />
                   <datalist id="qc-class-names">{classNames.map((c) => <option key={c} value={c} />)}</datalist>
                 </label>
+              ) : null}
+
+              {form.role === 'teacher' ? (
+                <div style={{ display: 'grid', gap: 8 }}>
+                  <div style={labelStyle}>可存取的班別</div>
+                  <div role="radiogroup" aria-label="可存取的班別" style={{ display: 'inline-flex', padding: 2, borderRadius: 9, background: '#E3E3E8', justifySelf: 'start' }}>
+                    {[['all', '全部班別'], ['some', '指定班別']].map(([k, text]) => {
+                      const on = k === 'all' ? form.teacherClasses === null : form.teacherClasses !== null;
+                      return (
+                        <button key={k} type="button" role="radio" aria-checked={on}
+                          onClick={() => setForm((f) => ({ ...f, teacherClasses: k === 'all' ? null : (Array.isArray(f.teacherClasses) ? f.teacherClasses : []) }))}
+                          style={{ height: 30, padding: '0 14px', border: 0, borderRadius: 7, cursor: 'pointer', fontSize: 13,
+                            fontWeight: on ? 600 : 500, background: on ? '#FFFFFF' : 'transparent', boxShadow: on ? '0 1px 3px rgba(0,0,0,0.12)' : 'none' }}>
+                          {text}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {form.teacherClasses === null ? (
+                    <div style={{ fontSize: 12, color: '#6E6E73' }}>這位老師可以查看全校所有班別的學生、作業和提交。</div>
+                  ) : (
+                    <>
+                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                        {[...new Set([...classNames, ...pickedClasses])].map((c) => {
+                          const on = pickedClasses.includes(c);
+                          return (
+                            <button key={c} type="button" onClick={() => toggleTeacherClass(c)} aria-pressed={on} style={{
+                              display: 'inline-flex', alignItems: 'center', gap: 6, height: 32, padding: '0 12px', borderRadius: 999, cursor: 'pointer',
+                              border: on ? '1px solid #0071E3' : '1px solid #D2D2D7', background: on ? '#E8F0FC' : '#FFFFFF',
+                              color: on ? '#0071E3' : '#1D1D1F', fontSize: 13, fontWeight: 600,
+                            }}>{on ? '✓ ' : ''}{c}</button>
+                          );
+                        })}
+                      </div>
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <input value={newClass} onChange={(e) => setNewClass(e.target.value)} placeholder="加入其他班別，例如 5B" maxLength={40} style={inputStyle}
+                          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); const c = newClass.trim(); if (c && !pickedClasses.includes(c)) toggleTeacherClass(c); setNewClass(''); } }} />
+                        <button type="button" className="qcBtn qcBtnSecondary qcBtnSmall" style={{ height: 40 }}
+                          onClick={() => { const c = newClass.trim(); if (c && !pickedClasses.includes(c)) toggleTeacherClass(c); setNewClass(''); }}>加入</button>
+                      </div>
+                      <div style={{ fontSize: 12, color: pickedClasses.length ? '#6E6E73' : '#B25000' }}>
+                        {pickedClasses.length ? `只可查看 ${pickedClasses.join('、')} 的學生、作業和提交。` : '未選擇任何班別：這位老師將看不到任何學生。'}
+                      </div>
+                    </>
+                  )}
+                </div>
               ) : null}
 
               {form.role === 'parent' ? (

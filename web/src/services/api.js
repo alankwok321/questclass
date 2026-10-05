@@ -132,3 +132,8 @@ export async function suggestHomeworkDetails(questions) {
     description: String(data?.description || '').trim().slice(0, 400),
   };
 }
+
+// School admin: rename a 班別 everywhere (students, teacher permissions, homework, submissions).
+export async function renameClass(from, to, schoolId) {
+  return postJson('/api/school/classes/rename', await withAuth({ from, to, ...(schoolId ? { schoolId } : {}) }));
+}

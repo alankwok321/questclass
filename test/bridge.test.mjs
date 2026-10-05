@@ -554,3 +554,42 @@ test('student lists carry each student\'s photo', async () => {
   const subs = await b.fb.listSubmissionsForAssignment('h1');
   assert.equal(subs.submissions[0].studentPhotoURL, 'https://p/1');
 });
+
+// --- teacher class permissions ---
+test('a class-limited teacher only gets students, classes and submissions of their classes', async () => {
+  const store = {
+    users: { ...users(), t1: { ...users().t1, teacherClasses: ['5A'] } },
+    homeworkAssignments: homework(),
+    submissions: inA({ s1: { studentUid: 'stu1', assignmentId: 'h1', class: '5A' }, s2: { studentUid: 'stu2', assignmentId: 'h1', class: ' 6b ' } }),
+  };
+  const b = makeBridge(store, { uid: 't1' });
+  const st = await b.fb.listStudents();
+  assert.deepEqual(st.students.map((s) => s.id), ['stu1']);
+  assert.ok(b.queries.some((q) => q.col === 'users' && q.cons.some((c) => c.field === 'class' && c.op === 'in')), 'filtered in the query (rules need it)');
+  assert.deepEqual((await b.fb.listClassrooms()).classrooms.map((c) => c.id), ['5A']);
+  assert.equal((await b.fb.listStudentsForClassroom('6B')).ok, false);
+  const subs = await b.fb.listSubmissionsForAssignment('h1');
+  assert.deepEqual(subs.submissions.map((s) => s.id), ['s1']);
+  const hw = await b.fb.listHomeworkAssignments();
+  assert.ok(hw.items.every((a) => a.createdBy === 't1' || (a.targetType === 'class' && a.targetClass.toLowerCase() === '5a')));
+});
+
+test('a class-limited teacher cannot give homework to the whole school or another class', async () => {
+  const b = makeBridge({ users: { ...users(), t1: { ...users().t1, teacherClasses: ['5A'] } } }, { uid: 't1' });
+  assert.equal((await b.fb.createHomeworkAssignment({ title: 'x', targetType: 'all' })).ok, false);
+  assert.equal((await b.fb.createHomeworkAssignment({ title: 'x', targetType: 'class', targetClass: '6B' })).ok, false);
+  assert.equal((await b.fb.createHomeworkAssignment({ title: 'x', targetType: 'class', targetClass: '5a' })).ok, true);
+});
+
+test('teachers without a class list (and admins) still see every class', async () => {
+  const b = makeBridge({ users: { ...users(), adm: { ...users().adm, teacherClasses: ['5A'] } } }, { uid: 'adm' });
+  assert.ok((await b.fb.listStudents()).students.length >= 3);
+  const t = makeBridge({ users: users() }, { uid: 't2' });
+  assert.ok((await t.fb.listStudents()).students.length >= 3);
+});
+
+test('admin sets a teacher\'s classes (deduped, trimmed)', async () => {
+  const b = makeBridge({ users: users() }, { uid: 'adm' });
+  await b.fb.adminUpdateUserAccount('t1', { role: 'teacher', teacherClasses: [' 5A', '5A', '6B', ''] });
+  assert.deepEqual(b.writes[0].data.teacherClasses, ['5A', '6B']);
+});

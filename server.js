@@ -936,6 +936,47 @@ app.post('/api/platform/schools/adopt', async (req, res) => {
   }
 });
 
+// School admin (or platform admin for a picked school): rename a 班別 everywhere it is used —
+// students' class, teachers' class permissions, homework targets and submissions.
+app.post('/api/school/classes/rename', async (req, res) => {
+  try {
+    const { idToken, schoolId, from, to } = req.body || {};
+    const actor = await requireSchoolAdmin(idToken, schoolId);
+    const oldName = String(from || '').trim();
+    const newName = String(to || '').trim().replace(/\s+/g, ' ');
+    if (!oldName) throw httpError(400, '請選擇要改名的班別');
+    if (!newName || newName.length > 40) throw httpError(400, '請輸入新的班別名稱（最多 40 字）');
+    const same = (v) => String(v ?? '').trim().toLowerCase() === oldName.toLowerCase();
+    const { db } = getFirebaseAdmin();
+    const counts = { students: 0, teachers: 0, homework: 0, submissions: 0 };
+    const writes = [];
+
+    const users = await db.collection('users').where('schoolId', '==', actor.schoolId).get();
+    for (const doc of users.docs) {
+      const u = doc.data() || {};
+      const update = {};
+      if (same(u.class)) { update.class = newName; counts.students += 1; }
+      if (Array.isArray(u.teacherClasses) && u.teacherClasses.some(same)) {
+        update.teacherClasses = [...new Set(u.teacherClasses.map((c) => (same(c) ? newName : c)))];
+        counts.teachers += 1;
+      }
+      if (Object.keys(update).length) writes.push(['users', doc.id, update]);
+    }
+    const hw = await db.collection('homeworkAssignments').where('schoolId', '==', actor.schoolId).get();
+    for (const doc of hw.docs) {
+      if (same(doc.data()?.targetClass)) { writes.push(['homeworkAssignments', doc.id, { targetClass: newName }]); counts.homework += 1; }
+    }
+    const subs = await db.collection('submissions').where('schoolId', '==', actor.schoolId).get();
+    for (const doc of subs.docs) {
+      if (same(doc.data()?.class)) { writes.push(['submissions', doc.id, { class: newName }]); counts.submissions += 1; }
+    }
+    await inChunks(writes, 50, ([col, id, update]) => db.collection(col).doc(id).set(update, { merge: true }));
+    return res.json({ ok: true, from: oldName, to: newName, updated: counts });
+  } catch (error) {
+    return sendError(res, error, 'rename class failed');
+  }
+});
+
 app.post('/api/platform/schools/rename', async (req, res) => {
   try {
     const { idToken, schoolId, name } = req.body || {};

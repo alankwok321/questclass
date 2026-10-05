@@ -78,6 +78,8 @@ window.QuestClassFirebase = {
       schoolId: String(profile?.schoolId || ''),
       platformAdmin: profile?.platformAdmin === true,
       class: String(profile?.class || ''),
+      // Teachers may be limited to some classes; null = every class of the school.
+      teacherClasses: Array.isArray(profile?.teacherClasses) ? profile.teacherClasses.map(String) : null,
       accountStatus: String(profile?.accountStatus || 'active').toLowerCase(),
       childUids: Array.isArray(profile?.childUids) ? profile.childUids : [],
       profileRole: normalizedProfileRole || '',
@@ -322,6 +324,22 @@ window.QuestClassFirebase = {
     } catch { /* storage unavailable: nothing to remember */ }
   },
 
+  // The classes a teacher may see, or null when not limited (admins, or no list set).
+  _classLimit(me) {
+    if (String(me?.role || '').toLowerCase() !== 'teacher' || !Array.isArray(me?.teacherClasses)) return null;
+    return [...new Set(me.teacherClasses.map((c) => String(c || '').trim()).filter(Boolean))];
+  },
+
+  // Run a users/submissions query once per group of up to 30 classes (Firestore's "in" limit).
+  async _byClasses(sdk, col, classes, baseConstraints, limit = 500) {
+    const out = [];
+    for (let i = 0; i < classes.length; i += 30) {
+      const snap = await sdk.getDocs(sdk.query(col, ...baseConstraints, sdk.where('class', 'in', classes.slice(i, i + 30)), sdk.limit(limit)));
+      out.push(...snap.docs);
+    }
+    return out;
+  },
+
   // For the platform admin, act as a member of the school picked in the switcher.
   _withActiveSchool(me) {
     if (me && me.platformAdmin === true) return { ...me, schoolId: this.getActiveSchool() };
@@ -394,6 +412,13 @@ window.QuestClassFirebase = {
         .map((s) => String(s || '').trim()).filter(Boolean)));
     }
     // Moving someone to another school is for the platform admin only.
+    // Which classes a teacher may see: a list, or null for every class.
+    if ('teacherClasses' in input) {
+      payload.teacherClasses = input.teacherClasses === null
+        ? (sdk.deleteField ? sdk.deleteField() : null)
+        : Array.from(new Set((Array.isArray(input.teacherClasses) ? input.teacherClasses : [])
+          .map((c) => String(c || '').trim()).filter(Boolean))).slice(0, 60);
+    }
     if ('schoolId' in input && me.platformAdmin === true) {
       payload.schoolId = String(input.schoolId || '');
       // Taken out of every school: back to awaiting approval.
@@ -415,10 +440,16 @@ window.QuestClassFirebase = {
     if (!['teacher', 'admin'].includes(String(me.role || '').toLowerCase())) {
       return { ok: true, classrooms: me.class ? [{ id: me.class, name: me.class }] : [] };
     }
-    const res = await this.listStudents(1000);
-    if (!res.ok) return { ok: false, error: res.error, classrooms: [] };
-    const names = [...new Set(res.students.map((s) => String(s.class || '').trim()).filter(Boolean))]
-      .sort((a, b) => a.localeCompare(b, 'zh-Hant', { numeric: true }));
+    const limit = this._classLimit(me);
+    let names;
+    if (limit) {
+      names = [...limit].sort((a, b) => a.localeCompare(b, 'zh-Hant', { numeric: true }));
+    } else {
+      const res = await this.listStudents(1000);
+      if (!res.ok) return { ok: false, error: res.error, classrooms: [] };
+      names = [...new Set(res.students.map((s) => String(s.class || '').trim()).filter(Boolean))]
+        .sort((a, b) => a.localeCompare(b, 'zh-Hant', { numeric: true }));
+    }
     return { ok: true, classrooms: names.map((n) => ({ id: n, name: n })) };
   },
 
@@ -506,6 +537,14 @@ window.QuestClassFirebase = {
     const targetStudentUids = targetType === 'students'
       ? (Array.isArray(payload.targetStudentUids) ? payload.targetStudentUids : [])
       : [];
+    // A class-limited teacher can only give homework to their own classes (or chosen students).
+    const classLimit = this._classLimit(me);
+    if (classLimit) {
+      if (targetType === 'all') return { ok: false, error: '請選擇指定班別或學生（你只可以為自己的班別出作業）' };
+      if (targetType === 'class' && !classLimit.some((c) => c.toLowerCase() === targetClass.toLowerCase())) {
+        return { ok: false, error: '你沒有權限為這個班別出作業' };
+      }
+    }
 
     const assignment = {
       id: docRef.id,
@@ -568,7 +607,12 @@ window.QuestClassFirebase = {
       // Filter by school only and sort here, so no composite index is needed.
       const q = sdk.query(sdk.collection(db, 'homeworkAssignments'), sdk.where('schoolId', '==', me.schoolId), sdk.limit(500));
       const snap = await sdk.getDocs(q);
+      const classLimit = this._classLimit(me);
+      const norm = (v) => String(v || '').trim().toLowerCase();
+      const mine = new Set((classLimit || []).map(norm));
       const items = snap.docs.map((doc) => this._docData(doc)).filter(Boolean)
+        // A class-limited teacher sees their own homework and homework for their classes.
+        .filter((a) => !classLimit || a.createdBy === check.authUser.uid || (a.targetType === 'class' && mine.has(norm(a.targetClass))))
         .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')))
         .slice(0, limit);
 
@@ -713,14 +757,13 @@ window.QuestClassFirebase = {
     }
     if (!me.schoolId) return { ok: false, error: '你的帳戶尚未加入學校', students: [] };
     try {
-      const q = sdk.query(
-        sdk.collection(db, 'users'),
-        sdk.where('schoolId', '==', me.schoolId),
-        sdk.where('role', '==', 'student'),
-        sdk.limit(limit)
-      );
-      const snap = await sdk.getDocs(q);
-      const students = snap.docs.map((doc) => this._docData(doc)).filter(Boolean)
+      const col = sdk.collection(db, 'users');
+      const base = [sdk.where('schoolId', '==', me.schoolId), sdk.where('role', '==', 'student')];
+      const classLimit = this._classLimit(me);
+      const docs = classLimit
+        ? (classLimit.length ? await this._byClasses(sdk, col, classLimit, base, limit) : [])
+        : (await sdk.getDocs(sdk.query(col, ...base, sdk.limit(limit)))).docs;
+      const students = docs.map((doc) => this._docData(doc)).filter(Boolean)
         .sort((a, b) => (a.displayName || a.name || '').localeCompare(b.displayName || b.name || ''));
       return { ok: true, students };
     } catch (error) {
@@ -975,6 +1018,8 @@ window.QuestClassFirebase = {
     const me = check.me || {};
     if (!me.schoolId) return { ok: false, error: '你的帳戶尚未加入學校', students: [] };
     const cls = String(className || '');
+    const classLimit = this._classLimit(me);
+    if (classLimit && !classLimit.includes(cls)) return { ok: false, error: '你沒有權限查看這個班別', students: [] };
     try {
       const snap = await sdk.getDocs(sdk.query(sdk.collection(db, 'users'),
         sdk.where('schoolId', '==', me.schoolId), sdk.where('role', '==', 'student'), sdk.where('class', '==', cls), sdk.limit(200)));
@@ -1061,14 +1106,13 @@ window.QuestClassFirebase = {
     if (!aId) return { ok: false, error: 'assignmentId required', submissions: [] };
 
     try {
-      const q = sdk.query(
-        sdk.collection(db, 'submissions'),
-        sdk.where('schoolId', '==', String(me.schoolId || '')),
-        sdk.where('assignmentId', '==', aId),
-        sdk.limit(limit)
-      );
-      const snap = await sdk.getDocs(q);
-      const submissions = snap.docs.map((doc) => this._docData(doc)).filter(Boolean)
+      const col = sdk.collection(db, 'submissions');
+      const base = [sdk.where('schoolId', '==', String(me.schoolId || '')), sdk.where('assignmentId', '==', aId)];
+      const classLimit = this._classLimit(me);
+      const docs = classLimit
+        ? (classLimit.length ? await this._byClasses(sdk, col, classLimit, base, limit) : [])
+        : (await sdk.getDocs(sdk.query(col, ...base, sdk.limit(limit)))).docs;
+      const submissions = docs.map((doc) => this._docData(doc)).filter(Boolean)
         .sort((a, b) => {
           const ta = a.submittedAt ? new Date(a.submittedAt).getTime() : 0;
           const tb = b.submittedAt ? new Date(b.submittedAt).getTime() : 0;
