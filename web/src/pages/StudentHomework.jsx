@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import { listMyHomework, listMySubmissions, submitHomework } from '../services/firebase.js';
 import QuestionTypeBadge from '../components/QuestionTypeBadge.jsx';
 import { CheckCircle2, ClipboardList, PartyPopper, RefreshCw } from 'lucide-react';
+import { useConfirm } from '../components/Confirm.jsx';
 
 // ── Shared styles ──────────────────────────────────────────────────────────────
 const btnPrimary = {
@@ -218,6 +219,7 @@ function CompletedDetail({ assignment, submission, onBack }) {
 
 // ── Main Page ─────────────────────────────────────────────────────────────────
 export default function StudentHomework() {
+  const confirm = useConfirm();
   const [view, setView] = useState('list');      // 'list' | 'answer' | 'review'
   const [items, setItems] = useState([]);
   const [mySubmissions, setMySubmissions] = useState({}); // assignmentId → submission
@@ -273,7 +275,7 @@ export default function StudentHomework() {
     if (!selected?.id) return;
     const unanswered = questions.filter(q => answers[q.id] == null || answers[q.id] === '');
     if (unanswered.length > 0) {
-      if (!window.confirm(`還有 ${unanswered.length} 題未作答，確定要送出嗎？`)) return;
+      if (!await confirm(`還有 ${unanswered.length} 題未作答，確定要送出嗎？`, { confirmText: '送出' })) return;
     }
     setSubmitting(true);
     try {

@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { useToast } from '../components/Toast.jsx';
 import { listSchools } from '../services/firebase.js';
 import { saveSchoolSettings } from '../services/api.js';
+import { useConfirm } from '../components/Confirm.jsx';
 
 function isAdmin(user) {
   return String(user?.role || '').toLowerCase() === 'admin';
@@ -11,6 +12,7 @@ function isAdmin(user) {
 const UNASSIGNED = '__none__';
 
 export default function AdminPage({ user }) {
+  const confirm = useConfirm();
   const toast = useToast();
   const platform = user?.platformAdmin === true;
   const [loading, setLoading] = useState(false);
@@ -105,7 +107,7 @@ export default function AdminPage({ user }) {
   const onToggleShare = async () => {
     if (!settingsSchool) return;
     const next = !settingsSchool.shareQuestionBank;
-    if (next && !window.confirm(`開啟後，其他學校的老師可以查看及使用「${settingsSchool.name}」題庫的題目（不能修改）。確定？`)) return;
+    if (next && !await confirm(`開啟後，其他學校的老師可以查看及使用「${settingsSchool.name}」題庫的題目（不能修改）。確定？`, { confirmText: '開啟共享' })) return;
     setSaving(true);
     try {
       await saveSchoolSettings({ shareQuestionBank: next, ...(platform ? { schoolId: settingsSchool.id } : {}) });

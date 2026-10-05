@@ -36,6 +36,7 @@ import Landing from './pages/Landing.jsx';
 import ParentPage from './pages/Parent.jsx';
 import AssistantBubble from './components/AssistantBubble.jsx';
 import { ToastProvider, useToast } from './components/Toast.jsx';
+import { ConfirmProvider } from './components/Confirm.jsx';
 import { firebaseEnabled, firebaseInit, getSchool, signInWithGoogle, signOut } from './services/firebase.js';
 import { ROLE_LABELS, canAccess, homePathFor, isBlockedAccount, normalizeRole } from './permissions.js';
 
@@ -377,9 +378,11 @@ function AppBody() {
 export default function App() {
   return (
     <ToastProvider>
-      <BrowserRouter>
-        <AppBody />
-      </BrowserRouter>
+      <ConfirmProvider>
+        <BrowserRouter>
+          <AppBody />
+        </BrowserRouter>
+      </ConfirmProvider>
     </ToastProvider>
   );
 }

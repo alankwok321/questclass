@@ -3,11 +3,13 @@ import { Link } from 'react-router-dom';
 import { useToast } from '../components/Toast.jsx';
 import { getAiSettings, saveAiSettings, testAiSettings } from '../services/api.js';
 import { listSchools } from '../services/firebase.js';
+import { useConfirm } from '../components/Confirm.jsx';
 
 // The one place a school's AI provider and API key are set: by that school's admin, or by the
 // platform admin (who belongs to no school) for the school they pick.
 // The key is sent to the server once, stored encrypted, and never shown again.
 export default function AiSettingsPage({ user }) {
+  const confirm = useConfirm();
   const toast = useToast();
   const [info, setInfo] = useState(null);
   const [loadErr, setLoadErr] = useState('');
@@ -65,7 +67,7 @@ export default function AiSettingsPage({ user }) {
   };
 
   const onClearKey = async () => {
-    if (!window.confirm('確定要移除已儲存的 API Key？移除後 AI 功能會改用伺服器環境變數（如有）。')) return;
+    if (!await confirm('確定要移除已儲存的 API Key？移除後 AI 功能會改用伺服器環境變數（如有）。', { confirmText: '移除', danger: true })) return;
     setBusy('clear');
     setTestResult(null);
     try {

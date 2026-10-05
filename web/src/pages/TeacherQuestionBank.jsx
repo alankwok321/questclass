@@ -4,6 +4,7 @@ import { listQuestionBank, upsertQuestionBankItem } from '../services/firebase.j
 import { getIdToken } from '../services/firebase.js';
 import { generateQuestions } from '../services/api.js';
 import QuestionTypeBadge from '../components/QuestionTypeBadge.jsx';
+import { useConfirm } from '../components/Confirm.jsx';
 
 const SUPPORTED_TYPES = ['TRUE_FALSE','MULTIPLE_CHOICE','FILL_IN_BLANK','MATCHING','SHORT_ANSWER','LONG_ANSWER'];
 const GRADES = ['P1','P2','P3','P4','P5','P6','S1','S2','S3','S4','S5','S6'];
@@ -716,6 +717,7 @@ function ExcelImportModal({ onClose, onDone }) {
 
 // ── Main Page ─────────────────────────────────────────────────────────────────
 export default function TeacherQuestionBank() {
+  const confirm = useConfirm();
   const [view, setView] = useState('list'); // 'list' | 'edit'
 
   const [items, setItems] = useState([]);
@@ -792,7 +794,7 @@ export default function TeacherQuestionBank() {
   }
 
   async function deleteEdit() {
-    if (!window.confirm('確認刪除此題目？')) return;
+    if (!await confirm('確認刪除此題目？', { confirmText: '刪除', danger: true })) return;
     setSaving(true);
     try {
       const { _cid, ...rest } = editItem;

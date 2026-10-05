@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { useToast } from '../components/Toast.jsx';
 import { listSchools } from '../services/firebase.js';
 import { createSchool, renameSchool } from '../services/api.js';
+import { useConfirm } from '../components/Confirm.jsx';
 
 const ROLE_ORDER = ['admin', 'teacher', 'student', 'parent'];
 const ROLE_NAMES = { admin: '管理員', teacher: '老師', student: '學生', parent: '家長' };
@@ -10,6 +11,7 @@ const ROLE_NAMES = { admin: '管理員', teacher: '老師', student: '學生', p
 // Platform admin only: create schools and see who belongs to each one.
 // School admins then manage their own members on 管理後台.
 export default function SchoolsPage({ user }) {
+  const confirm = useConfirm();
   const toast = useToast();
   const [schools, setSchools] = useState(null);
   const [users, setUsers] = useState([]);
@@ -50,7 +52,7 @@ export default function SchoolsPage({ user }) {
   const onCreate = async (e) => {
     e.preventDefault();
     if (!newName.trim()) return;
-    if (first && !window.confirm(`建立第一間學校「${newName.trim()}」？\n\n現有的所有使用者（平台管理員除外）、作業、提交和題庫都會歸入這間學校，並移除不再使用的使用者欄位。`)) return;
+    if (first && !await confirm(`建立第一間學校「${newName.trim()}」？\n\n現有的所有使用者（平台管理員除外）、作業、提交和題庫都會歸入這間學校，並移除不再使用的使用者欄位。`, { confirmText: '建立' })) return;
     setBusy('create');
     try {
       const r = await createSchool(newName.trim());
