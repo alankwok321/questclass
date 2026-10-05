@@ -50,16 +50,14 @@ export default function SchoolsPage({ user }) {
   const onCreate = async (e) => {
     e.preventDefault();
     if (!newName.trim()) return;
-    if (first && !window.confirm(`建立第一間學校「${newName.trim()}」？\n\n現有的所有使用者、作業、提交和題庫都會歸入這間學校，並移除不再使用的使用者欄位。`)) return;
+    if (first && !window.confirm(`建立第一間學校「${newName.trim()}」？\n\n現有的所有使用者（平台管理員除外）、作業、提交和題庫都會歸入這間學校，並移除不再使用的使用者欄位。`)) return;
     setBusy('create');
     try {
       const r = await createSchool(newName.trim());
       const a = r.adopted;
       toast.show(a ? `已建立，並歸入 ${a.users || 0} 位使用者、${a.homeworkAssignments || 0} 份作業、${a.questionBank || 0} 條題目` : '已建立學校');
       setNewName('');
-      // The first school also becomes yours: reload so the app picks it up.
-      if (a) window.location.reload();
-      else await load();
+      await load();
     } catch (e2) {
       toast.show(e2.message || '建立失敗');
     } finally {
@@ -99,7 +97,7 @@ export default function SchoolsPage({ user }) {
         <div style={{ fontWeight: 700 }}>{first ? '建立第一間學校' : '新增學校'}</div>
         {first ? (
           <div style={{ fontSize: 13, color: '#B25000', lineHeight: 1.6 }}>
-            第一間學校會接收現有的全部資料（使用者、作業、提交、題庫和 AI Key），你的帳戶也會加入這間學校。
+            第一間學校會接收現有的全部資料（使用者、作業、提交、題庫和 AI Key）。你作為平台管理員不屬於任何學校。
           </div>
         ) : null}
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
@@ -118,7 +116,6 @@ export default function SchoolsPage({ user }) {
           <div style={{ color: '#86868B' }}>尚未有學校。</div>
         ) : schools.map((s) => {
           const c = counts[s.id] || {};
-          const isMine = user.schoolId === s.id;
           return (
             <div key={s.id} style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap', padding: '12px 14px', borderRadius: 14, background: '#F5F5F7' }}>
               {editing.id === s.id ? (
@@ -132,7 +129,7 @@ export default function SchoolsPage({ user }) {
                 <>
                   <div style={{ flex: 1, minWidth: 200 }}>
                     <div style={{ fontWeight: 600, fontSize: 15 }}>
-                      {s.name}{isMine ? <span style={{ marginLeft: 8, fontSize: 12, color: '#0071E3' }}>你的學校</span> : null}
+                      {s.name}
                     </div>
                     <div style={{ fontSize: 12, color: '#6E6E73', marginTop: 3 }}>
                       {ROLE_ORDER.map((r) => `${ROLE_NAMES[r]} ${c[r] || 0}`).join(' · ')}

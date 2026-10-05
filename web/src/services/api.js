@@ -53,17 +53,18 @@ export async function generateQuestions(body) {
   return questions;
 }
 
-// Admin only: the school's AI settings.
-export async function getAiSettings() {
-  return postJson('/api/admin/ai-settings/get', await withAuth({}));
+// Admin only: a school's AI settings. School admins always get their own school;
+// the platform admin passes the school they picked.
+export async function getAiSettings(schoolId) {
+  return postJson('/api/admin/ai-settings/get', await withAuth(schoolId ? { schoolId } : {}));
 }
 
 export async function saveAiSettings(settings) {
   return postJson('/api/admin/ai-settings/save', await withAuth(settings));
 }
 
-export async function testAiSettings() {
-  return postJson('/api/admin/ai-settings/test', await withAuth({}));
+export async function testAiSettings(schoolId) {
+  return postJson('/api/admin/ai-settings/test', await withAuth(schoolId ? { schoolId } : {}));
 }
 
 // Platform admin: schools.

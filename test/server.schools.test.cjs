@@ -52,7 +52,10 @@ test('the first school adopts existing users and data and removes old user field
   assert.equal(d.schools[id].name, 'School A');
   assert.equal(d.schools[id].shareQuestionBank, false);
 
-  for (const u of Object.values(d.users)) assert.equal(u.schoolId, id);
+  for (const [uid, u] of Object.entries(d.users)) {
+    if (uid === 'boss') assert.equal(u.schoolId, undefined, 'the platform admin stays outside every school');
+    else assert.equal(u.schoolId, id, uid);
+  }
   for (const f of ['classroomIds', 'requestedRole', 'learnerStage', 'roleNote', 'adminNote', 'issueFlag', 'studentId']) {
     assert.ok(!(f in d.users.stu), f);
   }
@@ -67,7 +70,7 @@ test('the first school adopts existing users and data and removes old user field
   assert.equal(d.questionBank.q1.shared, false);
   assert.equal(d.schoolSecrets[id].keyHint, 'sk-…1234', 'the old AI key becomes this school\'s key');
   assert.equal(d.appSettings.ai, undefined);
-  assert.equal(r.body.adopted.users, Object.keys(d.users).length);
+  assert.equal(r.body.adopted.users, Object.keys(d.users).length - 1);
 });
 
 test('later schools start empty and adopt nothing', async () => {
@@ -134,4 +137,34 @@ test('sharing settings for a school that no longer exists → 404', async () => 
   h.fbState.data.users.adm.schoolId = 'gone';
   assert.equal((await share({ idToken: 'adm', shareQuestionBank: true })).status, 404);
   assert.equal(h.fbState.data.schools, undefined);
+});
+
+test('the platform admin (no school) manages a chosen school\'s sharing and AI key', async () => {
+  h.fbState.data.schools = { a: { name: 'A' }, b: { name: 'B' } };
+  h.fbState.data.questionBank = { q1: { schoolId: 'b', shared: false } };
+  assert.equal((await share({ idToken: 'boss', shareQuestionBank: true })).status, 400, 'must pick a school');
+  assert.equal((await share({ idToken: 'boss', schoolId: 'nope', shareQuestionBank: true })).status, 404);
+  assert.equal((await share({ idToken: 'boss', schoolId: 'b', shareQuestionBank: true })).status, 200);
+  assert.equal(h.fbState.data.questionBank.q1.shared, true);
+  assert.equal(h.fbState.data.schools.a.shareQuestionBank, undefined);
+
+  let r = await h.post(app, '/api/admin/ai-settings/save', { idToken: 'boss', schoolId: 'b', apiKey: 'sk-for-school-b', model: 'm' });
+  assert.equal(r.status, 200);
+  assert.ok(h.fbState.data.schoolSecrets.b.secret.ciphertext);
+  r = await h.post(app, '/api/admin/ai-settings/get', { idToken: 'boss', schoolId: 'b' });
+  assert.equal(r.body.hasKey, true);
+  r = await h.post(app, '/api/admin/ai-settings/get', { idToken: 'boss', schoolId: 'a' });
+  assert.equal(r.body.hasKey, false);
+});
+
+test('a school admin cannot pick another school', async () => {
+  h.fbState.data.schools = { a: { name: 'A' }, b: { name: 'B' } };
+  h.fbState.data.users.adm.schoolId = 'a';
+  h.fbState.data.questionBank = { q1: { schoolId: 'b', shared: false } };
+  await share({ idToken: 'adm', schoolId: 'b', shareQuestionBank: true });
+  assert.equal(h.fbState.data.questionBank.q1.shared, false, 'school B untouched');
+  assert.equal(h.fbState.data.schools.a.shareQuestionBank, true, 'acted on their own school');
+  await h.post(app, '/api/admin/ai-settings/save', { idToken: 'adm', schoolId: 'b', apiKey: 'sk-x', model: 'm' });
+  assert.equal(h.fbState.data.schoolSecrets.b, undefined);
+  assert.ok(h.fbState.data.schoolSecrets.a);
 });

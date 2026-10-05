@@ -114,10 +114,12 @@ function FullScreenNotice({ title, body, action }) {
 }
 
 // Sends "/" to the role's home and any page the role may not open back to that home.
-function RoleGate({ role, children }) {
+function RoleGate({ role, platformOnly = false, children }) {
   const { pathname } = useLocation();
-  const home = homePathFor(role);
+  // The platform admin belongs to no school, so only the admin pages apply to them.
+  const home = platformOnly ? '/admin/schools' : homePathFor(role);
   const p = pathname.replace(/\/+$/, '') || '/';
+  if (platformOnly && p !== '/admin' && !p.startsWith('/admin/')) return <Navigate to={home} replace />;
   if (p === '/') return <Navigate to={home} replace />;
   if (!canAccess(role, p)) return <Navigate to={home} replace />;
   return children;
@@ -132,7 +134,7 @@ function OpenAssistant({ role }) {
   return <Navigate to={homePathFor(role)} replace />;
 }
 
-function Shell({ user, schoolName, onLogout, children }) {
+function Shell({ user, schoolName, platformOnly = false, onLogout, children }) {
   const location = useLocation();
   const role = normalizeRole(user?.role);
 
@@ -143,7 +145,8 @@ function Shell({ user, schoolName, onLogout, children }) {
   }, [location.pathname]);
 
   const groups = NAV_GROUPS
-    .map((g) => ({ ...g, items: g.items.filter((it) => canAccess(role, it.to) && (!it.platformOnly || user?.platformAdmin)) }))
+    .map((g) => ({ ...g, items: g.items.filter((it) => canAccess(role, it.to) && (!it.platformOnly || user?.platformAdmin)
+      && (!platformOnly || it.to.startsWith('/admin'))) }))
     .filter((g) => g.items.length);
 
   const initials = String(user?.name || '')
@@ -157,7 +160,8 @@ function Shell({ user, schoolName, onLogout, children }) {
     .toUpperCase();
 
   const displayName = String(user?.name || '').replace(/\s*\(.*\)\s*/, '');
-  const eyebrow = `${schoolName ? `${schoolName} · ` : ''}${displayName}${ROLE_LABELS[role] ? ` · ${ROLE_LABELS[role]}` : ''}${user?.demo ? ' · 示範模式' : ''}`;
+  const roleLabel = platformOnly ? '平台管理員' : ROLE_LABELS[role];
+  const eyebrow = `${schoolName ? `${schoolName} · ` : ''}${displayName}${roleLabel ? ` · ${roleLabel}` : ''}${user?.demo ? ' · 示範模式' : ''}`;
 
   return (
     <div className="appShell">
@@ -195,7 +199,7 @@ function Shell({ user, schoolName, onLogout, children }) {
               <div style={{ fontWeight: 600, fontSize: 13, lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {displayName || '—'}
               </div>
-              <div style={{ color: '#6E6E73', fontSize: 12, marginTop: 1 }}>{ROLE_LABELS[role] || '—'}</div>
+              <div style={{ color: '#6E6E73', fontSize: 12, marginTop: 1 }}>{roleLabel || '—'}</div>
             </div>
             <button type="button" onClick={onLogout} className="qcBtn qcBtnSmall"
               style={{ height: 30, padding: '0 12px', background: '#E3E3E8', color: '#1D1D1F', fontSize: 12 }}>
@@ -225,7 +229,7 @@ function Shell({ user, schoolName, onLogout, children }) {
         <div className="content">{children}</div>
       </main>
 
-      {canAccess(role, '/chat') ? <AssistantBubble user={user} pageTitle={title} /> : null}
+      {canAccess(role, '/chat') && !platformOnly ? <AssistantBubble user={user} pageTitle={title} /> : null}
     </div>
   );
 }
@@ -350,6 +354,7 @@ function AppBody() {
   }
 
   const role = normalizeRole(user.role);
+  const platformOnly = user.platformAdmin === true && !user.schoolId;
   if (!role) {
     return (
       <FullScreenNotice
@@ -361,8 +366,8 @@ function AppBody() {
   }
 
   return (
-    <Shell user={user} schoolName={schoolName} onLogout={onLogout}>
-      <RoleGate role={role}>
+    <Shell user={user} schoolName={schoolName} platformOnly={platformOnly} onLogout={onLogout}>
+      <RoleGate role={role} platformOnly={platformOnly}>
         <AppRoutes user={user} />
       </RoleGate>
     </Shell>

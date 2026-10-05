@@ -17,8 +17,9 @@ export default function AdminPage({ user }) {
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
   const [schools, setSchools] = useState([]);
-  // Which school's members are shown. School admins: always their own.
-  const [viewSchool, setViewSchool] = useState(user?.schoolId || (platform ? UNASSIGNED : ''));
+  // Which school's members are shown. School admins: always their own. The platform admin belongs
+  // to no school and picks one (starting with the first school once the list has loaded).
+  const [viewSchool, setViewSchool] = useState(platform ? '' : (user?.schoolId || ''));
   const [users, setUsers] = useState([]);
   const [filter, setFilter] = useState('all');
 
@@ -27,8 +28,8 @@ export default function AdminPage({ user }) {
   const [form, setForm] = useState({ role: 'student', accountStatus: 'active', class: '', childUids: [], schoolId: '' });
   const [childSearch, setChildSearch] = useState('');
 
-  const mySchool = schools.find((s) => s.id === user?.schoolId) || null;
-  const viewingOwn = viewSchool === user?.schoolId;
+  // The school whose settings (question-bank sharing) are shown.
+  const settingsSchool = schools.find((s) => s.id === viewSchool) || null;
 
   const refresh = async (schoolKey = viewSchool) => {
     setErr('');
@@ -38,7 +39,12 @@ export default function AdminPage({ user }) {
       if (!fb?.enabled?.()) { setErr('Firebase 未設定'); return; }
       await fb.init?.();
       const sRes = await listSchools();
-      setSchools(sRes?.schools || []);
+      const schoolList = sRes?.schools || [];
+      setSchools(schoolList);
+      if (platform && !schoolKey) {
+        setViewSchool(schoolList[0]?.id || UNASSIGNED); // the effect below loads that school
+        return;
+      }
       const opts = platform ? { schoolId: schoolKey === UNASSIGNED ? '' : schoolKey } : {};
       const uRes = await fb.listUsers?.(1000, opts);
       if (!uRes?.ok) throw new Error(uRes?.error || '載入使用者失敗');
@@ -97,12 +103,12 @@ export default function AdminPage({ user }) {
   };
 
   const onToggleShare = async () => {
-    if (!mySchool) return;
-    const next = !mySchool.shareQuestionBank;
-    if (next && !window.confirm('開啟後，其他學校的老師可以查看及使用本校題庫的題目（不能修改）。確定？')) return;
+    if (!settingsSchool) return;
+    const next = !settingsSchool.shareQuestionBank;
+    if (next && !window.confirm(`開啟後，其他學校的老師可以查看及使用「${settingsSchool.name}」題庫的題目（不能修改）。確定？`)) return;
     setSaving(true);
     try {
-      await saveSchoolSettings({ shareQuestionBank: next });
+      await saveSchoolSettings({ shareQuestionBank: next, ...(platform ? { schoolId: settingsSchool.id } : {}) });
       toast.show(next ? '已與其他學校共享題庫' : '已停止共享題庫');
       await refresh();
     } catch (e) {
@@ -135,7 +141,8 @@ export default function AdminPage({ user }) {
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
             {platform ? (
               <select value={viewSchool} onChange={(e) => setViewSchool(e.target.value)} aria-label="查看學校" style={{ ...selectStyle, width: 'auto' }}>
-                {schools.map((s) => <option key={s.id} value={s.id}>{s.name}{s.id === user.schoolId ? '（你的學校）' : ''}</option>)}
+                {!viewSchool ? <option value="">載入中…</option> : null}
+                {schools.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
                 <option value={UNASSIGNED}>未分配學校</option>
               </select>
             ) : null}
@@ -149,19 +156,19 @@ export default function AdminPage({ user }) {
         {err ? <div style={{ marginTop: 10, color: '#D70015', fontWeight: 600 }}>{err}</div> : null}
       </div>
 
-      {viewingOwn && mySchool ? (
+      {settingsSchool ? (
         <div className="qcCard" style={{ display: 'flex', alignItems: 'center', gap: 16, justifyContent: 'space-between', flexWrap: 'wrap' }}>
           <div style={{ minWidth: 0, flex: 1 }}>
             <div style={{ fontWeight: 700 }}>與其他學校共享題庫</div>
             <div style={{ fontSize: 13, color: '#6E6E73', marginTop: 4, lineHeight: 1.5 }}>
-              開啟後，其他學校的老師可以查看及使用本校題庫的題目，但不能修改。本校老師一直可以看到其他已共享學校的題目。
+              開啟後，其他學校的老師可以查看及使用這間學校題庫的題目，但不能修改。這間學校的老師一直可以看到其他已共享學校的題目。
             </div>
           </div>
-          <button type="button" role="switch" aria-checked={!!mySchool.shareQuestionBank} aria-label="與其他學校共享題庫" onClick={onToggleShare} disabled={saving}
+          <button type="button" role="switch" aria-checked={!!settingsSchool.shareQuestionBank} aria-label="與其他學校共享題庫" onClick={onToggleShare} disabled={saving}
             style={{ width: 51, height: 31, borderRadius: 999, border: 0, padding: 2, cursor: 'pointer', flexShrink: 0,
-              background: mySchool.shareQuestionBank ? '#34C759' : '#E3E3E8', transition: 'background .2s' }}>
+              background: settingsSchool.shareQuestionBank ? '#34C759' : '#E3E3E8', transition: 'background .2s' }}>
             <span style={{ display: 'block', width: 27, height: 27, borderRadius: 999, background: '#fff', boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
-              transform: mySchool.shareQuestionBank ? 'translateX(20px)' : 'none', transition: 'transform .2s' }} />
+              transform: settingsSchool.shareQuestionBank ? 'translateX(20px)' : 'none', transition: 'transform .2s' }} />
           </button>
         </div>
       ) : null}

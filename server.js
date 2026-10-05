@@ -358,10 +358,17 @@ async function requireAdminActor(idToken) {
   return actor;
 }
 
-// A school admin acting on their own school.
-async function requireSchoolAdmin(idToken) {
+// A school admin acting on their own school, or the platform admin (who belongs to no school)
+// acting on the school they picked. Returns the actor with schoolId = the school to act on.
+async function requireSchoolAdmin(idToken, requestedSchoolId) {
   const actor = await requireAdminActor(idToken);
-  if (!actor.schoolId) throw httpError(400, '你的帳戶尚未加入學校');
+  if (actor.platformAdmin && requestedSchoolId) {
+    const id = String(requestedSchoolId);
+    const { db } = getFirebaseAdmin();
+    if (!(await db.collection('schools').doc(id).get()).exists) throw httpError(404, '找不到這間學校');
+    return { ...actor, schoolId: id };
+  }
+  if (!actor.schoolId) throw httpError(400, actor.platformAdmin ? '請先選擇學校' : '你的帳戶尚未加入學校');
   return actor;
 }
 
@@ -381,7 +388,7 @@ function maskKey(key) {
 // School admin: read their school's AI settings (never returns the key itself).
 app.post('/api/admin/ai-settings/get', async (req, res) => {
   try {
-    const actor = await requireSchoolAdmin((req.body || {}).idToken);
+    const actor = await requireSchoolAdmin((req.body || {}).idToken, (req.body || {}).schoolId);
     const env = getServerProviderConfig();
     const stored = await readSchoolAiSettings(actor.schoolId);
     return res.json({
@@ -407,8 +414,8 @@ app.post('/api/admin/ai-settings/get', async (req, res) => {
 // clearKey removes it (AI then falls back to OPENROUTER_API_KEY, if set).
 app.post('/api/admin/ai-settings/save', async (req, res) => {
   try {
-    const { idToken, apiKey, apiBaseUrl, model, clearKey } = req.body || {};
-    const actor = await requireSchoolAdmin(idToken);
+    const { idToken, schoolId, apiKey, apiBaseUrl, model, clearKey } = req.body || {};
+    const actor = await requireSchoolAdmin(idToken, schoolId);
     const base = String(apiBaseUrl || 'https://openrouter.ai/api/v1').trim().replace(/\/+$/, '');
     if (!isAllowedProviderUrl(base)) throw providerUrlError();
     const cleanModel = String(model || '').trim();
@@ -439,7 +446,7 @@ app.post('/api/admin/ai-settings/save', async (req, res) => {
 // Admin: send a tiny request with the saved settings to check they work.
 app.post('/api/admin/ai-settings/test', async (req, res) => {
   try {
-    const actor = await requireSchoolAdmin((req.body || {}).idToken);
+    const actor = await requireSchoolAdmin((req.body || {}).idToken, (req.body || {}).schoolId);
     const cfg = await getSchoolProviderConfig(actor.schoolId);
     if (!cfg.apiKey) return res.status(400).json({ ok: false, error: '尚未設定 API Key' });
     const result = await callChatCompletion({ ...cfg, system: 'Reply with the single word: OK', user: 'ping', temperature: 0 });
@@ -477,7 +484,8 @@ async function adoptExistingData(db, schoolId) {
   for (const doc of users.docs) {
     const d = doc.data() || {};
     const update = {};
-    if (!d.schoolId) update.schoolId = schoolId;
+    // The platform admin stays outside every school.
+    if (!d.schoolId && d.platformAdmin !== true) update.schoolId = schoolId;
     for (const f of REMOVED_USER_FIELDS) if (f in d) update[f] = FieldValue.delete();
     // Keep a student's class: the old admin page only set classroomIds.
     if (!d.class && Array.isArray(d.classroomIds) && d.classroomIds.length && String(d.role || '').toLowerCase() === 'student') {
@@ -566,11 +574,12 @@ app.post('/api/platform/schools/rename', async (req, res) => {
   }
 });
 
-// School admin: share (or stop sharing) the school's question bank with other schools.
+// School admin (or the platform admin, for a school they pick): share or stop sharing the
+// school's question bank with other schools.
 app.post('/api/school/settings/save', async (req, res) => {
   try {
-    const { idToken, shareQuestionBank } = req.body || {};
-    const actor = await requireSchoolAdmin(idToken);
+    const { idToken, schoolId, shareQuestionBank } = req.body || {};
+    const actor = await requireSchoolAdmin(idToken, schoolId);
     if (typeof shareQuestionBank !== 'boolean') throw httpError(400, 'shareQuestionBank must be true or false');
     const { db } = getFirebaseAdmin();
     const schoolRef = db.collection('schools').doc(actor.schoolId);
