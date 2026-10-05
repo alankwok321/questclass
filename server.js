@@ -1099,6 +1099,173 @@ app.post('/api/chat', async (req, res) => {
   res.json({ mode: 'live', reply: result.text });
 });
 
+// ── Marking a student's homework ───────────────────────────────────────────
+// Runs on the server because the answers live in homeworkAnswerKeys, which students cannot read.
+// Objective questions are marked exactly; open questions by the school's AI against the model
+// answer / rubric (or left for the teacher). Once marked, the homework cannot be resubmitted,
+// and the student sees the correct answers in their own submission.
+const OBJECTIVE_TYPES = new Set(['MULTIPLE_CHOICE', 'TRUE_FALSE', 'FILL_IN_BLANK']);
+
+function normAnswer(v) {
+  return String(v ?? '').normalize('NFKC').trim().toLowerCase().replace(/\s+/g, ' ').replace(/[。．.]+$/, '');
+}
+
+function correctChoiceIds(q) {
+  const opts = Array.isArray(q.options) ? q.options : (Array.isArray(q.choices) ? q.choices : []);
+  const fromOpts = opts.filter((o) => o && o.is_correct === true).map((o) => String(o.id ?? o.value));
+  if (fromOpts.length) return fromOpts;
+  return (Array.isArray(q.correctChoiceIds) ? q.correctChoiceIds : []).map(String);
+}
+
+function describeCorrect(q) {
+  const type = String(q.type || '').toUpperCase();
+  if (type === 'MULTIPLE_CHOICE') {
+    const opts = Array.isArray(q.options) ? q.options : (Array.isArray(q.choices) ? q.choices : []);
+    const ids = correctChoiceIds(q);
+    return ids.map((id) => { const o = opts.find((x) => String(x?.id ?? x?.value) === id); return o?.text ? `${id}. ${o.text}` : id; }).join('、');
+  }
+  if (type === 'TRUE_FALSE') return q.correct_answer === true ? '正確 (True)' : q.correct_answer === false ? '錯誤 (False)' : '';
+  if (type === 'FILL_IN_BLANK') {
+    return (Array.isArray(q.blanks) ? q.blanks : []).map((b) => (Array.isArray(b?.accepted) ? b.accepted : []).join(' / ')).filter(Boolean).join('；');
+  }
+  if (type === 'MATCHING') return (Array.isArray(q.pairs) ? q.pairs : []).map((p) => `${p?.prompt} → ${p?.match}`).join('；');
+  return String(q.ideal_answer || '');
+}
+
+// Returns { earned, correct } for objective questions, or null when it needs judgement.
+function markObjective(q, value) {
+  const type = String(q.type || '').toUpperCase();
+  const points = Number(q.points) || 1;
+  if (value == null || value === '') return { earned: 0, correct: false };
+  if (type === 'MULTIPLE_CHOICE') {
+    const ids = correctChoiceIds(q);
+    if (!ids.length) return null;
+    const ok = ids.includes(String(value));
+    return { earned: ok ? points : 0, correct: ok };
+  }
+  if (type === 'TRUE_FALSE') {
+    if (typeof q.correct_answer !== 'boolean') return null;
+    const v = value === true || value === 'true' ? true : value === false || value === 'false' ? false : null;
+    const ok = v === q.correct_answer;
+    return { earned: ok ? points : 0, correct: ok };
+  }
+  if (type === 'FILL_IN_BLANK') {
+    const blanks = (Array.isArray(q.blanks) ? q.blanks : []).filter((b) => Array.isArray(b?.accepted) && b.accepted.length);
+    if (!blanks.length) return null;
+    const parts = blanks.length === 1 ? [String(value)] : String(value).split(/[,，、;；|\n]+/);
+    const hits = blanks.filter((b, i) => b.accepted.some((a) => normAnswer(a) === normAnswer(parts[i])));
+    const earned = Math.round((points * hits.length / blanks.length) * 100) / 100;
+    return { earned, correct: hits.length === blanks.length };
+  }
+  return null;
+}
+
+async function markOpenWithAi(cfg, items) {
+  if (!items.length || !cfg?.apiKey) return {};
+  const result = await callChatCompletion({
+    ...cfg,
+    temperature: 0.2,
+    responseFormat: { type: 'json_object' },
+    system: '你是香港學校老師的批改助手。根據題目、參考答案和評分準則，為每條題目的學生答案評分（0 至滿分，可用 0.5 分），'
+      + '並用繁體中文寫一句簡短回饋（指出做得好或需要改善之處）。只輸出 JSON：{"results":[{"id":"…","earned":數字,"feedback":"…"}]}',
+    user: JSON.stringify(items.map((it) => ({
+      id: it.id, question: it.question, reference_answer: it.reference, rubric: it.rubric, max_points: it.max, student_answer: it.answer,
+    }))),
+  });
+  if (!result.ok) return {};
+  try {
+    const text = String(result.text || '');
+    const json = JSON.parse((text.match(/\{[\s\S]*\}/) || [text])[0]);
+    const out = {};
+    for (const r of Array.isArray(json.results) ? json.results : []) {
+      const it = items.find((x) => x.id === String(r?.id));
+      const earned = Number(r?.earned);
+      if (it && Number.isFinite(earned)) {
+        out[it.id] = { earned: Math.max(0, Math.min(it.max, Math.round(earned * 2) / 2)), feedback: String(r.feedback || '').slice(0, 300) };
+      }
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+async function gradeSubmission({ db, schoolId, assignmentId, submission }) {
+  const hwSnap = await db.collection('homeworkAssignments').doc(assignmentId).get();
+  const hw = hwSnap.exists ? hwSnap.data() : null;
+  if (!hw || hw.schoolId !== schoolId) throw httpError(404, '找不到這份作業');
+  const keySnap = await db.collection('homeworkAnswerKeys').doc(assignmentId).get();
+  const questions = (keySnap.exists && Array.isArray(keySnap.data()?.questions)) ? keySnap.data().questions : (Array.isArray(hw.questions) ? hw.questions : []);
+  const answers = new Map((Array.isArray(submission.answers) ? submission.answers : []).map((a) => [String(a?.questionId), a?.value]));
+
+  const results = [];
+  const open = [];
+  questions.forEach((q, i) => {
+    const id = String(q.id ?? i);
+    const points = Number(q.points) || 1;
+    const value = answers.get(id);
+    const type = String(q.type || '').toUpperCase();
+    const marked = OBJECTIVE_TYPES.has(type) ? markObjective(q, value) : null;
+    const base = { questionId: id, points, correctAnswer: describeCorrect(q).slice(0, 500) };
+    if (marked) {
+      results.push({ ...base, earned: marked.earned, correct: marked.correct, pending: false });
+    } else if (value == null || String(value).trim() === '') {
+      results.push({ ...base, earned: 0, correct: false, pending: false });
+    } else {
+      results.push({ ...base, earned: 0, correct: null, pending: true });
+      open.push({ id, question: String(q.question_text || q.prompt || '').slice(0, 1000), reference: String(q.ideal_answer || describeCorrect(q) || '').slice(0, 1000),
+        rubric: String(q.grading_rubric || '').slice(0, 1000), max: points, answer: String(value).slice(0, 3000) });
+    }
+  });
+
+  if (open.length) {
+    let cfg = null;
+    try { cfg = await getSchoolProviderConfig(schoolId); } catch { cfg = null; }
+    const ai = await markOpenWithAi(cfg, open);
+    for (const r of results) {
+      const a = ai[r.questionId];
+      if (r.pending && a) Object.assign(r, { earned: a.earned, correct: a.earned >= r.points, pending: false, feedback: a.feedback, markedBy: 'ai' });
+    }
+  }
+
+  const round = (n) => Math.round(n * 100) / 100;
+  const maxScore = round(results.reduce((sum, r) => sum + r.points, 0));
+  const score = round(results.reduce((sum, r) => sum + (r.earned || 0), 0));
+  return { score, maxScore, results, pendingReview: results.some((r) => r.pending) };
+}
+
+// Student: mark my submission for this homework (called right after handing in). Idempotent.
+app.post('/api/homework/grade', async (req, res) => {
+  try {
+    const { idToken, assignmentId } = req.body || {};
+    const actor = await verifyUserFromToken(idToken);
+    if (!actor) throw httpError(401, '請先登入');
+    requireActive(actor);
+    if (!actor.schoolId) throw httpError(403, '你的帳戶尚未加入學校');
+    const aId = String(assignmentId || '').trim();
+    if (!aId || aId.includes('/')) throw httpError(400, 'assignmentId required');
+    const { db } = getFirebaseAdmin();
+    const ref = db.collection('submissions').doc(`${aId}_${actor.uid}`);
+    const snap = await ref.get();
+    const sub = snap.exists ? snap.data() : null;
+    if (!sub || sub.studentUid !== actor.uid || sub.schoolId !== actor.schoolId) throw httpError(404, '找不到你的提交');
+    if (sub.status === 'graded' && Array.isArray(sub.results)) {
+      return res.json({ ok: true, score: sub.score, maxScore: sub.maxScore, results: sub.results, pendingReview: Boolean(sub.pendingReview) });
+    }
+    const graded = await gradeSubmission({ db, schoolId: actor.schoolId, assignmentId: aId, submission: sub });
+    await ref.set({
+      ...graded,
+      status: 'graded', // locks the hand-in: the answers are now visible to the student
+      gradedBy: 'auto',
+      gradedAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    }, { merge: true });
+    return res.json({ ok: true, ...graded });
+  } catch (error) {
+    return sendError(res, error, 'grading failed');
+  }
+});
+
 app.post('/api/teacher/lesson-loop', async (req, res) => {
   const { topic = 'general', weakness = '', studentName = 'student', grade = '' } = req.body || {};
   let cfg;

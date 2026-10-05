@@ -529,3 +529,11 @@ test('the switcher does nothing for a school admin', async () => {
   const b = makeBridge({ users: users(), homeworkAssignments: homework() }, { uid: 'adm' });
   assert.equal(b.fb._withActiveSchool({ role: 'admin', schoolId: 'A' }).schoolId, 'A');
 });
+
+test('submitHomework: marked homework cannot be handed in again', async () => {
+  const b = makeBridge({ users: users(), homeworkAssignments: homework(), submissions: { h1_stu1: { schoolId: 'A', status: 'graded', studentUid: 'stu1' } } }, { uid: 'stu1' });
+  const r = await b.fb.submitHomework({ assignmentId: 'h1', answers: [] });
+  assert.equal(r.ok, false);
+  assert.match(r.error, /已批改/);
+  assert.equal(b.writes.length, 0);
+});

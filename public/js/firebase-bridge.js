@@ -926,6 +926,10 @@ window.QuestClassFirebase = {
       const answers = Array.isArray(payload.answers) ? payload.answers : [];
       const subId = `${assignmentId}_${check.authUser.uid}`;
       const docRef = sdk.doc(db, 'submissions', subId);
+      // Marked work shows the answers, so it cannot be handed in again.
+      let existing = null;
+      try { existing = this._docData(await sdk.getDoc(docRef)); } catch { existing = null; }
+      if (existing && existing.status && existing.status !== 'submitted') return { ok: false, error: '這份作業已批改，不能再提交' };
       const submission = {
         id: subId,
         schoolId: me.schoolId,
@@ -941,10 +945,26 @@ window.QuestClassFirebase = {
       };
 
       await sdk.setDoc(docRef, submission, { merge: true });
-      return { ok: true, submissionId: subId };
+      // Mark it straight away (on the server, which holds the answers).
+      let grade = null;
+      try { grade = await this.gradeMySubmission(assignmentId); } catch { grade = null; }
+      return { ok: true, submissionId: subId, grade: grade?.ok ? grade : null };
     } catch (error) {
       return { ok: false, error: error?.message || 'Submit failed' };
     }
+  },
+
+  // Ask the server to mark my hand-in for this homework. Returns { ok, score, maxScore, results, pendingReview }.
+  async gradeMySubmission(assignmentId) {
+    const idToken = await this.getIdToken();
+    if (!idToken) return { ok: false, error: '請先登入' };
+    const res = await fetch('/api/homework/grade', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ idToken, assignmentId: String(assignmentId || '') }),
+    });
+    const data = await res.json().catch(() => ({}));
+    return res.ok ? { ok: true, ...data } : { ok: false, error: data?.error || '批改失敗' };
   },
 
   async listStudentsForClassroom(className) {

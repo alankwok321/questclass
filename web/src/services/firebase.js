@@ -84,3 +84,7 @@ export async function getSchool(schoolId) {
 export async function joinSchool(schoolId) {
   return await window.QuestClassFirebase?.joinSchool?.(schoolId);
 }
+
+export async function gradeMySubmission(assignmentId) {
+  return await window.QuestClassFirebase?.gradeMySubmission?.(assignmentId);
+}

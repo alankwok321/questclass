@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
-import { listMyHomework, listMySubmissions, submitHomework } from '../services/firebase.js';
+import { gradeMySubmission, listMyHomework, listMySubmissions, submitHomework } from '../services/firebase.js';
 import QuestionTypeBadge from '../components/QuestionTypeBadge.jsx';
 import { CheckCircle2, ClipboardList, PartyPopper, RefreshCw } from 'lucide-react';
 import { useConfirm } from '../components/Confirm.jsx';
@@ -144,38 +144,75 @@ function QuestionCard({ q, index, value, onChange }) {
   );
 }
 
-// ── Completed assignment detail (read-only) ───────────────────────────────────
-function CompletedDetail({ assignment, submission, onBack }) {
+// ── Result of one question ───────────────────────────────────────────────────
+function ResultBadge({ r }) {
+  if (!r) return null;
+  const style = (bg, fg) => ({ padding: '3px 10px', borderRadius: 999, fontSize: 12, fontWeight: 700, background: bg, color: fg, whiteSpace: 'nowrap' });
+  if (r.pending) return <span style={style('#FFF4E0', '#B25000')}>待老師批改</span>;
+  if (r.correct) return <span style={style('#E3F5E8', '#1E7B34')}>✓ 答對 · {r.earned}/{r.points} 分</span>;
+  if (r.earned > 0) return <span style={style('#FFF4E0', '#B25000')}>部分正確 · {r.earned}/{r.points} 分</span>;
+  return <span style={style('#FFE5E3', '#B8000F')}>✗ 答錯 · 0/{r.points} 分</span>;
+}
+
+// ── Completed assignment: score, your answers and the correct answers ────────
+function CompletedDetail({ assignment, submission, onBack, onGraded }) {
   const questions = Array.isArray(assignment.questions) ? assignment.questions : [];
-  const submittedAt = submission?.submittedAt
-    ? new Date(submission.submittedAt).toLocaleString('zh-HK')
-    : '—';
+  const [grading, setGrading] = useState(false);
+  const [gradeErr, setGradeErr] = useState('');
+  const graded = submission?.status === 'graded' && Array.isArray(submission?.results);
+  const results = new Map((graded ? submission.results : []).map((r) => [String(r.questionId), r]));
+  const submittedAt = submission?.submittedAt ? new Date(submission.submittedAt).toLocaleString('zh-HK') : '—';
+
+  // Older hand-ins (before automatic marking) are marked when opened.
+  useEffect(() => {
+    if (!submission || graded) return;
+    let live = true;
+    setGrading(true);
+    gradeMySubmission(assignment.id).then((r) => {
+      if (!live) return;
+      if (r?.ok) onGraded?.();
+      else setGradeErr(r?.error || '暫時未能批改');
+    }).finally(() => { if (live) setGrading(false); });
+    return () => { live = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [assignment.id, graded]);
+
+  const score = Number(submission?.score);
+  const max = Number(submission?.maxScore);
+  const pct = graded && max > 0 ? Math.round((score / max) * 100) : null;
+  const correctCount = graded ? submission.results.filter((r) => r.correct).length : 0;
 
   return (
     <div style={{ display: 'grid', gap: 16, gridTemplateColumns: 'minmax(0, 1fr)' }}>
       <div><button onClick={onBack} style={btnGhost}>← 返回作業清單</button></div>
 
       <div className="qcCard" style={{ padding: '24px 28px' }}>
-        {/* Header */}
-        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 4 }}>
-          <div style={{ fontWeight: 700, fontSize: 18, color: '#1D1D1F' }}>{assignment.title || '作業'}</div>
-          <span style={{
-            background: 'rgba(52,199,89,0.12)', color: '#1E7B34',
-            borderRadius: 999, padding: '4px 12px', fontSize: 12, fontWeight: 700,
-          }}>✓ 已完成</span>
-        </div>
-        {assignment.description && (
-          <div style={{ color: '#6E6E73', fontWeight: 500, fontSize: 14, lineHeight: 1.7, marginBottom: 8 }}>
-            {assignment.description}
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <div style={{ fontWeight: 700, fontSize: 18, color: '#1D1D1F' }}>{assignment.title || '作業'}</div>
+            <div style={{ fontSize: 12, fontWeight: 500, color: '#86868B', marginTop: 6 }}>提交時間：{submittedAt}</div>
           </div>
-        )}
-        <div style={{ fontSize: 12, fontWeight: 500, color: '#86868B' }}>
-          提交時間：{submittedAt}
+          {graded ? (
+            <div style={{ textAlign: 'right' }}>
+              <div style={{ fontSize: 34, fontWeight: 700, letterSpacing: '-0.02em', fontVariantNumeric: 'tabular-nums', color: pct >= 50 ? '#1E7B34' : '#B8000F' }}>
+                {score}<span style={{ fontSize: 18, color: '#86868B', fontWeight: 600 }}> / {max}</span>
+              </div>
+              <div style={{ fontSize: 12, color: '#6E6E73' }}>答對 {correctCount} / {questions.length} 題{pct != null ? ` · ${pct}%` : ''}</div>
+            </div>
+          ) : (
+            <span style={{ background: '#F2F2F5', color: '#6E6E73', borderRadius: 999, padding: '6px 12px', fontSize: 12, fontWeight: 600 }}>
+              {grading ? '批改中…' : gradeErr || '已提交'}
+            </span>
+          )}
         </div>
+        {graded && submission.pendingReview ? (
+          <div style={{ marginTop: 12, fontSize: 13, color: '#B25000', background: '#FFF8EC', padding: '10px 12px', borderRadius: 12 }}>
+            部分題目需要老師批改，分數之後可能會更新。
+          </div>
+        ) : null}
 
         <div style={{ borderTop: '1px solid rgba(0,0,0,0.08)', margin: '20px 0' }} />
 
-        {/* Submitted answers */}
         {questions.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '40px 0', color: '#86868B' }}>
             <div style={{ fontSize: 36, marginBottom: 10 }}>📝</div>
@@ -185,27 +222,34 @@ function CompletedDetail({ assignment, submission, onBack }) {
           <div style={{ display: 'grid', gap: 12 }}>
             {questions.map((q, idx) => {
               const text = q.question_text || q.prompt || '';
+              const r = results.get(String(q.id ?? idx));
+              const border = !r ? 'rgba(0,0,0,0.08)' : r.pending ? 'rgba(255,149,0,0.35)' : r.correct ? 'rgba(52,199,89,0.35)' : r.earned > 0 ? 'rgba(255,149,0,0.35)' : 'rgba(255,59,48,0.30)';
               return (
-                <div key={q.id || idx} style={{
-                  background: '#FAFAFC', border: '1px solid rgba(0,0,0,0.08)',
-                  borderRadius: 16, padding: '16px 18px',
-                }}>
+                <div key={q.id || idx} style={{ background: '#FAFAFC', border: `1px solid ${border}`, borderRadius: 16, padding: '16px 18px' }}>
                   <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', marginBottom: 10 }}>
                     <div style={{ color: '#86868B', fontSize: 12, fontWeight: 700, minWidth: 22, paddingTop: 2 }}>{idx + 1}</div>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ display: 'flex', gap: 8, marginBottom: 6, alignItems: 'center', flexWrap: 'wrap' }}>
                         <QuestionTypeBadge type={q.type} />
-                        <span style={{ fontSize: 12, color: '#86868B', fontWeight: 500 }}>{q.points || 1} 分</span>
-                        {q.topic && <span style={{ fontSize: 12, color: '#86868B', fontWeight: 500 }}>· {q.topic}</span>}
+                        {r ? <ResultBadge r={r} /> : <span style={{ fontSize: 12, color: '#86868B', fontWeight: 500 }}>{q.points || 1} 分</span>}
                       </div>
-                      <div style={{ fontSize: 15, fontWeight: 600, color: '#1D1D1F', lineHeight: 1.5 }}>
-                        {text || '（未填寫題目）'}
-                      </div>
+                      <div style={{ fontSize: 15, fontWeight: 600, color: '#1D1D1F', lineHeight: 1.5 }}>{text || '（未填寫題目）'}</div>
                     </div>
                   </div>
-                  <div style={{ paddingLeft: 32 }}>
-                    <div style={{ fontWeight: 600, fontSize: 12, color: '#6E6E73', marginBottom: 6 }}>你的答案</div>
-                    <SubmittedAnswer q={q} submittedAnswers={submission?.answers} />
+                  <div style={{ paddingLeft: 32, display: 'grid', gap: 10 }}>
+                    <div>
+                      <div style={{ fontWeight: 600, fontSize: 12, color: '#6E6E73', marginBottom: 4 }}>你的答案</div>
+                      <SubmittedAnswer q={q} submittedAnswers={submission?.answers} />
+                    </div>
+                    {r && r.correctAnswer && !r.correct ? (
+                      <div>
+                        <div style={{ fontWeight: 600, fontSize: 12, color: '#1E7B34', marginBottom: 4 }}>{r.pending || ['SHORT_ANSWER', 'LONG_ANSWER', 'ESSAY'].includes(String(q.type).toUpperCase()) ? '參考答案' : '正確答案'}</div>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: '#1D1D1F', whiteSpace: 'pre-wrap' }}>{r.correctAnswer}</div>
+                      </div>
+                    ) : null}
+                    {r?.feedback ? (
+                      <div style={{ fontSize: 13, color: '#3A3A3C', background: '#F2F2F7', borderRadius: 10, padding: '8px 10px' }}>💬 {r.feedback}</div>
+                    ) : null}
                   </div>
                 </div>
               );
@@ -285,9 +329,9 @@ export default function StudentHomework() {
       }));
       const res = await submitHomework({ assignmentId: selected.id, answers: payloadAnswers });
       if (res?.ok) {
-        setSubmitted(true);
-        // Refresh submissions map
-        load();
+        // Marked on the server: show the score and the correct answers right away.
+        await load();
+        setView('review');
       } else {
         alert(res?.error || '送出失敗');
       }
@@ -306,6 +350,7 @@ export default function StudentHomework() {
         assignment={selected}
         submission={mySubmissions[selected.id]}
         onBack={() => setView('list')}
+        onGraded={load}
       />
     );
   }
@@ -516,11 +561,13 @@ export default function StudentHomework() {
                 </div>
 
                 {isDone && score != null && Number.isFinite(score) ? (
-                  <div style={{ fontSize: 26, fontWeight: 700, letterSpacing: '-0.02em', fontVariantNumeric: 'tabular-nums', marginRight: 4 }}>{score}</div>
+                  <div style={{ fontSize: 26, fontWeight: 700, letterSpacing: '-0.02em', fontVariantNumeric: 'tabular-nums', marginRight: 4 }}>
+                    {score}{sub?.maxScore ? <span style={{ fontSize: 15, color: '#86868B', fontWeight: 600 }}> / {sub.maxScore}</span> : null}
+                  </div>
                 ) : null}
 
                 {isDone ? (
-                  <button type="button" onClick={() => openReview(a)} className="qcBtn qcBtnTinted">查看答案</button>
+                  <button type="button" onClick={() => openReview(a)} className="qcBtn qcBtnTinted">查看結果</button>
                 ) : due?.tone === 'danger' && due.text === '已過期' ? (
                   <button type="button" className="qcBtn qcBtnSecondary" disabled title="已過截止時間，不能再提交">已過期</button>
                 ) : (

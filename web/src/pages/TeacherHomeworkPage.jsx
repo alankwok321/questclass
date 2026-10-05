@@ -535,6 +535,14 @@ function SubmissionsView({ assignment, onBack }) {
                         提交於 {submittedAt} · 作答 {answeredCount}/{questions.length} 題
                       </div>
                     </div>
+                    {sub.score != null ? (
+                      <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                        <div style={{ fontWeight: 700, fontSize: 18, fontVariantNumeric: 'tabular-nums' }}>
+                          {sub.score}<span style={{ fontSize: 12, color: '#86868B' }}> / {sub.maxScore ?? '—'}</span>
+                        </div>
+                        {sub.pendingReview ? <div style={{ fontSize: 11, color: '#B25000', fontWeight: 600 }}>有題目待批改</div> : null}
+                      </div>
+                    ) : null}
                     <div style={{ color: '#86868B', fontSize: 18, fontWeight: 700, flexShrink: 0 }}>
                       {isOpen ? '▲' : '▼'}
                     </div>
@@ -549,6 +557,7 @@ function SubmissionsView({ assignment, onBack }) {
                         <div style={{ display: 'grid', gap: 12 }}>
                           {questions.map((q, idx) => {
                             const text = q.question_text || q.prompt || '（未填寫題目）';
+                            const r = (Array.isArray(sub.results) ? sub.results : []).find((x) => String(x.questionId) === String(q.id ?? idx));
                             return (
                               <div key={q.id || idx} style={{
                                 background: '#FAFAFC', border: '1px solid rgba(0,0,0,0.07)',
@@ -558,10 +567,16 @@ function SubmissionsView({ assignment, onBack }) {
                                   <span style={{ fontSize: 12, fontWeight: 700, color: '#86868B' }}>{idx + 1}.</span>
                                   <QuestionTypeBadge type={q.type} />
                                   <span style={{ fontSize: 12, color: '#86868B', fontWeight: 500 }}>{q.points || 1} 分</span>
+                                  {r ? (
+                                    <span style={{ fontSize: 12, fontWeight: 700, color: r.pending ? '#B25000' : r.correct ? '#1E7B34' : r.earned > 0 ? '#B25000' : '#B8000F' }}>
+                                      {r.pending ? '待批改' : `${r.correct ? '✓' : r.earned > 0 ? '△' : '✗'} ${r.earned}/${r.points}`}{r.markedBy === 'ai' ? '（AI 評分）' : ''}
+                                    </span>
+                                  ) : null}
                                 </div>
                                 <div style={{ fontSize: 13, fontWeight: 600, color: '#1D1D1F', marginBottom: 8 }}>{text}</div>
                                 <div style={{ fontSize: 12, fontWeight: 500, color: '#6E6E73', marginBottom: 4 }}>學生答案</div>
                                 <div style={{ fontSize: 13 }}>{getAnswerDisplay(q, sub.answers)}</div>
+                                {r?.feedback ? <div style={{ fontSize: 12, color: '#3A3A3C', marginTop: 6 }}>💬 {r.feedback}</div> : null}
                               </div>
                             );
                           })}
