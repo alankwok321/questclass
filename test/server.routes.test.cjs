@@ -98,3 +98,18 @@ test('/js/firebase-config.js only contains the public web config', async () => {
 test('server does not listen when VERCEL is set', () => {
   assert.equal(app.listening, false);
 });
+
+test('the app page asks for the bridge script by content version, and is not cached', async () => {
+  h.setSpaIndex('<!doctype html><script src="/js/firebase-bridge.js"></script><script type="module" src="/assets/index-abc.js"></script>');
+  const r = await h.getFallback(app, '/admin/schools');
+  assert.equal(r.status, 200);
+  assert.match(r.body, /src="\/js\/firebase-bridge\.js\?v=[0-9a-f]{12}"/);
+});
+
+test('public scripts are served with Cache-Control: no-cache', () => {
+  const st = app.middleware.flat().find((m) => m && m.kind === 'static' && /public$/.test(m.dir));
+  assert.ok(st, 'public/ is served');
+  const headers = {};
+  st.opts.setHeaders({ setHeader: (k, v) => { headers[k] = v; } }, '/x/js/firebase-bridge.js');
+  assert.equal(headers['Cache-Control'], 'no-cache');
+});

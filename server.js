@@ -596,7 +596,24 @@ app.post('/api/school/settings/save', async (req, res) => {
 });
 
 // Serve public/js (Firebase config + bridge). The old static pages were removed.
-app.use(express.static(publicDir, { index: false }));
+// These scripts keep the same name between releases, so browsers must re-check them every time
+// (a 4-hour cache kept people on old code after an update). The page also asks for them with
+// ?v=<content hash>, which changes whenever the file does.
+app.use(express.static(publicDir, {
+  index: false,
+  setHeaders(res, filePath) {
+    if (filePath.endsWith('.js')) res.setHeader('Cache-Control', 'no-cache');
+  },
+}));
+
+function fileVersion(rel) {
+  try {
+    return crypto.createHash('sha256').update(fs.readFileSync(path.join(publicDir, rel))).digest('hex').slice(0, 12);
+  } catch {
+    return String(Date.now());
+  }
+}
+const PUBLIC_JS_VERSION = { bridge: fileVersion('js/firebase-bridge.js') };
 
 // Serve new React web app build at /app and for SPA routes (teacher/student/admin/chat/analytics)
 const webDistDir = path.join(__dirname, 'web', 'dist');
@@ -760,6 +777,8 @@ app.get('*', (req, res) => {
       let html = fs.readFileSync(path.join(webDistDir, 'index.html'), 'utf8');
       // Make Vite-built asset URLs work under /teacher|/student|... by forcing absolute /web/assets/ paths.
       html = html.replaceAll('/assets/', '/web/assets/');
+      html = html.replace('src="/js/firebase-bridge.js"', `src="/js/firebase-bridge.js?v=${PUBLIC_JS_VERSION.bridge}"`);
+      res.set('Cache-Control', 'no-cache');
       return res.type('html').send(html);
     }
   }
