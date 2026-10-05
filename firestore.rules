@@ -243,6 +243,18 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    // --- Answer keys: the full questions (with answers) for each homework. Staff only. ---
+    // homeworkAssignments/{id} holds an answer-free copy that students may read.
+    match /homeworkAnswerKeys/{assignmentId} {
+      allow read: if isTeacherLike();
+      allow write: if isTeacherLike()
+        && (
+          isAdmin()
+          || !exists(/databases/$(database)/documents/homeworkAssignments/$(assignmentId))
+          || get(/databases/$(database)/documents/homeworkAssignments/$(assignmentId)).data.get('createdBy', null) == request.auth.uid
+        );
+    }
+
     // --- Question Bank (Kahoot-style, shape aligned to UI mockDatabase) ---
     function allowedQuestionBankKeys() {
       return [

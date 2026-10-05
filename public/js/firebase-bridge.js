@@ -427,6 +427,63 @@ window.QuestClassFirebase = {
     }
   },
 
+  // ── Answer keys ────────────────────────────────────────────────────────────
+  // homeworkAssignments is readable by students, so the questions stored there carry no answers.
+  // The full questions (with answers) live in homeworkAnswerKeys/{assignmentId}, staff-only.
+  _dropUndefined(v) {
+    if (Array.isArray(v)) return v.map((x) => this._dropUndefined(x));
+    if (v && typeof v === 'object' && !(typeof v.toDate === 'function')) {
+      const out = {};
+      Object.entries(v).forEach(([k, x]) => { if (x !== undefined) out[k] = this._dropUndefined(x); });
+      return out;
+    }
+    return v;
+  },
+
+  _questionHasAnswers(q) {
+    if (!q || typeof q !== 'object') return false;
+    if (q.correct_answer != null || q.answer != null || q.answerKey != null) return true;
+    if (String(q.ideal_answer || '').trim() || String(q.grading_rubric || '').trim()) return true;
+    if (Array.isArray(q.correctChoiceIds) && q.correctChoiceIds.length) return true;
+    if ((q.options || q.choices || []).some((o) => o && typeof o === 'object' && 'is_correct' in o)) return true;
+    if ((q.blanks || []).some((b) => b && typeof b === 'object' && 'accepted' in b)) return true;
+    if ((q.pairs || []).some((p) => p && typeof p === 'object' && 'match' in p)) return true;
+    return false;
+  },
+
+  _hasAnswers(questions) {
+    return Array.isArray(questions) && questions.some((q) => this._questionHasAnswers(q));
+  },
+
+  // What a student may see of a question: the prompt and choices, never which choice is right.
+  _publicQuestion(q) {
+    if (!q || typeof q !== 'object') return q;
+    // eslint-disable-next-line no-unused-vars
+    const { correct_answer, answer, answerKey, ideal_answer, grading_rubric, correctChoiceIds, ...rest } = q;
+    const out = { ...rest };
+    const choice = (o) => (o && typeof o === 'object'
+      ? this._dropUndefined({ id: o.id, value: o.value, text: o.text })
+      : o);
+    if (Array.isArray(q.options)) out.options = q.options.map(choice);
+    if (Array.isArray(q.choices)) out.choices = q.choices.map(choice);
+    if (Array.isArray(q.blanks)) out.blanks = q.blanks.map((b) => this._dropUndefined({ position: b?.position }));
+    if (Array.isArray(q.pairs)) {
+      out.pairs = q.pairs.map((p) => this._dropUndefined({ prompt: p?.prompt }));
+      // The right-hand column, shuffled, so the pairing isn't given away by order.
+      const matches = q.pairs.map((p) => p?.match).filter((m) => m != null);
+      for (let i = matches.length - 1; i > 0; i -= 1) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [matches[i], matches[j]] = [matches[j], matches[i]];
+      }
+      out.matchOptions = matches;
+    }
+    return this._dropUndefined(out);
+  },
+
+  _publicQuestions(questions) {
+    return (Array.isArray(questions) ? questions : []).map((q) => this._publicQuestion(q));
+  },
+
   async createHomeworkAssignment(payload = {}) {
     // NOTE: Back-compat: this method now supports BOTH create and update.
     // - If payload.id is provided, we upsert that document.
@@ -461,7 +518,8 @@ window.QuestClassFirebase = {
       dueAt: String(payload.dueAt || '').trim(),
       status: String(payload.status || 'published').trim(),
       totalPoints: Number(payload.totalPoints || 0),
-      questions: Array.isArray(payload.questions) ? payload.questions : [],
+      // Students can read this document, so it only gets the answer-free version.
+      questions: this._publicQuestions(payload.questions),
       targetType,
       targetClass,
       targetStudentUids,
@@ -480,6 +538,13 @@ window.QuestClassFirebase = {
         assignment.createdBy = check.authUser.uid;
         assignment.createdAt = sdk.serverTimestamp();
       }
+      // Answer key first, so a homework is never saved without its answers.
+      await sdk.setDoc(sdk.doc(db, 'homeworkAnswerKeys', docRef.id), {
+        assignmentId: docRef.id,
+        questions: this._dropUndefined(Array.isArray(payload.questions) ? payload.questions : []),
+        updatedBy: check.authUser.uid,
+        updatedAt: sdk.serverTimestamp(),
+      });
       await sdk.setDoc(docRef, assignment, { merge: true });
       return { ok: true, assignmentId: docRef.id, updated: isUpdate };
     } catch (error) {
@@ -501,7 +566,44 @@ window.QuestClassFirebase = {
       const q = sdk.query(col, sdk.orderBy('createdAt', 'desc'), sdk.limit(limit));
       const snap = await sdk.getDocs(q);
       const items = snap.docs.map((doc) => this._docData(doc)).filter(Boolean);
-      return { ok: true, items };
+
+      // Staff see the full questions (with answers) from the answer keys.
+      const keys = {};
+      try {
+        const keySnap = await sdk.getDocs(sdk.query(sdk.collection(db, 'homeworkAnswerKeys'), sdk.limit(1000)));
+        keySnap.docs.forEach((d) => { const k = this._docData(d); if (k) keys[d.id] = k; });
+      } catch {
+        // Rules not deployed yet: fall back to whatever the homework doc holds.
+      }
+
+      const isAdmin = String(me.role || '').toLowerCase() === 'admin';
+      let migrated = 0;
+      for (const item of items) {
+        if (keys[item.id] && Array.isArray(keys[item.id].questions)) {
+          item.questions = keys[item.id].questions;
+          continue;
+        }
+        // Older homework still has answers inside the student-readable doc: move them into an
+        // answer key (only for homework this user may edit).
+        if (this._hasAnswers(item.questions) && (isAdmin || item.createdBy === check.authUser.uid)) {
+          try {
+            await sdk.setDoc(sdk.doc(db, 'homeworkAnswerKeys', item.id), {
+              assignmentId: item.id,
+              questions: this._dropUndefined(item.questions),
+              updatedBy: check.authUser.uid,
+              updatedAt: sdk.serverTimestamp(),
+            });
+            await sdk.setDoc(sdk.doc(db, 'homeworkAssignments', item.id), {
+              questions: this._publicQuestions(item.questions),
+              updatedAt: sdk.serverTimestamp(),
+            }, { merge: true });
+            migrated += 1;
+          } catch {
+            // Leave it for a later attempt (e.g. rules not deployed yet).
+          }
+        }
+      }
+      return { ok: true, items, migrated };
     } catch (error) {
       return { ok: false, error: error?.message || 'Homework list failed', items: [] };
     }
@@ -793,6 +895,9 @@ window.QuestClassFirebase = {
       const a = this._docData(aSnap);
       if (!a) return { ok: false, error: '找不到這份作業' };
       if (a.status !== 'published') return { ok: false, error: '這份作業目前不接受提交' };
+      if (a.dueAt && !Number.isNaN(new Date(a.dueAt).getTime()) && new Date(a.dueAt) < new Date()) {
+        return { ok: false, error: '已過截止時間，不能再提交' };
+      }
       const me = check.me || {};
       const isStudent = String(me.role || 'student').toLowerCase() === 'student';
       if (isStudent && !this._homeworkFor([a], check.authUser.uid, me).length) {

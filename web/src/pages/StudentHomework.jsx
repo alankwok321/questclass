@@ -519,6 +519,8 @@ export default function StudentHomework() {
 
                 {isDone ? (
                   <button type="button" onClick={() => openReview(a)} className="qcBtn qcBtnTinted">查看答案</button>
+                ) : due?.tone === 'danger' && due.text === '已過期' ? (
+                  <button type="button" className="qcBtn qcBtnSecondary" disabled title="已過截止時間，不能再提交">已過期</button>
                 ) : (
                   <button type="button" onClick={() => openAnswer(a)} className="qcBtn qcBtnPrimary">開始作答</button>
                 )}

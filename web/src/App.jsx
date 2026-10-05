@@ -18,8 +18,6 @@ import {
   Heart,
 } from 'lucide-react';
 
-import TeacherHomework from './pages/TeacherHomework.jsx';
-import TeacherHomeworkLayout from './pages/TeacherHomeworkLayout.jsx';
 import TeacherHomeworkPage from './pages/TeacherHomeworkPage.jsx';
 import TeacherQuestionBank from './pages/TeacherQuestionBank.jsx';
 import StudentHomework from './pages/StudentHomework.jsx';
@@ -238,9 +236,9 @@ function AppRoutes({ user }) {
       <Route path="/student-homework" element={<StudentHomework />} />
       <Route path="/parent" element={<ParentPage />} />
 
-      {/* Legacy pages (kept for reference) */}
-      <Route path="/teacher-homework-legacy" element={<TeacherHomework />} />
-      <Route path="/teacher-homework-old/*" element={<TeacherHomeworkLayout />} />
+      {/* The old homework editors were replaced by 出作業; their addresses now lead there. */}
+      <Route path="/teacher-homework-legacy" element={<Navigate to="/teacher-homework" replace />} />
+      <Route path="/teacher-homework-old/*" element={<Navigate to="/teacher-homework" replace />} />
 
       <Route path="/teacher" element={<Teacher />} />
       <Route path="/chat" element={<OpenAssistant role={normalizeRole(user?.role)} />} />

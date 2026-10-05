@@ -171,7 +171,7 @@ test('createHomeworkAssignment: new homework gets createdBy/createdAt and an aut
   const r = await b.fb.createHomeworkAssignment({ title: ' New ', targetType: 'class', targetClass: '5A', targetStudentUids: ['x'] });
   assert.equal(r.ok, true);
   assert.equal(r.updated, false);
-  const w = b.writes[0];
+  const w = b.writes.find((x) => x.path.startsWith('homeworkAssignments/'));
   assert.equal(w.path, `homeworkAssignments/${r.assignmentId}`);
   assert.equal(w.data.id, r.assignmentId);
   assert.equal(w.data.createdBy, 't1');
@@ -186,9 +186,9 @@ test('createHomeworkAssignment: editing own homework does not resend createdBy/c
   const r = await b.fb.createHomeworkAssignment({ id: 'h5', title: 'edit', createdAt: '2020-01-01', createdBy: 'evil' });
   assert.equal(r.ok, true);
   assert.equal(r.updated, true);
-  assert.ok(!('createdAt' in b.writes[0].data));
-  assert.ok(!('createdBy' in b.writes[0].data));
-  assert.equal(b.writes[0].path, 'homeworkAssignments/h5');
+  assert.ok(!('createdAt' in b.writes.find((x) => x.path.startsWith('homeworkAssignments/')).data));
+  assert.ok(!('createdBy' in b.writes.find((x) => x.path.startsWith('homeworkAssignments/')).data));
+  assert.equal(b.writes.find((x) => x.path.startsWith('homeworkAssignments/')).path, 'homeworkAssignments/h5');
 });
 
 test('createHomeworkAssignment: non-owner teacher gets a clear error and nothing is written', async () => {
@@ -374,4 +374,81 @@ test('submitHomework refuses drafts and homework not assigned to the student', a
   assert.equal(b.writes.length, 0);
   const other = makeBridge({ users: users(), homeworkAssignments: homework() }, { uid: 'stu2' });
   assert.equal((await other.fb.submitHomework({ assignmentId: 'h2' })).ok, true, 'own class (6b vs 6B)');
+});
+
+// --- answer keys kept out of student-readable homework ---
+const fullQuestions = () => ([
+  { id: 'q1', type: 'MULTIPLE_CHOICE', question_text: 'Pick', options: [{ id: 'A', text: '4/6', is_correct: true }, { id: 'B', text: '3/4', is_correct: false }], points: 2 },
+  { id: 'q2', type: 'TRUE_FALSE', question_text: '3/4 > 2/3', correct_answer: true },
+  { id: 'q3', type: 'FILL_IN_BLANK', question_text: '[____]', blanks: [{ position: 1, accepted: ['6'] }] },
+  { id: 'q4', type: 'SHORT_ANSWER', question_text: 'Why?', ideal_answer: 'Because', grading_rubric: 'r' },
+  { id: 'q5', type: 'MATCHING', question_text: 'Match', pairs: [{ prompt: '1/2', match: '50%' }, { prompt: '1/4', match: '25%' }] },
+]);
+const leaks = (qs) => JSON.stringify(qs).match(/is_correct|correct_answer|accepted|ideal_answer|grading_rubric|"match"/g);
+
+test('saving homework: students\' copy has no answers; the full set goes to the answer key', async () => {
+  const b = makeBridge({ users: users() }, { uid: 't1' });
+  const r = await b.fb.createHomeworkAssignment({ title: 'Fractions', questions: fullQuestions(), status: 'published' });
+  assert.equal(r.ok, true);
+  const key = b.writes.find((w) => w.path.startsWith('homeworkAnswerKeys/'));
+  const hw = b.writes.find((w) => w.path.startsWith('homeworkAssignments/'));
+  assert.ok(key && hw, 'both documents written');
+  assert.ok(b.writes.indexOf(key) < b.writes.indexOf(hw), 'answer key is written first');
+  assert.equal(key.data.questions[0].options[0].is_correct, true);
+  assert.equal(leaks(hw.data.questions), null, 'no answer fields in the student-readable doc');
+  assert.deepEqual(hw.data.questions[0].options.map((o) => o.text), ['4/6', '3/4']);
+  assert.deepEqual(hw.data.questions[4].pairs, [{ prompt: '1/2' }, { prompt: '1/4' }]);
+  assert.deepEqual([...hw.data.questions[4].matchOptions].sort(), ['25%', '50%']);
+  assert.ok(!JSON.stringify(hw.data).includes('undefined'));
+});
+
+test('staff list shows the full questions from the answer key', async () => {
+  const b = makeBridge({
+    users: users(),
+    homeworkAssignments: { hx: { status: 'published', createdBy: 't1', createdAt: '1', questions: [{ id: 'q2', type: 'TRUE_FALSE', question_text: 'x' }] } },
+    homeworkAnswerKeys: { hx: { questions: [{ id: 'q2', type: 'TRUE_FALSE', question_text: 'x', correct_answer: false }] } },
+  }, { uid: 't1' });
+  const r = await b.fb.listHomeworkAssignments();
+  assert.equal(r.items[0].questions[0].correct_answer, false);
+  assert.equal(r.migrated, 0);
+});
+
+test('older homework with answers inside is moved into an answer key by its owner or an admin', async () => {
+  const store = () => ({
+    users: users(),
+    homeworkAssignments: {
+      own: { status: 'published', createdBy: 't1', createdAt: '2', questions: fullQuestions() },
+      other: { status: 'published', createdBy: 't2', createdAt: '1', questions: fullQuestions() },
+    },
+  });
+  const t = makeBridge(store(), { uid: 't1' });
+  const r = await t.fb.listHomeworkAssignments();
+  assert.equal(r.migrated, 1, 'teacher migrates only their own');
+  const pub = t.writes.find((w) => w.path === 'homeworkAssignments/own');
+  assert.equal(leaks(pub.data.questions), null);
+  assert.ok(t.writes.some((w) => w.path === 'homeworkAnswerKeys/own'));
+  assert.ok(!t.writes.some((w) => w.path.endsWith('/other')));
+  assert.equal(r.items.find((i) => i.id === 'own').questions[1].correct_answer, true, 'teacher still sees answers');
+
+  const a = makeBridge(store(), { uid: 'adm' });
+  assert.equal((await a.fb.listHomeworkAssignments()).migrated, 2, 'admin migrates everything');
+});
+
+test('students never receive answers in their homework list', async () => {
+  const t = makeBridge({ users: users() }, { uid: 't1' });
+  await t.fb.createHomeworkAssignment({ title: 'Q', questions: fullQuestions(), status: 'published', targetType: 'all' });
+  const stored = t.writes.find((w) => w.path.startsWith('homeworkAssignments/'));
+  const s = makeBridge({ users: users(), homeworkAssignments: { [stored.path.split('/')[1]]: stored.data } }, { uid: 'stu1' });
+  const r = await s.fb.listMyHomework();
+  assert.equal(r.items.length, 1);
+  assert.equal(leaks(r.items[0].questions), null);
+});
+
+test('hand-ins after the deadline are refused', async () => {
+  const past = '2020-01-01T08:00';
+  const b = makeBridge({ users: users(), homeworkAssignments: { late: { status: 'published', targetType: 'all', dueAt: past, title: 'L' } } }, { uid: 'stu1' });
+  const r = await b.fb.submitHomework({ assignmentId: 'late', answers: [] });
+  assert.equal(r.ok, false);
+  assert.match(r.error, /截止/);
+  assert.equal(b.writes.length, 0);
 });
