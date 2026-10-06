@@ -426,6 +426,7 @@ window.QuestClassFirebase = {
     }
     try {
       await sdk.setDoc(sdk.doc(db, 'users', uid), payload, { merge: true });
+      if ('class' in payload || 'role' in payload) await this._syncSubmissionClass(uid);
       return { ok: true };
     } catch (error) {
       // Rules on the console older than this app (e.g. without teacherClasses): let the server
@@ -694,7 +695,7 @@ window.QuestClassFirebase = {
   async _publishedHomework(schoolId, limit = 50) {
     const { db, sdk } = await this._ensure();
     const q = sdk.query(sdk.collection(db, 'homeworkAssignments'),
-      sdk.where('schoolId', '==', String(schoolId || '')), sdk.where('status', '==', 'published'), sdk.limit(limit));
+      sdk.where('schoolId', '==', String(schoolId || '')), sdk.where('status', 'in', ['published', 'archived']), sdk.limit(limit));
     const snap = await sdk.getDocs(q);
     return snap.docs.map((doc) => this._docData(doc)).filter(Boolean);
   },
@@ -1118,6 +1119,19 @@ window.QuestClassFirebase = {
   },
 
   // Admin: put a student in a class ('' = no class). Changes nothing else on the account.
+  // Copy a student's (new) 班別 onto their hand-ins, on the server. Best effort.
+  async _syncSubmissionClass(uid) {
+    try {
+      const idToken = await this.getIdToken();
+      if (!idToken || typeof fetch !== 'function') return;
+      const schoolId = this.getActiveSchool?.() || undefined;
+      await fetch('/api/school/submissions/sync-class', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idToken, uid: String(uid), ...(schoolId ? { schoolId } : {}) }),
+      });
+    } catch { /* the hand-ins keep their old class until the next sync */ }
+  },
+
   async adminSetStudentClass(uid, className) {
     const adminCheck = await this._requireAdmin();
     if (!adminCheck.ok) return { ok: false, error: adminCheck.error };
@@ -1127,6 +1141,7 @@ window.QuestClassFirebase = {
         class: String(className || '').trim().slice(0, 40),
         updatedAt: sdk.serverTimestamp(),
       }, { merge: true });
+      await this._syncSubmissionClass(uid);
       return { ok: true };
     } catch (error) {
       return { ok: false, error: error?.message || '更新班別失敗' };

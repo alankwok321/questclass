@@ -1013,6 +1013,38 @@ app.post('/api/school/settings/save', async (req, res) => {
   }
 });
 
+// Hand-ins carry the student's 班別 (so class-limited teachers and class reports find them).
+// When a student's class changes, or for hand-ins saved before they had one, copy it over.
+async function syncSubmissionClasses(db, schoolId, uid = null) {
+  const users = uid
+    ? [await db.collection('users').doc(uid).get()]
+    : (await db.collection('users').where('schoolId', '==', schoolId).get()).docs;
+  let updated = 0;
+  for (const u of users) {
+    const data = u.exists === false ? null : u.data();
+    if (!data || data.schoolId !== schoolId || String(data.role || 'student').toLowerCase() !== 'student') continue;
+    const cls = String(data.class || '').trim();
+    const subs = await db.collection('submissions').where('studentUid', '==', u.id).get();
+    const todo = subs.docs.filter((d) => d.data()?.schoolId === schoolId && String(d.data()?.class || '') !== cls);
+    await inChunks(todo, 50, (d) => db.collection('submissions').doc(d.id).set(cls ? { class: cls } : { class: FieldValue.delete() }, { merge: true }));
+    updated += todo.length;
+  }
+  return updated;
+}
+
+app.post('/api/school/submissions/sync-class', async (req, res) => {
+  try {
+    const { idToken, schoolId, uid } = req.body || {};
+    const actor = await requireSchoolAdmin(idToken, schoolId);
+    const { db } = getFirebaseAdmin();
+    if (uid !== undefined && (!uid || String(uid).includes('/'))) throw httpError(400, 'uid required');
+    const updated = await syncSubmissionClasses(db, actor.schoolId, uid ? String(uid) : null);
+    return res.json({ ok: true, updated });
+  } catch (error) {
+    return sendError(res, error, 'sync failed');
+  }
+});
+
 // School admin: change a member's role, status, class, children or class permissions.
 // Same limits as the Firestore rules (works even when the rules on the console are older).
 // The platform admin may also move someone to another school ('' = no school → awaiting approval).
@@ -1057,6 +1089,9 @@ app.post('/api/school/users/update', async (req, res) => {
       if (!sid) update.accountStatus = 'review';
     }
     await ref.set(update, { merge: true });
+    if (body.class !== undefined || body.role !== undefined) {
+      await syncSubmissionClasses(db, update.schoolId ?? target.schoolId, uid);
+    }
     return res.json({ ok: true });
   } catch (error) {
     return sendError(res, error, 'update user failed');

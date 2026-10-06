@@ -43,3 +43,21 @@ test('platform admin can move someone; no school means awaiting approval', async
   assert.equal(h.fbState.data.users.stu.accountStatus, 'review');
   assert.equal((await upd({ idToken: 'boss', uid: 'stu', schoolId: 'zzz' })).status, 404);
 });
+
+test('class changes are copied onto the student\'s hand-ins; whole-school sync fixes old ones', async () => {
+  h.fbState.data.users.stu.class = '5A';
+  h.fbState.data.submissions = {
+    s1: { schoolId: 'a', studentUid: 'stu' },
+    s2: { schoolId: 'a', studentUid: 'stu', class: 'cls-5A' },
+    s3: { schoolId: 'a', studentUid: 'stu2' },
+  };
+  h.fbState.data.users.stu2.class = '5B';
+  let r = await h.post(app, '/api/school/submissions/sync-class', { idToken: 'adm' });
+  assert.equal(r.status, 200);
+  assert.equal(r.body.updated, 3);
+  assert.deepEqual(['s1', 's2', 's3'].map((id) => h.fbState.data.submissions[id].class), ['5A', '5A', '5B']);
+  r = await upd({ idToken: 'adm', uid: 'stu', class: '6C' });
+  assert.equal(r.status, 200);
+  assert.deepEqual(['s1', 's2', 's3'].map((id) => h.fbState.data.submissions[id].class), ['6C', '6C', '5B']);
+  assert.equal((await h.post(app, '/api/school/submissions/sync-class', { idToken: 'tea' })).status, 403);
+});

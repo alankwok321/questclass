@@ -263,11 +263,15 @@ export default function StudentHomework({ user }) {
   useEffect(() => { load(); }, [load]);
 
   const now = new Date();
-  const byTab = useMemo(() => ({
-    active: items.filter(a => !mySubmissions[a.id] && (!a.dueAt || new Date(a.dueAt) >= now)),
-    done:   items.filter(a => Boolean(mySubmissions[a.id])),
-    overdue: items.filter(a => !mySubmissions[a.id] && a.dueAt && new Date(a.dueAt) < now),
-  }), [items, mySubmissions, now]);
+  // Archived (封存) homework only shows to students who handed it in, so they keep their results.
+  const byTab = useMemo(() => {
+    const open = items.filter(a => a.status !== 'archived');
+    return {
+      active: open.filter(a => !mySubmissions[a.id] && (!a.dueAt || new Date(a.dueAt) >= now)),
+      done:   items.filter(a => Boolean(mySubmissions[a.id])),
+      overdue: open.filter(a => !mySubmissions[a.id] && a.dueAt && new Date(a.dueAt) < now),
+    };
+  }, [items, mySubmissions, now]);
 
   function openAnswer(a) {
     setSelected(a);

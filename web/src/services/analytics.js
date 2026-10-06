@@ -54,7 +54,7 @@ export function analyzeClass(data, opts = {}) {
   const rosterIds = new Set(roster.map((s) => s.uid));
 
   const homework = (data.homework || [])
-    .filter((a) => a.status === 'published')
+    .filter((a) => a.status === 'published' || a.status === 'archived') // archived = finished, still counts
     .filter((a) => since == null || (time(a.createdAt) ?? time(a.dueAt) ?? now) >= since)
     .map((a) => ({ ...a, assigned: assignedTo(a, data.cls, roster) }))
     .filter((a) => a.assigned.length)

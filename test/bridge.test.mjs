@@ -56,11 +56,11 @@ test('listMyHomework: no profile / no school gets nothing; signed out is refused
   assert.deepEqual(r.items, []);
 });
 
-test('listMyHomework queries only published homework', async () => {
+test('listMyHomework queries published and archived homework, never drafts', async () => {
   const b = makeBridge({ users: users(), homeworkAssignments: homework() }, { uid: 'stu1' });
   await b.fb.listMyHomework();
   const q = b.queries.find((x) => x.col === 'homeworkAssignments');
-  assert.ok(q.cons.some((c) => c.type === 'where' && c.field === 'status' && c.op === '==' && c.value === 'published'));
+  assert.ok(q.cons.some((c) => c.type === 'where' && c.field === 'status' && c.op === 'in' && JSON.stringify(c.value) === '["published","archived"]'));
   assert.ok(q.cons.some((c) => c.type === 'where' && c.field === 'schoolId' && c.value === 'A'), 'scoped to my school');
 });
 

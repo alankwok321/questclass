@@ -258,7 +258,7 @@ service cloud.firestore {
     match /homeworkAssignments/{assignmentId} {
       // Staff see all of their school's homework; everyone else only its published homework.
       allow read: if inMySchool(resource.data)
-        && (isTeacherLike() || (isActiveAccount() && resource.data.status == 'published'));
+        && (isTeacherLike() || (isActiveAccount() && resource.data.status in ['published', 'archived']));
 
       allow create: if isTeacherLike()
         && inMySchool(request.resource.data)
