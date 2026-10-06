@@ -166,3 +166,15 @@ export async function saveSubmissionMarks(submissionId, marks, comment) {
 export async function autogradeSubmission(submissionId) {
   return postJson('/api/teacher/submissions/autograde', await withAuth({ submissionId }));
 }
+
+// Teacher tools: ask the school's AI for JSON with a custom instruction (staff only on the server).
+export async function aiJson({ system, message, tool = 'teacher-tool' }) {
+  const res = await fetch('/api/chat', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(await withAuth({ format: 'json', assistant: true, topic: tool, system, message })),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data?.error === 'JSON_PARSE_FAILED' ? 'AI 回應格式有誤，請再試一次' : (data?.error || `HTTP ${res.status}`));
+  return data;
+}

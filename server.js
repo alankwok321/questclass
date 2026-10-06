@@ -1167,7 +1167,7 @@ app.post('/api/chat', async (req, res) => {
   const pageNote = req.body?.page ? `\n(The user is on the "${String(req.body.page).slice(0, 40)}" page.)` : '';
   // The assistant bubble sends plain messages with history; the generators still use the tagged format.
   const user = req.body?.assistant
-    ? `${String(message).slice(0, 4000)}${pageNote}`
+    ? `${String(message).slice(0, isStaff ? 12000 : 4000)}${pageNote}`
     : `Student: ${studentName}\nTopic: ${topic}\nTeaching mode: ${mode}\n${contextText}\nStudent message: ${message}\nUse the student profile to personalize explanation difficulty and examples. Respond in Traditional Chinese.`;
   const result = await callChatCompletion({ ...cfg, system, user, history, temperature: req.body?.format === 'json' ? 0.5 : 0.7 });
   if (!result.ok) return res.status(result.status).json({ error: result.error });
