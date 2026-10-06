@@ -496,6 +496,12 @@ app.post('/api/auth/sync-role', async (req, res) => {
     const ref = db.collection('users').doc(decoded.uid);
     // Only a Google-verified address counts.
     if (!email || decoded.email_verified !== true || !list.includes(email)) {
+      // Imported from Excel by a school admin before this person ever signed in.
+      if (email && decoded.email_verified === true && !list.includes(email)) {
+        try {
+          if (await applyInvite(db, decoded.uid, email)) return res.json({ ok: true, changed: true, invited: true });
+        } catch { /* sign-in still works; the invite stays for next time */ }
+      }
       // Removed from ADMIN_EMAILS: no longer a platform admin (their school role stays).
       if (!list.includes(email)) {
         const snap = await ref.get();
@@ -1044,6 +1050,141 @@ app.post('/api/school/submissions/sync-class', async (req, res) => {
     return sendError(res, error, 'sync failed');
   }
 });
+
+// ── Adding people from Excel ────────────────────────────────────────────────
+// Accounts are created when someone first signs in with Google, so an imported row either
+// updates an existing account (same e-mail) or becomes a pending invite that is applied at
+// that person's first sign-in (see /api/auth/sync-role).
+const INVITE_ROLES = { student: 'student', teacher: 'teacher', parent: 'parent', admin: 'admin',
+  '學生': 'student', '老師': 'teacher', '教師': 'teacher', '家長': 'parent', '管理員': 'admin' };
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const inviteId = (email) => crypto.createHash('sha256').update(String(email).toLowerCase()).digest('hex').slice(0, 40);
+const splitList = (v) => String(v || '').split(/[,，、;；\s]+/).map((x) => x.trim()).filter(Boolean);
+
+function normalizeRosterRow(row) {
+  const email = String(row?.email || '').trim().toLowerCase();
+  if (!EMAIL_RE.test(email)) return { error: '電郵格式不正確' };
+  const role = INVITE_ROLES[String(row?.role || 'student').trim().toLowerCase()] || INVITE_ROLES[String(row?.role || '').trim()];
+  if (!role) return { error: '身分必須是 學生／老師／家長／管理員' };
+  const out = { email, role, name: String(row?.name || '').trim().slice(0, 60) };
+  const classes = splitList(row?.class).map((c) => c.slice(0, 40));
+  if (role === 'student') out.class = classes[0] || '';
+  if (role === 'teacher' && classes.length) out.teacherClasses = [...new Set(classes)].slice(0, 60);
+  if (role === 'parent') out.childEmails = [...new Set(splitList(row?.children).map((x) => x.toLowerCase()).filter((x) => EMAIL_RE.test(x)))].slice(0, 10);
+  return { row: out };
+}
+
+async function usersByEmail(db, emails) {
+  const out = new Map();
+  for (let i = 0; i < emails.length; i += 30) {
+    const snap = await db.collection('users').where('email', 'in', emails.slice(i, i + 30)).get();
+    snap.docs.forEach((d) => out.set(String(d.data()?.email || '').toLowerCase(), { id: d.id, ...d.data() }));
+  }
+  return out;
+}
+
+// The account fields an imported row sets (children resolved to accounts that exist).
+async function rosterUpdate(db, schoolId, r) {
+  const update = { schoolId, role: r.role, accountStatus: 'active', updatedAt: FieldValue.serverTimestamp() };
+  if (r.name) update.name = r.name;
+  if (r.role === 'student') update.class = r.class || '';
+  if (r.role === 'teacher') update.teacherClasses = r.teacherClasses ? r.teacherClasses : FieldValue.delete();
+  if (r.role !== 'parent') update.childUids = FieldValue.delete();
+  if (r.role === 'parent' && r.childEmails?.length) {
+    const kids = await usersByEmail(db, r.childEmails);
+    update.childUids = [...kids.values()].filter((k) => k.schoolId === schoolId).map((k) => k.id);
+  }
+  return update;
+}
+
+app.post('/api/school/roster/import', async (req, res) => {
+  try {
+    const body = req.body || {};
+    const actor = await requireSchoolAdmin(body.idToken, body.schoolId);
+    const rows = Array.isArray(body.rows) ? body.rows : [];
+    if (!rows.length) throw httpError(400, '沒有資料');
+    if (rows.length > 1000) throw httpError(400, '每次最多匯入 1000 人');
+    const { db } = getFirebaseAdmin();
+    const result = { updated: [], invited: [], skipped: [] };
+    const seen = new Set();
+    const good = [];
+    rows.forEach((raw, i) => {
+      const { row, error } = normalizeRosterRow(raw);
+      if (error) return result.skipped.push({ line: i + 1, email: String(raw?.email || ''), reason: error });
+      if (seen.has(row.email)) return result.skipped.push({ line: i + 1, email: row.email, reason: '重複的電郵' });
+      seen.add(row.email);
+      good.push(row);
+    });
+    const existing = await usersByEmail(db, good.map((r) => r.email));
+    for (const r of good) {
+      const u = existing.get(r.email);
+      if (u) {
+        if (u.platformAdmin === true) { result.skipped.push({ email: r.email, reason: '平台管理員' }); continue; }
+        if (u.schoolId && u.schoolId !== actor.schoolId && (u.accountStatus || 'active') === 'active') {
+          result.skipped.push({ email: r.email, reason: '已屬於另一間學校' }); continue;
+        }
+        await db.collection('users').doc(u.id).set(await rosterUpdate(db, actor.schoolId, r), { merge: true });
+        if (r.role === 'student') await syncSubmissionClasses(db, actor.schoolId, u.id);
+        await db.collection('schoolInvites').doc(inviteId(r.email)).delete();
+        result.updated.push(r.email);
+      } else {
+        await db.collection('schoolInvites').doc(inviteId(r.email)).set({
+          ...r, schoolId: actor.schoolId, invitedBy: actor.uid, createdAt: FieldValue.serverTimestamp(),
+        });
+        result.invited.push(r.email);
+      }
+    }
+    return res.json({ ok: true, ...result });
+  } catch (error) {
+    return sendError(res, error, 'import failed');
+  }
+});
+
+app.post('/api/school/roster/list', async (req, res) => {
+  try {
+    const actor = await requireSchoolAdmin((req.body || {}).idToken, (req.body || {}).schoolId);
+    const { db } = getFirebaseAdmin();
+    const snap = await db.collection('schoolInvites').where('schoolId', '==', actor.schoolId).get();
+    const invites = snap.docs.map((d) => {
+      const x = d.data() || {};
+      return { email: x.email, name: x.name || '', role: x.role, class: x.class || '', teacherClasses: x.teacherClasses || null, childEmails: x.childEmails || [] };
+    }).sort((a, b) => String(a.email).localeCompare(String(b.email)));
+    return res.json({ ok: true, invites });
+  } catch (error) {
+    return sendError(res, error, 'list failed');
+  }
+});
+
+app.post('/api/school/roster/cancel', async (req, res) => {
+  try {
+    const body = req.body || {};
+    const actor = await requireSchoolAdmin(body.idToken, body.schoolId);
+    const { db } = getFirebaseAdmin();
+    const ref = db.collection('schoolInvites').doc(inviteId(body.email || ''));
+    const snap = await ref.get();
+    if (!snap.exists || snap.data()?.schoolId !== actor.schoolId) throw httpError(404, '找不到這個邀請');
+    await ref.delete();
+    return res.json({ ok: true });
+  } catch (error) {
+    return sendError(res, error, 'cancel failed');
+  }
+});
+
+// At sign-in: apply a pending invite for this (Google-verified) e-mail.
+async function applyInvite(db, uid, email) {
+  const ref = db.collection('schoolInvites').doc(inviteId(email));
+  const snap = await ref.get();
+  if (!snap.exists) return false;
+  const inv = snap.data() || {};
+  const userRef = db.collection('users').doc(uid);
+  const user = (await userRef.get()).data() || {};
+  if (user.platformAdmin === true) return false;
+  if (user.schoolId && user.schoolId !== inv.schoolId && (user.accountStatus || 'active') === 'active') return false;
+  await userRef.set(await rosterUpdate(db, inv.schoolId, inv), { merge: true });
+  if (inv.role === 'student') await syncSubmissionClasses(db, inv.schoolId, uid);
+  await ref.delete();
+  return true;
+}
 
 // School admin: change a member's role, status, class, children or class permissions.
 // Same limits as the Firestore rules (works even when the rules on the console are older).

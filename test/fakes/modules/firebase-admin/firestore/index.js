@@ -26,12 +26,12 @@ function docRef(col, id) {
 function query(col, filters) {
   return {
     where(field, op, value) {
-      if (op !== '==') throw new Error('fake firestore only supports ==');
-      return query(col, [...filters, [field, value]]);
+      if (op !== '==' && op !== 'in') throw new Error('fake firestore only supports == and in');
+      return query(col, [...filters, [field, value, op]]);
     },
     async get() {
       const docs = Object.keys(state.data[col] || {})
-        .filter((id) => filters.every(([f, v]) => (state.data[col][id] || {})[f] === v))
+        .filter((id) => filters.every(([f, v, op]) => (op === 'in' ? v.includes((state.data[col][id] || {})[f]) : (state.data[col][id] || {})[f] === v)))
         .map((id) => ({ id, data: () => clone(state.data[col][id]) }));
       return { docs, size: docs.length, empty: docs.length === 0 };
     },

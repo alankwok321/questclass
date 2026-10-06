@@ -183,3 +183,16 @@ export async function aiJson({ system, message, tool = 'teacher-tool' }) {
 export async function deleteArchivedHomework(assignmentId) {
   return postJson('/api/teacher/homework/delete', await withAuth({ assignmentId }));
 }
+
+// School admin: add people from Excel (existing accounts updated, others invited until they sign in).
+export async function importRoster(rows, schoolId) {
+  return postJson('/api/school/roster/import', await withAuth({ rows, ...(schoolId ? { schoolId } : {}) }));
+}
+
+export async function listRosterInvites(schoolId) {
+  return postJson('/api/school/roster/list', await withAuth(schoolId ? { schoolId } : {}));
+}
+
+export async function cancelRosterInvite(email, schoolId) {
+  return postJson('/api/school/roster/cancel', await withAuth({ email, ...(schoolId ? { schoolId } : {}) }));
+}

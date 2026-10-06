@@ -1,3 +1,4 @@
+import RosterImport from '../components/RosterImport.jsx';
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useToast } from '../components/Toast.jsx';
@@ -187,6 +188,10 @@ export default function AdminPage({ user }) {
               transform: settingsSchool.shareQuestionBank ? 'translateX(20px)' : 'none', transition: 'transform .2s' }} />
           </button>
         </div>
+      ) : null}
+
+      {viewSchool && viewSchool !== UNASSIGNED ? (
+        <RosterImport schoolId={platform ? viewSchool : undefined} schoolName={viewName} onDone={() => refresh()} />
       ) : null}
 
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(240px, 320px) minmax(0, 1fr)', gap: 14 }}>
