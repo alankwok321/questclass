@@ -32,39 +32,45 @@ const rows = [
   { email: 'fresh@school.hk', role: '學生' },
 ];
 
-test('import: updates existing accounts, invites the rest, reports problems', async () => {
+test('import: updates existing accounts, creates accounts for the rest, reports problems', async () => {
   const r = await imp({ idToken: 'adm', rows });
   assert.equal(r.status, 200);
   assert.deepEqual(r.body.updated, ['newbie@school.hk']);
-  assert.deepEqual(r.body.invited.sort(), ['fresh@school.hk', 'teach@school.hk']);
+  assert.deepEqual(r.body.created.sort(), ['fresh@school.hk', 'teach@school.hk']);
   assert.deepEqual(r.body.skipped.map((s) => s.reason), ['電郵格式不正確', '身分必須是 學生／老師／家長／管理員', '重複的電郵', '已屬於另一間學校']);
   const nb = h.fbState.data.users.newbie;
   assert.deepEqual([nb.schoolId, nb.role, nb.class, nb.accountStatus, nb.name], ['a', 'student', '6C', 'active', 'New Bie']);
   assert.equal(h.fbState.data.users.other.schoolId, 'b', 'never moved out of another school');
-  const list = await h.post(app, '/api/school/roster/list', { idToken: 'adm' });
-  assert.deepEqual(list.body.invites.map((i) => [i.email, i.role, i.class, i.teacherClasses]),
-    [['fresh@school.hk', 'student', '5A', null], ['teach@school.hk', 'teacher', '', ['5A', '5B']]]);
-  assert.equal((await h.post(app, '/api/school/roster/list', { idToken: 'admB' })).body.invites.length, 0, 'other schools see none');
+  const made = Object.entries(h.fbState.data.users).filter(([, u]) => u.pendingFirstLogin);
+  assert.deepEqual(made.map(([, u]) => [u.email, u.role, u.schoolId, u.class, u.teacherClasses, u.name]).sort(), [
+    ['fresh@school.hk', 'student', 'a', '5A', undefined, '陳大文'],
+    ['teach@school.hk', 'teacher', 'a', undefined, ['5A', '5B'], '李老師'],
+  ]);
+  for (const [uid] of made) assert.ok(h.fbState.authUsers[uid], 'a sign-in account exists for them');
 });
 
-test('first sign-in applies the invite (student class, teacher classes) and removes it', async () => {
+test('first sign-in uses the created account and clears "not signed in yet"', async () => {
   await imp({ idToken: 'adm', rows });
-  h.fbState.data.users.f1 = { email: 'Fresh@School.hk', role: 'student', accountStatus: 'review' };
+  const [uid] = Object.entries(h.fbState.data.users).find(([, u]) => u.email === 'fresh@school.hk');
+  h.fbState.tokens.fresh = { uid, email: 'Fresh@School.hk', email_verified: true };
+  await h.post(app, '/api/auth/sync-role', { idToken: 'fresh' });
+  const u = h.fbState.data.users[uid];
+  assert.equal(u.pendingFirstLogin, undefined);
+  assert.ok(u.lastLoginAt);
+  assert.deepEqual([u.schoolId, u.class], ['a', '5A']);
+});
+
+test('if Google sign-in made a different account, the created profile moves onto it', async () => {
+  await imp({ idToken: 'adm', rows });
+  const [preUid] = Object.entries(h.fbState.data.users).find(([, u]) => u.email === 'teach@school.hk');
   h.fbState.data.users.f2 = { email: 'teach@school.hk', role: 'student', accountStatus: 'review' };
-  let r = await h.post(app, '/api/auth/sync-role', { idToken: 'fresh' });
+  const r = await h.post(app, '/api/auth/sync-role', { idToken: 'freshT' });
   assert.equal(r.body.changed, true);
-  assert.deepEqual(['schoolId', 'role', 'class', 'accountStatus', 'name'].map((k) => h.fbState.data.users.f1[k]), ['a', 'student', '5A', 'active', '陳大文']);
-  r = await h.post(app, '/api/auth/sync-role', { idToken: 'freshT' });
-  assert.deepEqual([h.fbState.data.users.f2.role, h.fbState.data.users.f2.teacherClasses], ['teacher', ['5A', '5B']]);
-  assert.equal((await h.post(app, '/api/school/roster/list', { idToken: 'adm' })).body.invites.length, 0);
-  r = await h.post(app, '/api/auth/sync-role', { idToken: 'fresh' });
-  assert.equal(r.body.changed, false, 'nothing left to apply');
+  assert.deepEqual([h.fbState.data.users.f2.role, h.fbState.data.users.f2.schoolId, h.fbState.data.users.f2.teacherClasses], ['teacher', 'a', ['5A', '5B']]);
+  assert.equal(h.fbState.data.users[preUid], undefined);
+  assert.equal(h.fbState.authUsers[preUid], undefined);
 });
 
-test('only admins import; invites can be cancelled', async () => {
+test('only admins import', async () => {
   assert.equal((await imp({ idToken: 'tea', rows })).status, 403);
-  await imp({ idToken: 'adm', rows });
-  assert.equal((await h.post(app, '/api/school/roster/cancel', { idToken: 'admB', email: 'fresh@school.hk' })).status, 404);
-  assert.equal((await h.post(app, '/api/school/roster/cancel', { idToken: 'adm', email: 'FRESH@school.hk' })).status, 200);
-  assert.equal((await h.post(app, '/api/school/roster/list', { idToken: 'adm' })).body.invites.length, 1);
 });

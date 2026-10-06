@@ -581,11 +581,18 @@ app.post('/api/auth/sync-role', async (req, res) => {
     const ref = db.collection('users').doc(decoded.uid);
     // Only a Google-verified address counts.
     if (!email || decoded.email_verified !== true || !list.includes(email)) {
-      // Imported from Excel by a school admin before this person ever signed in.
+      // Added by a school admin (one by one or from Excel) before this person ever signed in.
       if (email && decoded.email_verified === true && !list.includes(email)) {
         try {
-          if (await applyInvite(db, decoded.uid, email)) return finish({ ok: true, changed: true, invited: true });
-        } catch { /* sign-in still works; the invite stays for next time */ }
+          const mine = (await ref.get()).data() || {};
+          if (mine.pendingFirstLogin === true) {
+            await ref.set({ pendingFirstLogin: FieldValue.delete() }, { merge: true });
+          } else if (await claimPrecreatedAccount(db, auth, decoded.uid, email)) {
+            return finish({ ok: true, changed: true, invited: true });
+          } else if (await applyInvite(db, decoded.uid, email)) {
+            return finish({ ok: true, changed: true, invited: true });
+          }
+        } catch { /* sign-in still works */ }
       }
       // Removed from ADMIN_EMAILS: no longer a platform admin (their school role stays).
       if (!list.includes(email)) {
@@ -1182,6 +1189,45 @@ async function rosterUpdate(db, schoolId, r) {
   return update;
 }
 
+// Create the account straight away (Firebase Auth user + profile) for someone who has never
+// signed in. When they first sign in with Google using this e-mail, Firebase signs them in to
+// this same account. The profile is marked pendingFirstLogin until then (shown as 未登入過).
+async function createAccount(db, auth, schoolId, r, byUid) {
+  let uid;
+  try {
+    uid = (await auth.getUserByEmail(r.email)).uid;
+  } catch (e) {
+    if (e?.code !== 'auth/user-not-found') throw e;
+    uid = (await auth.createUser({ email: r.email, ...(r.name ? { displayName: r.name } : {}) })).uid;
+  }
+  const update = await rosterUpdate(db, schoolId, r);
+  await db.collection('users').doc(uid).set({
+    ...update,
+    email: r.email,
+    name: r.name || r.email.split('@')[0],
+    pendingFirstLogin: true,
+    addedBy: byUid,
+    createdAt: FieldValue.serverTimestamp(),
+  }, { merge: true });
+  return uid;
+}
+
+// Safety net: if Google sign-in made a new account instead of using the pre-created one,
+// move the pre-created profile (school, role, class…) onto the new account.
+async function claimPrecreatedAccount(db, auth, uid, email) {
+  const snap = await db.collection('users').where('email', '==', email).get();
+  const pre = snap.docs.find((d) => d.id !== uid && d.data()?.pendingFirstLogin === true);
+  if (!pre) return false;
+  const me = (await db.collection('users').doc(uid).get()).data() || {};
+  if (me.platformAdmin === true || (me.schoolId && (me.accountStatus || 'active') === 'active')) return false;
+  const { pendingFirstLogin, addedBy, createdAt, ...fields } = pre.data();
+  await db.collection('users').doc(uid).set({ ...fields, email, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+  await db.collection('users').doc(pre.id).delete();
+  try { await auth.deleteUser(pre.id); } catch { /* already gone */ }
+  if (fields.role === 'student') await syncSubmissionClasses(db, fields.schoolId, uid);
+  return true;
+}
+
 app.post('/api/school/roster/import', async (req, res) => {
   try {
     const body = req.body || {};
@@ -1189,8 +1235,8 @@ app.post('/api/school/roster/import', async (req, res) => {
     const rows = Array.isArray(body.rows) ? body.rows : [];
     if (!rows.length) throw httpError(400, '沒有資料');
     if (rows.length > 1000) throw httpError(400, '每次最多匯入 1000 人');
-    const { db } = getFirebaseAdmin();
-    const result = { updated: [], invited: [], skipped: [] };
+    const { db, auth } = getFirebaseAdmin();
+    const result = { updated: [], created: [], invited: [], skipped: [] };
     const seen = new Set();
     const good = [];
     rows.forEach((raw, i) => {
@@ -1213,10 +1259,9 @@ app.post('/api/school/roster/import', async (req, res) => {
         await db.collection('schoolInvites').doc(inviteId(r.email)).delete();
         result.updated.push(r.email);
       } else {
-        await db.collection('schoolInvites').doc(inviteId(r.email)).set({
-          ...r, schoolId: actor.schoolId, invitedBy: actor.uid, createdAt: FieldValue.serverTimestamp(),
-        });
-        result.invited.push(r.email);
+        await createAccount(db, auth, actor.schoolId, r, actor.uid);
+        await db.collection('schoolInvites').doc(inviteId(r.email)).delete();
+        result.created.push(r.email);
       }
     }
     return res.json({ ok: true, ...result });

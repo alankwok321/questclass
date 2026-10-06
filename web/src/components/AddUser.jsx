@@ -27,7 +27,7 @@ export default function AddUser({ schoolId, schoolName, classes = [], onDone }) 
       } else {
         setMsg({ bad: false, text: r.updated?.length
           ? `已把 ${f.email.trim()} 加入${schoolName ? `「${schoolName}」` : '學校'}。`
-          : `已加入名單。${f.email.trim()} 第一次用這個 Google 電郵登入時會自動加入，不用審核。` });
+          : `已加入 ${f.email.trim()}（未登入過）。` });
         setF({ email: '', name: '', role: f.role, class: f.role === 'student' ? f.class : '', children: '' });
         onDone?.();
       }

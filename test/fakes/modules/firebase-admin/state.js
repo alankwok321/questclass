@@ -13,6 +13,7 @@ const state = {
     state.tokens = {};
     state.data = {};
     state.writes = [];
+    state.authUsers = {};
   },
 };
 module.exports = state;

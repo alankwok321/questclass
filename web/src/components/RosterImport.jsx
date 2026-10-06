@@ -1,25 +1,19 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import * as XLSX from 'xlsx';
-import { Download, FileSpreadsheet, Upload, X } from 'lucide-react';
-import { cancelRosterInvite, importRoster, listRosterInvites } from '../services/api.js';
+import { Download, FileSpreadsheet, Upload } from 'lucide-react';
+import { importRoster } from '../services/api.js';
 import { ROLE_LABEL, TEMPLATE, parseRosterRows } from '../services/roster.js';
 import { useToast } from './Toast.jsx';
 
-// 用 Excel 加入學生、老師及家長. People sign in with Google, so each row either updates the account
-// with that e-mail or waits as an invite until that person first signs in.
-export default function RosterImport({ schoolId, schoolName, onDone }) {
+// Excel 匯入: rows for existing accounts update them; everyone else gets an account straight away
+// (shown as 未登入過 until they first sign in with that Google e-mail).
+export default function RosterImport({ schoolId, onDone }) {
   const toast = useToast();
   const [open, setOpen] = useState(false);
   const [rows, setRows] = useState(null);
   const [fileName, setFileName] = useState('');
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState(null);
-  const [invites, setInvites] = useState([]);
-
-  const loadInvites = useCallback(async () => {
-    try { setInvites((await listRosterInvites(schoolId)).invites || []); } catch { setInvites([]); }
-  }, [schoolId]);
-  useEffect(() => { loadInvites(); }, [loadInvites]);
 
   const download = () => {
     const ws = XLSX.utils.aoa_to_sheet(TEMPLATE);
@@ -68,21 +62,11 @@ export default function RosterImport({ schoolId, schoolName, onDone }) {
       const r = await importRoster(good.map(({ email, name, role, class: cls, children }) => ({ email, name, role, class: cls, children })), schoolId);
       setResult(r);
       setRows(null);
-      await loadInvites();
       onDone?.();
     } catch (e) {
       toast?.show?.(e?.message || '匯入失敗');
     } finally {
       setBusy(false);
-    }
-  };
-
-  const cancel = async (email) => {
-    try {
-      await cancelRosterInvite(email, schoolId);
-      await loadInvites();
-    } catch (e) {
-      toast?.show?.(e?.message || '取消失敗');
     }
   };
 
@@ -138,36 +122,13 @@ export default function RosterImport({ schoolId, schoolName, onDone }) {
 
           {result ? (
             <div style={{ display: 'grid', gap: 6, fontSize: 14, background: '#F5F9F6', borderRadius: 12, padding: 12 }}>
-              <div><b>完成：</b>{result.updated?.length || 0} 個現有帳戶已加入／更新，{result.invited?.length || 0} 人會在第一次登入時自動加入。</div>
+              <div><b>完成：</b>已加入 {(result.updated?.length || 0) + (result.created?.length || 0)} 人{result.created?.length ? `（其中 ${result.created.length} 人未登入過，第一次用該 Google 電郵登入時直接使用這個帳戶）` : ''}。</div>
               {result.skipped?.length ? (
                 <div style={{ color: '#B8000F' }}>略過 {result.skipped.length} 行：{result.skipped.map((s) => `${s.email || `第 ${s.line} 行`}（${s.reason}）`).join('、')}</div>
               ) : null}
             </div>
           ) : null}
 
-          {invites.length ? (
-            <div style={{ display: 'grid', gap: 6 }}>
-              <div style={{ fontSize: 13, fontWeight: 700, color: '#3A3A3C' }}>等待首次登入（{invites.length}）</div>
-              <div style={{ maxHeight: 240, overflow: 'auto', border: '1px solid #E8E8ED', borderRadius: 10 }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                  <tbody>
-                    {invites.map((i) => (
-                      <tr key={i.email}>
-                        <td style={td}>{i.email}</td>
-                        <td style={td}>{i.name}</td>
-                        <td style={td}>{ROLE_LABEL[i.role] || i.role}</td>
-                        <td style={td}>{i.role === 'student' ? i.class : i.role === 'teacher' ? (i.teacherClasses?.join('、') || '全部班別') : ''}</td>
-                        <td style={{ ...td, textAlign: 'right' }}>
-                          <button type="button" onClick={() => cancel(i.email)} aria-label={`取消邀請 ${i.email}`} title="取消"
-                            style={{ border: 0, background: 'transparent', cursor: 'pointer', color: '#86868B', padding: 2 }}><X size={15} /></button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          ) : null}
         </>
       ) : null}
     </div>
