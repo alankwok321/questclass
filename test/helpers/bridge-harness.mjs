@@ -48,6 +48,9 @@ export function makeBridge(store = {}, { uid = null, email } = {}) {
     setDoc: async (ref, data, opts) => {
       writes.push({ path: `${ref.col}/${ref.id}`, data: clone(data), opts: clone(opts) });
     },
+    deleteDoc: async (ref) => {
+      writes.push({ path: `${ref.col}/${ref.id}`, deleted: true });
+    },
     serverTimestamp: () => TS,
   };
   const window = {};

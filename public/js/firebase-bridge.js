@@ -1089,11 +1089,31 @@ window.QuestClassFirebase = {
       const docs = classLimit
         ? (classLimit.length ? await this._byClasses(sdk, col, classLimit, base, limit) : [])
         : (await sdk.getDocs(sdk.query(col, ...base, sdk.limit(limit)))).docs;
+      // Hand-ins whose homework no longer exists (old data) cannot be marked; flag them.
+      const hwSnap = await sdk.getDocs(sdk.query(sdk.collection(db, 'homeworkAssignments'), sdk.where('schoolId', '==', me.schoolId), sdk.limit(1000)));
+      const homework = new Map(hwSnap.docs.map((d) => this._docData(d)).filter(Boolean).map((h) => [h.id, h]));
       const submissions = docs.map((d) => this._docData(d)).filter(Boolean)
+        .map((s) => {
+          const hw = homework.get(s.assignmentId);
+          return { ...s, assignmentExists: Boolean(hw), assignmentTitle: s.assignmentTitle || hw?.title || '' };
+        })
         .sort((a, b) => String(b.submittedAt || '').localeCompare(String(a.submittedAt || '')));
       return { ok: true, submissions };
     } catch (error) {
       return { ok: false, error: error?.message || '載入提交失敗', submissions: [] };
+    }
+  },
+
+  // Admin: remove a hand-in (e.g. one whose homework no longer exists).
+  async adminDeleteSubmission(id) {
+    const adminCheck = await this._requireAdmin();
+    if (!adminCheck.ok) return { ok: false, error: adminCheck.error };
+    const { db, sdk } = adminCheck.ready;
+    try {
+      await sdk.deleteDoc(sdk.doc(db, 'submissions', String(id)));
+      return { ok: true };
+    } catch (error) {
+      return { ok: false, error: error?.message || '刪除失敗' };
     }
   },
 

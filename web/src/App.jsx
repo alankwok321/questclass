@@ -256,7 +256,7 @@ function AppRoutes({ user }) {
     <Routes>
       <Route path="/dashboard" element={<Dashboard />} />
       <Route path="/classroom" element={<ClassroomPage user={user} />} />
-      <Route path="/assignments" element={<AssignmentsPage />} />
+      <Route path="/assignments" element={<AssignmentsPage user={user} />} />
       <Route path="/progress" element={<PlaceholderTab title="進度追蹤" />} />
       <Route path="/reports" element={<ReportsPage />} />
       <Route path="/parents" element={<PlaceholderTab title="家長通知" />} />

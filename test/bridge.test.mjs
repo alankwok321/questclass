@@ -619,12 +619,25 @@ test('listClassSubmissions: one class of my school; class-limited teachers only 
 test('listSubmissionsForReview: whole school for admins, own classes for limited teachers', async () => {
   const store = { users: { ...users(), t1: { ...users().t1, teacherClasses: ['5A'] } },
     submissions: { ...inA({ s1: { class: '5A', studentUid: 'stu1' }, s2: { class: '6B', studentUid: 'stu2' } }), s3: { schoolId: 'B', class: '5A' } } };
+  store.submissions.s1.assignmentId = 'h1';
+  store.submissions.s2.assignmentId = 'gone';
+  store.homeworkAssignments = homework();
   let b = makeBridge(store, { uid: 'adm' });
-  assert.deepEqual((await b.fb.listSubmissionsForReview()).submissions.map((s) => s.id).sort(), ['s1', 's2']);
+  const list = (await b.fb.listSubmissionsForReview()).submissions;
+  assert.deepEqual(list.map((s) => s.id).sort(), ['s1', 's2']);
+  assert.deepEqual(Object.fromEntries(list.map((s) => [s.id, s.assignmentExists])), { s1: true, s2: false }, 'homework that no longer exists is flagged');
   b = makeBridge(store, { uid: 't1' });
   assert.deepEqual((await b.fb.listSubmissionsForReview()).submissions.map((s) => s.id), ['s1']);
   b = makeBridge(store, { uid: 'stu1' });
   assert.equal((await b.fb.listSubmissionsForReview()).ok, false);
+});
+
+test('adminDeleteSubmission: admins only', async () => {
+  let b = makeBridge({ users: users() }, { uid: 't1' });
+  assert.equal((await b.fb.adminDeleteSubmission('s1')).ok, false);
+  b = makeBridge({ users: users() }, { uid: 'adm' });
+  assert.equal((await b.fb.adminDeleteSubmission('s1')).ok, true);
+  assert.deepEqual(b.writes[0], { path: 'submissions/s1', deleted: true });
 });
 
 test('adminSetStudentClass changes only the class (admins only)', async () => {

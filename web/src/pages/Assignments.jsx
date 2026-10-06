@@ -14,6 +14,7 @@ const fb = () => window.QuestClassFirebase;
 const OPEN_TYPES = new Set(['SHORT_ANSWER', 'LONG_ANSWER', 'ESSAY', 'OPEN_ENDED']);
 
 export function stateOf(sub) {
+  if (sub?.assignmentExists === false) return 'orphan';
   const results = Array.isArray(sub?.results) ? sub.results : [];
   if (sub?.status !== 'graded' || !results.length) return 'unmarked';
   if (sub.pendingReview || results.some((r) => r.pending)) return 'pending';
@@ -29,6 +30,7 @@ const when = (v) => {
 function StateChip({ sub }) {
   const st = stateOf(sub);
   const style = (bg, fg) => ({ padding: '3px 10px', borderRadius: 999, fontSize: 12, fontWeight: 700, background: bg, color: fg, whiteSpace: 'nowrap' });
+  if (st === 'orphan') return <span style={style('#F2F2F5', '#6E6E73')}>作業已不存在</span>;
   if (st === 'unmarked') return <span style={style('#FFF4E0', '#B25000')}>未批改</span>;
   if (st === 'pending') {
     const n = (sub.results || []).filter((r) => r.pending).length;
@@ -38,7 +40,8 @@ function StateChip({ sub }) {
   return <span style={style('#E3F5E8', '#1E7B34')}>已批改</span>;
 }
 
-export default function AssignmentsPage() {
+export default function AssignmentsPage({ user }) {
+  const isAdmin = String(user?.role || '').toLowerCase() === 'admin';
   const toast = useToast();
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
@@ -78,14 +81,15 @@ export default function AssignmentsPage() {
   }, [subs]);
 
   const filtered = subs.filter((s) => (!cls || s.class === cls) && (!hwId || s.assignmentId === hwId));
-  const counts = { todo: 0, ai: 0, done: 0 };
+  const counts = { todo: 0, ai: 0, done: 0, orphan: 0 };
   filtered.forEach((s) => { const st = stateOf(s); counts[st === 'unmarked' || st === 'pending' ? 'todo' : st] += 1; });
   const shown = filtered.filter((s) => {
     const st = stateOf(s);
     if (tab === 'todo') return st === 'unmarked' || st === 'pending';
     if (tab === 'ai') return st === 'ai';
     if (tab === 'done') return st === 'done';
-    return true;
+    if (tab === 'orphan') return st === 'orphan';
+    return st !== 'orphan';
   });
 
   const open = subs.find((s) => s.id === openId);
@@ -104,6 +108,12 @@ export default function AssignmentsPage() {
           toast?.show?.('已儲存批改');
         }}
         hasNext={Boolean(next)}
+        isAdmin={isAdmin}
+        onDeleted={async () => {
+          await load();
+          setOpenId('');
+          toast?.show?.('已刪除這份提交');
+        }}
       />
     );
   }
@@ -114,6 +124,7 @@ export default function AssignmentsPage() {
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
         <Segmented label="批改狀態" value={tab} onChange={setTab} options={[
           ['todo', `待批改 ${counts.todo}`], ['ai', `AI 評分待確認 ${counts.ai}`], ['done', `已批改 ${counts.done}`], ['all', '全部'],
+          ...(counts.orphan ? [['orphan', `作業已不存在 ${counts.orphan}`]] : []),
         ]} />
         {classes.length > 1 ? (
           <select aria-label="班別" value={cls} onChange={(e) => setCls(e.target.value)} style={select}>
@@ -171,7 +182,7 @@ export default function AssignmentsPage() {
   );
 }
 
-function MarkSubmission({ sub, student, onBack, onSaved, hasNext }) {
+function MarkSubmission({ sub, student, onBack, onSaved, hasNext, isAdmin, onDeleted }) {
   const toast = useToast();
   const confirm = useConfirm();
   const [data, setData] = useState(null);
@@ -180,8 +191,10 @@ function MarkSubmission({ sub, student, onBack, onSaved, hasNext }) {
   const [comment, setComment] = useState('');
   const [busy, setBusy] = useState('');
 
+  const orphan = sub.assignmentExists === false;
   const loadDetail = useCallback(async () => {
     setErr('');
+    if (orphan) { setData({ submission: sub, questions: [] }); return; }
     try {
       const d = await getSubmissionForMarking(sub.id);
       setData(d);
@@ -194,9 +207,17 @@ function MarkSubmission({ sub, student, onBack, onSaved, hasNext }) {
     } catch (e) {
       setErr(e?.message || '載入失敗');
     }
-  }, [sub.id]);
+  }, [sub, orphan]);
 
   useEffect(() => { loadDetail(); }, [loadDetail]);
+
+  const remove = async () => {
+    if (!await confirm('刪除這份提交？刪除後不能復原。', { confirmText: '刪除' })) return;
+    setBusy('delete');
+    const r = await window.QuestClassFirebase?.adminDeleteSubmission?.(sub.id);
+    if (r?.ok) await onDeleted();
+    else { toast?.show?.(r?.error || '刪除失敗'); setBusy(''); }
+  };
 
   const s = data?.submission || sub;
   const results = new Map((s.results || []).map((r) => [String(r.questionId), r]));
@@ -261,7 +282,25 @@ function MarkSubmission({ sub, student, onBack, onSaved, hasNext }) {
       {err ? <div className="qcCard" style={{ color: '#D70015', fontWeight: 500 }}>{err}</div> : null}
       {!data && !err ? <div className="qcCard qcEmpty">載入中…</div> : null}
 
-      {data && !graded ? (
+      {orphan ? (
+        <div className="qcCard" style={{ display: 'grid', gap: 10 }}>
+          <div style={{ fontSize: 15, fontWeight: 600 }}>這份提交對應的作業已不存在</div>
+          <div style={{ fontSize: 14, color: '#3A3A3C', lineHeight: 1.6 }}>
+            作業已被刪除（通常是舊資料或測試作業），所以題目和答案都找不到，不能批改，也不會計入儀表板和學習報告。
+            {isAdmin ? '你可以把它刪除。' : '如要刪除，請聯絡學校管理員。'}
+          </div>
+          {(sub.answers || []).length ? (
+            <div style={{ fontSize: 13, color: '#6E6E73' }}>學生當時交了 {(sub.answers || []).length} 個答案{sub.score != null ? `，得分 ${sub.score} / ${sub.maxScore}` : ''}。</div>
+          ) : null}
+          {isAdmin ? (
+            <div><button type="button" className="qcBtn qcBtnSecondary qcBtnSmall" onClick={remove} disabled={busy === 'delete'} style={{ color: '#B8000F' }}>
+              {busy === 'delete' ? '刪除中…' : '刪除這份提交'}
+            </button></div>
+          ) : null}
+        </div>
+      ) : null}
+
+      {data && !graded && !orphan ? (
         <div className="qcCard" style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
           <div style={{ flexGrow: 1, fontSize: 14, color: '#3A3A3C' }}>這份作業還沒有批改。先自動批改選擇題、是非題和填充題（文字題會用學校的 AI 評分），再由你檢查。</div>
           <button type="button" className="qcBtn qcBtnPrimary qcBtnSmall" onClick={runAuto} disabled={busy === 'auto'}>
@@ -333,7 +372,7 @@ function MarkSubmission({ sub, student, onBack, onSaved, hasNext }) {
         );
       }) : null}
 
-      {data && graded ? (
+      {data && graded && !orphan ? (
         <div className="qcCard" style={{ display: 'grid', gap: 10 }}>
           <div style={{ fontSize: 15, fontWeight: 600 }}>老師評語（學生會看到）</div>
           <textarea value={comment} onChange={(e) => setComment(e.target.value)} rows={3} placeholder="可留空"
