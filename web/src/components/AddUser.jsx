@@ -43,7 +43,6 @@ export default function AddUser({ schoolId, schoolName, classes = [], onDone }) 
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, justifyContent: 'space-between', flexWrap: 'wrap' }}>
         <div style={{ minWidth: 0, flex: 1 }}>
           <div style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}><UserPlus size={18} color="#0071E3" aria-hidden="true" /> 新增使用者</div>
-          <div style={{ fontSize: 13, color: '#6E6E73', marginTop: 4 }}>逐個加入學生、老師、家長或管理員（用對方的 Google 電郵）。</div>
         </div>
         <button type="button" className="qcBtn qcBtnSecondary qcBtnSmall" onClick={() => { setOpen((v) => !v); setMsg(null); }}>{open ? '收起' : '新增'}</button>
       </div>

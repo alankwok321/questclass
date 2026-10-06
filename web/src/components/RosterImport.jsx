@@ -92,13 +92,7 @@ export default function RosterImport({ schoolId, schoolName, onDone }) {
   return (
     <div className="qcCard" style={{ display: 'grid', gap: 12 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, justifyContent: 'space-between', flexWrap: 'wrap' }}>
-        <div style={{ minWidth: 0, flex: 1 }}>
-          <div style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}><FileSpreadsheet size={18} color="#1E7B34" aria-hidden="true" /> 用 Excel 加入學生、老師及家長</div>
-          <div style={{ fontSize: 13, color: '#6E6E73', marginTop: 4, lineHeight: 1.5 }}>
-            上載名單後，已登入過的人會即時加入{schoolName ? `「${schoolName}」` : '學校'}；其他人第一次用該 Google 電郵登入時會自動加入，不用再審核。
-            {invites.length ? ` 現有 ${invites.length} 人等待首次登入。` : ''}
-          </div>
-        </div>
+        <div style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}><FileSpreadsheet size={18} color="#1E7B34" aria-hidden="true" /> Excel 匯入</div>
         <button type="button" className="qcBtn qcBtnSecondary qcBtnSmall" onClick={() => setOpen((v) => !v)}>{open ? '收起' : '開始'}</button>
       </div>
 
@@ -112,7 +106,6 @@ export default function RosterImport({ schoolId, schoolName, onDone }) {
             </label>
             {fileName ? <span style={{ fontSize: 13, color: '#6E6E73', alignSelf: 'center' }}>{fileName}</span> : null}
           </div>
-          <div style={{ fontSize: 12, color: '#86868B' }}>欄位：電郵（必填）、姓名、身分（學生／老師／家長／管理員）、班別（老師可填多個，用逗號分隔）、子女電郵（家長）。</div>
 
           {rows ? (
             <div style={{ display: 'grid', gap: 10 }}>
