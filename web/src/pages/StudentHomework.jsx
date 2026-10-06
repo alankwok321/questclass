@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
+import { ResultBadge, SubmittedAnswer } from '../components/AnswerView.jsx';
 import { gradeMySubmission, listMyHomework, listMySubmissions, submitHomework } from '../services/firebase.js';
 import QuestionTypeBadge from '../components/QuestionTypeBadge.jsx';
 import { CheckCircle2, ClipboardList, PartyPopper, RefreshCw } from 'lucide-react';
@@ -87,37 +88,6 @@ function AnswerInput({ q, value, onChange }) {
   );
 }
 
-// ── Read-only submitted answer display ────────────────────────────────────────
-function SubmittedAnswer({ q, submittedAnswers }) {
-  const type = (q?.type || '').toUpperCase();
-  const ans = (submittedAnswers || []).find(a => a.questionId === q.id);
-  const val = ans?.value;
-
-  if (val == null || val === '') {
-    return <span style={{ color: '#86868B', fontWeight: 500, fontSize: 13 }}>（未作答）</span>;
-  }
-
-  if (type === 'TRUE_FALSE') {
-    return (
-      <span style={{ fontWeight: 600, fontSize: 13, color: val ? '#1E7B34' : '#D70015' }}>
-        {val ? '✓ 正確 (True)' : '✗ 錯誤 (False)'}
-      </span>
-    );
-  }
-
-  if (type === 'MULTIPLE_CHOICE') {
-    const opts = q?.options || [];
-    const chosen = opts.find(o => o.id === val || o.value === val);
-    return (
-      <span style={{ fontWeight: 600, fontSize: 13, color: '#1D1D1F' }}>
-        {chosen ? `${chosen.id}. ${chosen.text}` : String(val)}
-      </span>
-    );
-  }
-
-  return <span style={{ fontWeight: 500, fontSize: 13, color: '#1D1D1F', whiteSpace: 'pre-wrap' }}>{String(val)}</span>;
-}
-
 // ── Single question card ──────────────────────────────────────────────────────
 function QuestionCard({ q, index, value, onChange }) {
   const text = q.question_text || q.prompt || '';
@@ -144,17 +114,6 @@ function QuestionCard({ q, index, value, onChange }) {
   );
 }
 
-// ── Result of one question ───────────────────────────────────────────────────
-function ResultBadge({ r }) {
-  if (!r) return null;
-  const style = (bg, fg) => ({ padding: '3px 10px', borderRadius: 999, fontSize: 12, fontWeight: 700, background: bg, color: fg, whiteSpace: 'nowrap' });
-  if (r.pending) return <span style={style('#FFF4E0', '#B25000')}>待老師批改</span>;
-  if (r.correct) return <span style={style('#E3F5E8', '#1E7B34')}>✓ 答對 · {r.earned}/{r.points} 分</span>;
-  if (r.earned > 0) return <span style={style('#FFF4E0', '#B25000')}>部分正確 · {r.earned}/{r.points} 分</span>;
-  return <span style={style('#FFE5E3', '#B8000F')}>✗ 答錯 · 0/{r.points} 分</span>;
-}
-
-// ── Completed assignment: score, your answers and the correct answers ────────
 function CompletedDetail({ assignment, submission, onBack, onGraded }) {
   const questions = Array.isArray(assignment.questions) ? assignment.questions : [];
   const [grading, setGrading] = useState(false);
@@ -205,6 +164,11 @@ function CompletedDetail({ assignment, submission, onBack, onGraded }) {
             </span>
           )}
         </div>
+        {submission?.teacherComment ? (
+          <div style={{ marginTop: 12, fontSize: 14, color: '#1D1D1F', background: '#EEF5FF', padding: '10px 12px', borderRadius: 12, lineHeight: 1.6 }}>
+            <b>老師評語：</b>{submission.teacherComment}
+          </div>
+        ) : null}
         {graded && submission.pendingReview ? (
           <div style={{ marginTop: 12, fontSize: 13, color: '#B25000', background: '#FFF8EC', padding: '10px 12px', borderRadius: 12 }}>
             部分題目需要老師批改，分數之後可能會更新。

@@ -616,6 +616,17 @@ test('listClassSubmissions: one class of my school; class-limited teachers only 
   assert.equal((await b.fb.listClassSubmissions('5A')).ok, false);
 });
 
+test('listSubmissionsForReview: whole school for admins, own classes for limited teachers', async () => {
+  const store = { users: { ...users(), t1: { ...users().t1, teacherClasses: ['5A'] } },
+    submissions: { ...inA({ s1: { class: '5A', studentUid: 'stu1' }, s2: { class: '6B', studentUid: 'stu2' } }), s3: { schoolId: 'B', class: '5A' } } };
+  let b = makeBridge(store, { uid: 'adm' });
+  assert.deepEqual((await b.fb.listSubmissionsForReview()).submissions.map((s) => s.id).sort(), ['s1', 's2']);
+  b = makeBridge(store, { uid: 't1' });
+  assert.deepEqual((await b.fb.listSubmissionsForReview()).submissions.map((s) => s.id), ['s1']);
+  b = makeBridge(store, { uid: 'stu1' });
+  assert.equal((await b.fb.listSubmissionsForReview()).ok, false);
+});
+
 test('adminSetStudentClass changes only the class (admins only)', async () => {
   let b = makeBridge({ users: users() }, { uid: 'adm' });
   assert.equal((await b.fb.adminSetStudentClass('stu3', ' 5B ')).ok, true);

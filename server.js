@@ -1307,6 +1307,122 @@ app.post('/api/homework/grade', async (req, res) => {
   }
 });
 
+// ── 作業批改: teachers review hand-ins (unmarked open answers, AI marks to confirm) ──────────
+// A teacher/admin of the submission's school; a teacher limited to some classes only sees those.
+async function requireStaffForSubmission(body) {
+  const actor = await verifyUserFromToken(body.idToken);
+  if (!actor) throw httpError(401, '請先登入');
+  requireActive(actor);
+  if (!['teacher', 'admin'].includes(actor.role)) throw httpError(403, '只有老師可以批改作業');
+  const id = String(body.submissionId || '').trim();
+  if (!id || id.includes('/')) throw httpError(400, 'submissionId required');
+  const { db } = getFirebaseAdmin();
+  const ref = db.collection('submissions').doc(id);
+  const snap = await ref.get();
+  const sub = snap.exists ? snap.data() : null;
+  if (!sub) throw httpError(404, '找不到這份提交');
+  const schoolId = actor.platformAdmin && body.schoolId ? String(body.schoolId) : actor.schoolId;
+  if (!schoolId || sub.schoolId !== schoolId) throw httpError(404, '找不到這份提交');
+  if (actor.role === 'teacher') {
+    const me = (await db.collection('users').doc(actor.uid).get()).data() || {};
+    if (Array.isArray(me.teacherClasses)) {
+      const allowed = new Set(me.teacherClasses.map((c) => String(c || '').trim().toLowerCase()));
+      if (!allowed.has(String(sub.class || '').trim().toLowerCase())) throw httpError(403, '你沒有權限批改這個班別的作業');
+    }
+  }
+  return { actor, db, ref, sub, schoolId };
+}
+
+async function fullQuestionsFor(db, assignmentId) {
+  const [hwSnap, keySnap] = await Promise.all([
+    db.collection('homeworkAssignments').doc(assignmentId).get(),
+    db.collection('homeworkAnswerKeys').doc(assignmentId).get(),
+  ]);
+  const hw = hwSnap.exists ? hwSnap.data() : {};
+  const key = keySnap.exists && Array.isArray(keySnap.data()?.questions) ? keySnap.data().questions : null;
+  return { hw, questions: key || (Array.isArray(hw.questions) ? hw.questions : []) };
+}
+
+const roundHalf = (n) => Math.round(n * 2) / 2;
+const round2 = (n) => Math.round(n * 100) / 100;
+
+// The hand-in with every question (including the answer and marking scheme) for the marking screen.
+app.post('/api/teacher/submissions/detail', async (req, res) => {
+  try {
+    const { db, sub } = await requireStaffForSubmission(req.body || {});
+    const { hw, questions } = await fullQuestionsFor(db, sub.assignmentId);
+    return res.json({
+      ok: true,
+      submission: sub,
+      assignment: { id: sub.assignmentId, title: hw.title || '作業', dueAt: hw.dueAt || null },
+      questions: questions.map((q, i) => ({
+        id: String(q.id ?? i), type: q.type || '', points: Number(q.points) || 1,
+        question_text: q.question_text || q.prompt || '', options: q.options || null, blanks: q.blanks || null, pairs: q.pairs || null,
+        correctAnswer: describeCorrect(q), ideal_answer: q.ideal_answer || '', grading_rubric: q.grading_rubric || '', topic: q.topic || '',
+      })),
+    });
+  } catch (error) {
+    return sendError(res, error, 'load failed');
+  }
+});
+
+// Mark a hand-in that was never marked (e.g. the student closed the page before marking ran).
+app.post('/api/teacher/submissions/autograde', async (req, res) => {
+  try {
+    const { db, ref, sub, schoolId } = await requireStaffForSubmission(req.body || {});
+    if (sub.status === 'graded' && Array.isArray(sub.results)) {
+      return res.json({ ok: true, score: sub.score, maxScore: sub.maxScore, results: sub.results, pendingReview: Boolean(sub.pendingReview) });
+    }
+    const graded = await gradeSubmission({ db, schoolId, assignmentId: sub.assignmentId, submission: sub });
+    await ref.set({ ...graded, status: 'graded', gradedBy: 'auto', gradedAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+    return res.json({ ok: true, ...graded });
+  } catch (error) {
+    return sendError(res, error, 'grading failed');
+  }
+});
+
+// Save the teacher's marks: marks [{ questionId, earned, feedback }] (0.5 steps, 0..points), comment.
+app.post('/api/teacher/submissions/mark', async (req, res) => {
+  try {
+    const body = req.body || {};
+    const { actor, db, ref, sub, schoolId } = await requireStaffForSubmission(body);
+    let results = Array.isArray(sub.results) && sub.results.length ? sub.results.map((r) => ({ ...r })) : null;
+    if (!results) results = (await gradeSubmission({ db, schoolId, assignmentId: sub.assignmentId, submission: sub })).results;
+    const marks = new Map((Array.isArray(body.marks) ? body.marks : []).map((m) => [String(m?.questionId), m]));
+    for (const r of results) {
+      const m = marks.get(String(r.questionId));
+      if (!m) continue;
+      const earned = Number(m.earned);
+      if (!Number.isFinite(earned)) throw httpError(400, '分數必須是數字');
+      const points = Number(r.points) || 1;
+      r.earned = Math.max(0, Math.min(points, roundHalf(earned)));
+      r.correct = r.earned >= points;
+      r.pending = false;
+      r.markedBy = 'teacher';
+      const fb = String(m.feedback ?? r.feedback ?? '').trim().slice(0, 1000);
+      if (fb) r.feedback = fb; else delete r.feedback;
+    }
+    const score = round2(results.reduce((t, r) => t + (Number(r.earned) || 0), 0));
+    const maxScore = round2(results.reduce((t, r) => t + (Number(r.points) || 0), 0));
+    const pendingReview = results.some((r) => r.pending);
+    const update = {
+      results, score, maxScore, pendingReview, status: 'graded',
+      teacherReviewed: !pendingReview,
+      reviewedBy: actor.uid,
+      reviewedAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    };
+    if (body.comment !== undefined) {
+      const c = String(body.comment || '').trim().slice(0, 1000);
+      update.teacherComment = c || FieldValue.delete();
+    }
+    await ref.set(update, { merge: true });
+    return res.json({ ok: true, score, maxScore, results, pendingReview });
+  } catch (error) {
+    return sendError(res, error, 'save failed');
+  }
+});
+
 app.post('/api/teacher/lesson-loop', async (req, res) => {
   const { topic = 'general', weakness = '', studentName = 'student', grade = '' } = req.body || {};
   let cfg;

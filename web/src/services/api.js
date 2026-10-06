@@ -153,3 +153,16 @@ export async function suggestStudentComment(summary) {
   if (!comment) throw new Error('AI 沒有產生評語，請再試一次');
   return comment.slice(0, 400);
 }
+
+// 作業批改 (teacher): one hand-in with the full questions, save marks, or mark a never-marked hand-in.
+export async function getSubmissionForMarking(submissionId) {
+  return postJson('/api/teacher/submissions/detail', await withAuth({ submissionId }));
+}
+
+export async function saveSubmissionMarks(submissionId, marks, comment) {
+  return postJson('/api/teacher/submissions/mark', await withAuth({ submissionId, marks, comment }));
+}
+
+export async function autogradeSubmission(submissionId) {
+  return postJson('/api/teacher/submissions/autograde', await withAuth({ submissionId }));
+}

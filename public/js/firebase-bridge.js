@@ -1055,6 +1055,29 @@ window.QuestClassFirebase = {
     }
   },
 
+  // 作業批改: every hand-in of the school (or of the teacher's classes), newest first.
+  async listSubmissionsForReview(limit = 500) {
+    const check = await this._requireSignedIn();
+    if (!check.ok) return { ok: false, error: check.error, submissions: [] };
+    const { db, sdk } = check.ready;
+    const me = check.me || {};
+    if (!['teacher', 'admin'].includes(String(me.role || '').toLowerCase())) return { ok: false, error: '只有老師可以批改作業', submissions: [] };
+    if (!me.schoolId) return { ok: false, error: '你的帳戶尚未加入學校', submissions: [] };
+    try {
+      const col = sdk.collection(db, 'submissions');
+      const base = [sdk.where('schoolId', '==', me.schoolId)];
+      const classLimit = this._classLimit(me);
+      const docs = classLimit
+        ? (classLimit.length ? await this._byClasses(sdk, col, classLimit, base, limit) : [])
+        : (await sdk.getDocs(sdk.query(col, ...base, sdk.limit(limit)))).docs;
+      const submissions = docs.map((d) => this._docData(d)).filter(Boolean)
+        .sort((a, b) => String(b.submittedAt || '').localeCompare(String(a.submittedAt || '')));
+      return { ok: true, submissions };
+    } catch (error) {
+      return { ok: false, error: error?.message || '載入提交失敗', submissions: [] };
+    }
+  },
+
   // Admin: put a student in a class ('' = no class). Changes nothing else on the account.
   async adminSetStudentClass(uid, className) {
     const adminCheck = await this._requireAdmin();

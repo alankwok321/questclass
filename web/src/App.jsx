@@ -34,6 +34,7 @@ import ClassroomPage from './pages/Classroom.jsx';
 import JoinSchool from './pages/JoinSchool.jsx';
 import Dashboard from './pages/Dashboard.jsx';
 import ReportsPage from './pages/Reports.jsx';
+import AssignmentsPage from './pages/Assignments.jsx';
 import PlaceholderTab from './pages/PlaceholderTab.jsx';
 import Landing from './pages/Landing.jsx';
 import ParentPage from './pages/Parent.jsx';
@@ -255,7 +256,7 @@ function AppRoutes({ user }) {
     <Routes>
       <Route path="/dashboard" element={<Dashboard />} />
       <Route path="/classroom" element={<ClassroomPage user={user} />} />
-      <Route path="/assignments" element={<PlaceholderTab title="作業批改" />} />
+      <Route path="/assignments" element={<AssignmentsPage />} />
       <Route path="/progress" element={<PlaceholderTab title="進度追蹤" />} />
       <Route path="/reports" element={<ReportsPage />} />
       <Route path="/parents" element={<PlaceholderTab title="家長通知" />} />

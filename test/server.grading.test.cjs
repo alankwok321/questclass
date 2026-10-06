@@ -93,3 +93,53 @@ test('suspended students cannot use it', async () => {
   h.fbState.data.users.stu.accountStatus = 'suspended';
   assert.equal((await grade({ idToken: 'stu', assignmentId: 'hw1' })).status, 403);
 });
+
+// ── 作業批改: teacher review ──────────────────────────────────────────────────
+const tpost = (path, body) => h.post(app, path, body);
+
+test('teacher sees the full questions (with answers) for marking', async () => {
+  h.fbState.data.submissions.hw1_stu.class = '5A';
+  const r = await tpost('/api/teacher/submissions/detail', { idToken: 'tea', submissionId: 'hw1_stu' });
+  assert.equal(r.status, 200);
+  assert.equal(r.body.questions.length, 5);
+  const q4 = r.body.questions.find((q) => q.id === 'q4');
+  assert.deepEqual([q4.ideal_answer, q4.grading_rubric, q4.points], ['Because of X', 'Mention X', 3]);
+  assert.equal(r.body.submission.answers.length, 5);
+  assert.equal((await tpost('/api/teacher/submissions/detail', { idToken: 'stu', submissionId: 'hw1_stu' })).status, 403, 'students cannot');
+  assert.equal((await tpost('/api/teacher/submissions/detail', { idToken: 'tea', submissionId: '../x' })).status, 400);
+});
+
+test('teacher limited to other classes, or from another school, is refused', async () => {
+  h.fbState.data.submissions.hw1_stu.class = '5A';
+  h.fbState.data.users.tea.teacherClasses = ['6B'];
+  assert.equal((await tpost('/api/teacher/submissions/detail', { idToken: 'tea', submissionId: 'hw1_stu' })).status, 403);
+  h.fbState.data.users.tea.teacherClasses = ['5a'];
+  assert.equal((await tpost('/api/teacher/submissions/detail', { idToken: 'tea', submissionId: 'hw1_stu' })).status, 200, 'class match ignores case');
+  h.fbState.data.users.tea.schoolId = 'b';
+  assert.equal((await tpost('/api/teacher/submissions/detail', { idToken: 'tea', submissionId: 'hw1_stu' })).status, 404);
+});
+
+test('teacher marks the open answers; score is recomputed and the review is done', async () => {
+  h.setEnv({ ...h.FIREBASE_ON }); // no AI → q4 waits for the teacher
+  await grade({ idToken: 'stu', assignmentId: 'hw1' });
+  assert.equal(h.fbState.data.submissions.hw1_stu.pendingReview, true);
+  const r = await tpost('/api/teacher/submissions/mark', { idToken: 'tea', submissionId: 'hw1_stu',
+    marks: [{ questionId: 'q4', earned: 2.74, feedback: '提到 X，不錯' }, { questionId: 'q1', earned: 99 }], comment: '繼續努力' });
+  assert.equal(r.status, 200);
+  const saved = h.fbState.data.submissions.hw1_stu;
+  const by = Object.fromEntries(saved.results.map((x) => [x.questionId, x]));
+  assert.deepEqual([by.q4.earned, by.q4.pending, by.q4.markedBy, by.q4.feedback], [2.5, false, 'teacher', '提到 X，不錯']);
+  assert.equal(by.q1.earned, 2, 'capped at the question\'s points');
+  assert.equal(saved.score, 2 + 0 + 2 + 2.5 + 0);
+  assert.equal(saved.pendingReview, false);
+  assert.equal(saved.teacherReviewed, true);
+  assert.equal(saved.teacherComment, '繼續努力');
+  assert.equal(saved.reviewedBy, 'tea');
+});
+
+test('a hand-in that was never marked can be auto-marked by the teacher', async () => {
+  const r = await tpost('/api/teacher/submissions/autograde', { idToken: 'adm', submissionId: 'hw1_stu' });
+  assert.equal(r.status, 200);
+  assert.equal(h.fbState.data.submissions.hw1_stu.status, 'graded');
+  assert.equal(r.body.score, 6.5);
+});
