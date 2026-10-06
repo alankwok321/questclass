@@ -5,8 +5,8 @@ import { canAccess, homePathFor, normalizeRole, isBlockedAccount, ROLES } from '
 
 const STAFF_PAGES = ['/dashboard', '/classroom', '/assignments', '/progress', '/reports', '/parents', '/teacher-homework',
   '/teacher-homework-legacy', '/teacher-homework-old', '/teacher-homework-old/x', '/teacher-homework-old/a/b', '/teacher-homework/123',
-  '/teacher-question-bank', '/teacher-question-bank/new', '/teacher', '/teacher/sub', '/analytics'];
-const ALL_PAGES = [...STAFF_PAGES, '/chat', '/student-homework', '/student-homework/abc', '/parent', '/parent/child', '/admin', '/admin/users'];
+  '/teacher-question-bank', '/teacher-question-bank/new', '/teacher', '/teacher/sub'];
+const ALL_PAGES = [...STAFF_PAGES, '/analytics', '/chat', '/student-homework', '/student-homework/abc', '/parent', '/parent/child', '/admin', '/admin/users'];
 
 const expected = {
   admin: new Set(ALL_PAGES),

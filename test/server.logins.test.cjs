@@ -35,7 +35,7 @@ test('platform admins and people without a school are not recorded', async () =>
   assert.equal(Object.keys(h.fbState.data.loginDays || {}).length, 0);
 });
 
-test('statistics per day and per person; class-limited teachers see their students only', async () => {
+test('statistics per day and per person (admins only)', async () => {
   const NOW = Date.parse('2026-10-06T04:00:00Z'); // 12:00 in Hong Kong
   h.fbState.data.loginDays = {
     'stu_2026-10-06': { uid: 'stu', schoolId: 'a', day: '2026-10-06', count: 2 },
@@ -53,8 +53,6 @@ test('statistics per day and per person; class-limited teachers see their studen
   const stu = r.body.people.find((p) => p.uid === 'stu');
   assert.deepEqual([stu.daysActive, stu.visits], [2, 3]);
   assert.equal(r.body.people.find((p) => p.uid === 'stu2').daysActive, 0, 'outside the period');
-  h.fbState.data.users.tea.teacherClasses = ['5A'];
-  r = await stats({ idToken: 'tea', days: 7, now: NOW });
-  assert.deepEqual(r.body.people.filter((p) => p.role === 'student').map((p) => p.uid), ['stu']);
+  assert.equal((await stats({ idToken: 'tea', days: 7, now: NOW })).status, 403, 'admins only');
   assert.equal((await stats({ idToken: 'stu' })).status, 403);
 });

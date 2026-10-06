@@ -1,3 +1,4 @@
+import AddUser from '../components/AddUser.jsx';
 import RosterImport from '../components/RosterImport.jsx';
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
@@ -29,7 +30,7 @@ export default function AdminPage({ user }) {
 
   const [selectedUid, setSelectedUid] = useState('');
   const selectedUser = useMemo(() => users.find((u) => u.uid === selectedUid) || null, [users, selectedUid]);
-  const [form, setForm] = useState({ role: 'student', accountStatus: 'active', class: '', childUids: [], schoolId: '', teacherClasses: null });
+  const [form, setForm] = useState({ name: '', email: '', role: 'student', accountStatus: 'active', class: '', childUids: [], schoolId: '', teacherClasses: null });
   const [newClass, setNewClass] = useState('');
   const [childSearch, setChildSearch] = useState('');
 
@@ -71,6 +72,8 @@ export default function AdminPage({ user }) {
   useEffect(() => {
     if (!selectedUser) return;
     setForm({
+      name: selectedUser.name || '',
+      email: selectedUser.email || '',
       // Roles are stored case-insensitively elsewhere ("Teacher" works in the rules), so match the dropdown.
       role: String(selectedUser.role || 'student').trim().toLowerCase(),
       accountStatus: selectedUser.accountStatus || 'active',
@@ -99,6 +102,8 @@ export default function AdminPage({ user }) {
         childUids: form.role === 'parent' ? form.childUids : [],
       };
       if (form.role === 'teacher') input.teacherClasses = form.teacherClasses;
+      if (form.name.trim() !== (selectedUser?.name || '')) input.name = form.name.trim();
+      if (form.email.trim().toLowerCase() !== String(selectedUser?.email || '').toLowerCase()) input.email = form.email.trim();
       if (platform && form.schoolId !== (selectedUser?.schoolId || '')) input.schoolId = form.schoolId;
       const res = await window.QuestClassFirebase?.adminUpdateUserAccount?.(selectedUid, input);
       if (!res?.ok) throw new Error(res?.error || '儲存失敗');
@@ -191,6 +196,9 @@ export default function AdminPage({ user }) {
       ) : null}
 
       {viewSchool && viewSchool !== UNASSIGNED ? (
+        <AddUser schoolId={platform ? viewSchool : undefined} schoolName={viewName} classes={[...new Set(users.map((u) => u.class).filter(Boolean))].sort()} onDone={() => refresh()} />
+      ) : null}
+      {viewSchool && viewSchool !== UNASSIGNED ? (
         <RosterImport schoolId={platform ? viewSchool : undefined} schoolName={viewName} onDone={() => refresh()} />
       ) : null}
 
@@ -239,6 +247,22 @@ export default function AdminPage({ user }) {
                   <div style={{ color: '#6E6E73', fontSize: 13, marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis' }}>{selectedUser.email || selectedUser.uid}</div>
                 </div>
               </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 10 }}>
+                <label style={{ display: 'grid', gap: 6 }}>
+                  <div style={labelStyle}>姓名</div>
+                  <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} style={inputStyle} maxLength={60} />
+                </label>
+                <label style={{ display: 'grid', gap: 6 }}>
+                  <div style={labelStyle}>電郵</div>
+                  <input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} style={inputStyle} />
+                </label>
+              </div>
+              {form.email.trim().toLowerCase() !== String(selectedUser.email || '').toLowerCase() ? (
+                <div style={{ fontSize: 12, color: '#B25000', marginTop: -6, lineHeight: 1.5 }}>
+                  只會更改 QuestClass 顯示和匯入時配對用的電郵。這個人仍然要用原本的 Google 帳戶登入；如要改用另一個 Google 帳戶，請用「新增使用者」加入新電郵。
+                </div>
+              ) : null}
 
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 10 }}>
                 <label style={{ display: 'grid', gap: 6 }}>

@@ -424,6 +424,12 @@ window.QuestClassFirebase = {
       // Taken out of every school: back to awaiting approval.
       if (!payload.schoolId) payload.accountStatus = 'review';
     }
+    // Name and e-mail are checked on the server (e-mail must not belong to another account).
+    if ('name' in input || 'email' in input) {
+      if ('name' in input) payload.name = String(input.name || '').trim().slice(0, 60);
+      if ('email' in input) payload.email = String(input.email || '').trim().toLowerCase();
+      return this._adminUpdateUserOnServer(uid, input, payload);
+    }
     try {
       await sdk.setDoc(sdk.doc(db, 'users', uid), payload, { merge: true });
       if ('class' in payload || 'role' in payload) await this._syncSubmissionClass(uid);
@@ -440,7 +446,7 @@ window.QuestClassFirebase = {
     try {
       const idToken = await this.getIdToken();
       const body = { idToken, uid: String(uid), accountStatus: payload.accountStatus };
-      ['role', 'class', 'childUids', 'schoolId'].forEach((k) => { if (k in payload) body[k] = payload[k]; });
+      ['role', 'class', 'childUids', 'schoolId', 'name', 'email'].forEach((k) => { if (k in payload) body[k] = payload[k]; });
       if ('teacherClasses' in input) body.teacherClasses = input.teacherClasses === null ? null : payload.teacherClasses;
       const res = await fetch('/api/school/users/update', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),

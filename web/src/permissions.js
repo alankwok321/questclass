@@ -24,7 +24,7 @@ export const PAGE_ACCESS = [
   { path: '/teacher-homework', roles: STAFF },
   { path: '/teacher-question-bank', roles: STAFF },
   { path: '/teacher', roles: STAFF },
-  { path: '/analytics', roles: STAFF },
+  { path: '/analytics', roles: ['admin'] },
   { path: '/student-homework', roles: ['admin', 'student'] },
   { path: '/parent', roles: ['admin', 'parent'] },
   { path: '/chat', roles: ['admin', 'teacher', 'student'] },

@@ -512,7 +512,7 @@ app.post('/api/analytics/logins', async (req, res) => {
     const actor = await verifyUserFromToken(body.idToken);
     if (!actor) throw httpError(401, '請先登入');
     requireActive(actor);
-    if (!['teacher', 'admin'].includes(actor.role)) throw httpError(403, '只有老師和管理員可以查看');
+    if (actor.role !== 'admin') throw httpError(403, '只有管理員可以查看登入紀錄');
     const schoolId = actor.platformAdmin && body.schoolId ? String(body.schoolId) : actor.schoolId;
     if (!schoolId) throw httpError(400, actor.platformAdmin ? '請先選擇學校' : '你的帳戶尚未加入學校');
     const daysWanted = Math.max(1, Math.min(90, Number(body.days) || 30));
@@ -1303,6 +1303,20 @@ app.post('/api/school/users/update', async (req, res) => {
       update.accountStatus = String(body.accountStatus);
     }
     if (body.class !== undefined) update.class = String(body.class || '').trim().slice(0, 40);
+    if (body.name !== undefined) {
+      const name = String(body.name || '').trim().slice(0, 60);
+      if (!name) throw httpError(400, '姓名不可以留空');
+      update.name = name;
+    }
+    if (body.email !== undefined) {
+      const email = String(body.email || '').trim().toLowerCase();
+      if (!EMAIL_RE.test(email)) throw httpError(400, '電郵格式不正確');
+      if (email !== String(target.email || '').toLowerCase()) {
+        const taken = (await db.collection('users').where('email', '==', email).get()).docs.some((d) => d.id !== uid);
+        if (taken) throw httpError(409, '這個電郵已被另一個帳戶使用');
+        update.email = email;
+      }
+    }
     if (body.childUids !== undefined) update.childUids = cleanList(body.childUids, 50);
     if (body.teacherClasses !== undefined) {
       update.teacherClasses = body.teacherClasses === null ? FieldValue.delete() : cleanList(body.teacherClasses, 60);

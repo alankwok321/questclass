@@ -61,3 +61,18 @@ test('class changes are copied onto the student\'s hand-ins; whole-school sync f
   assert.deepEqual(['s1', 's2', 's3'].map((id) => h.fbState.data.submissions[id].class), ['6C', '6C', '5B']);
   assert.equal((await h.post(app, '/api/school/submissions/sync-class', { idToken: 'tea' })).status, 403);
 });
+
+test('admin edits name and e-mail; e-mail must be valid and not used by another account', async () => {
+  let r = await upd({ idToken: 'adm', uid: 'stu', name: ' 陳大文 ', email: ' New@Mail.HK ' });
+  assert.equal(r.status, 200);
+  assert.deepEqual([h.fbState.data.users.stu.name, h.fbState.data.users.stu.email], ['陳大文', 'new@mail.hk']);
+  assert.equal((await upd({ idToken: 'adm', uid: 'stu', email: 'bad' })).status, 400);
+  assert.equal((await upd({ idToken: 'adm', uid: 'stu', name: '  ' })).status, 400);
+  assert.equal((await upd({ idToken: 'adm', uid: 'stu', email: 'tea@school.hk' })).status, 409);
+  assert.equal((await upd({ idToken: 'adm', uid: 'stu', email: 'NEW@mail.hk' })).status, 200, 'same address is fine');
+});
+
+test('分析 login statistics are for admins only', async () => {
+  assert.equal((await h.post(app, '/api/analytics/logins', { idToken: 'tea' })).status, 403);
+  assert.equal((await h.post(app, '/api/analytics/logins', { idToken: 'adm' })).status, 200);
+});
