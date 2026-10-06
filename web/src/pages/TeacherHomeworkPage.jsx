@@ -8,7 +8,9 @@ import {
   listStudents,
   getIdToken,
 } from '../services/firebase.js';
-import { generateQuestions, suggestHomeworkDetails } from '../services/api.js';
+import { deleteArchivedHomework, generateQuestions, suggestHomeworkDetails } from '../services/api.js';
+import { useConfirm } from '../components/Confirm.jsx';
+import { useToast } from '../components/Toast.jsx';
 import QuestionTypeBadge, { formatTypeLabel } from '../components/QuestionTypeBadge.jsx';
 import QuestionPreview from '../components/QuestionPreview.jsx';
 import Avatar from '../components/Avatar.jsx';
@@ -643,6 +645,8 @@ function StudentPicker({ selectedUids, onChange }) {
 
 // ── Main Page ─────────────────────────────────────────────────────────────────
 export default function TeacherHomeworkPage() {
+  const confirm = useConfirm();
+  const toast = useToast();
   const [view, setView] = useState('list');
   const [tab, setTab] = useState('published');
   const [assignments, setAssignments] = useState([]);
@@ -780,6 +784,18 @@ export default function TeacherHomeworkPage() {
     }
   }
 
+  async function removeArchived(a) {
+    const ok = await confirm(`永久刪除「${a.title || '未命名作業'}」？\n學生的提交記錄和分數會一併刪除，不能復原。`, { confirmText: '刪除' });
+    if (!ok) return;
+    try {
+      const r = await deleteArchivedHomework(a.id);
+      await load();
+      toast?.show?.(`已刪除作業${r?.deletedSubmissions ? `及 ${r.deletedSubmissions} 份提交` : ''}`);
+    } catch (e) {
+      toast?.show?.('刪除失敗：' + e.message);
+    }
+  }
+
   const totalPts = questions.reduce((s, q) => s + (Number(q.points) || 1), 0);
   const addedBankIds = useMemo(() => new Set(questions.map(q => q.bankId).filter(Boolean)), [questions]);
 
@@ -879,6 +895,7 @@ export default function TeacherHomeworkPage() {
                       {a.status === 'draft' && <button onClick={() => changeStatus(a.id, 'published')} style={btnPrimary}>指派</button>}
                       {a.status === 'published' && <button onClick={() => changeStatus(a.id, 'archived')} style={btnGhost}>封存</button>}
                       {a.status === 'archived' && <button onClick={() => changeStatus(a.id, 'draft')} style={btnGhost}>還原</button>}
+                      {a.status === 'archived' && <button onClick={() => removeArchived(a)} style={{ ...btnGhost, color: '#B8000F' }}>刪除</button>}
                     </div>
                   </div>
               ))}

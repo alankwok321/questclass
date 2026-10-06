@@ -1392,6 +1392,36 @@ app.post('/api/homework/grade', async (req, res) => {
   }
 });
 
+// Delete a homework that has been 封存 (archived), with its answer key and every hand-in.
+// Admins: any homework of their school. Teachers: homework they created.
+app.post('/api/teacher/homework/delete', async (req, res) => {
+  try {
+    const body = req.body || {};
+    const actor = await verifyUserFromToken(body.idToken);
+    if (!actor) throw httpError(401, '請先登入');
+    requireActive(actor);
+    if (!['teacher', 'admin'].includes(actor.role)) throw httpError(403, '只有老師和管理員可以刪除作業');
+    const id = String(body.assignmentId || '').trim();
+    if (!id || id.includes('/')) throw httpError(400, 'assignmentId required');
+    const schoolId = actor.platformAdmin && body.schoolId ? String(body.schoolId) : actor.schoolId;
+    const { db } = getFirebaseAdmin();
+    const ref = db.collection('homeworkAssignments').doc(id);
+    const snap = await ref.get();
+    const hw = snap.exists ? snap.data() : null;
+    if (!hw || !schoolId || hw.schoolId !== schoolId) throw httpError(404, '找不到這份作業');
+    if (hw.status !== 'archived') throw httpError(400, '請先封存作業，才可以刪除');
+    if (actor.role !== 'admin' && hw.createdBy !== actor.uid) throw httpError(403, '只可以刪除自己建立的作業');
+    const subs = await db.collection('submissions').where('assignmentId', '==', id).get();
+    const mine = subs.docs.filter((d) => d.data()?.schoolId === schoolId);
+    await inChunks(mine, 50, (d) => db.collection('submissions').doc(d.id).delete());
+    await db.collection('homeworkAnswerKeys').doc(id).delete();
+    await ref.delete();
+    return res.json({ ok: true, deletedSubmissions: mine.length });
+  } catch (error) {
+    return sendError(res, error, 'delete failed');
+  }
+});
+
 // ── 作業批改: teachers review hand-ins (unmarked open answers, AI marks to confirm) ──────────
 // A teacher/admin of the submission's school; a teacher limited to some classes only sees those.
 async function requireStaffForSubmission(body) {

@@ -143,3 +143,29 @@ test('a hand-in that was never marked can be auto-marked by the teacher', async 
   assert.equal(h.fbState.data.submissions.hw1_stu.status, 'graded');
   assert.equal(r.body.score, 6.5);
 });
+
+// ── Deleting archived homework ────────────────────────────────────────────────
+const del = (body) => h.post(app, '/api/teacher/homework/delete', body);
+
+test('archived homework can be deleted with its answer key and hand-ins', async () => {
+  const hw = h.fbState.data.homeworkAssignments.hw1;
+  Object.assign(hw, { createdBy: 'tea' });
+  assert.equal((await del({ idToken: 'tea', assignmentId: 'hw1' })).status, 400, 'must be archived first');
+  hw.status = 'archived';
+  assert.equal((await del({ idToken: 'stu', assignmentId: 'hw1' })).status, 403, 'not students');
+  h.fbState.data.submissions.hwX_stu = { schoolId: 'a', assignmentId: 'other', studentUid: 'stu' };
+  const r = await del({ idToken: 'tea', assignmentId: 'hw1' });
+  assert.equal(r.status, 200);
+  assert.equal(r.body.deletedSubmissions, 1);
+  assert.equal(h.fbState.data.homeworkAssignments.hw1, undefined);
+  assert.equal(h.fbState.data.homeworkAnswerKeys.hw1, undefined);
+  assert.equal(h.fbState.data.submissions.hw1_stu, undefined);
+  assert.ok(h.fbState.data.submissions.hwX_stu, 'other hand-ins stay');
+});
+
+test('teachers can only delete their own homework; admins any of their school', async () => {
+  Object.assign(h.fbState.data.homeworkAssignments.hw1, { status: 'archived', createdBy: 'someone' });
+  assert.equal((await del({ idToken: 'tea', assignmentId: 'hw1' })).status, 403);
+  assert.equal((await del({ idToken: 'stuB', assignmentId: 'hw1' })).status, 403);
+  assert.equal((await del({ idToken: 'adm', assignmentId: 'hw1' })).status, 200);
+});

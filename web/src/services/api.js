@@ -178,3 +178,8 @@ export async function aiJson({ system, message, tool = 'teacher-tool' }) {
   if (!res.ok) throw new Error(data?.error === 'JSON_PARSE_FAILED' ? 'AI 回應格式有誤，請再試一次' : (data?.error || `HTTP ${res.status}`));
   return data;
 }
+
+// Delete an archived homework with its answer key and hand-ins (teacher: own homework; admin: any).
+export async function deleteArchivedHomework(assignmentId) {
+  return postJson('/api/teacher/homework/delete', await withAuth({ assignmentId }));
+}
