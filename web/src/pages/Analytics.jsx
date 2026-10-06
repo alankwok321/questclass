@@ -60,7 +60,8 @@ export default function AnalyticsPage() {
   const hkDay = (iso) => new Date(new Date(iso).getTime() + 8 * 3600000).toISOString().slice(0, 10);
   const todayCount = inScope.filter((p) => p.lastLoginAt && hkDay(p.lastLoginAt) === data?.today).length;
   const active7 = inScope.filter((p) => daysSince(p.lastLoginAt) < 7).length;
-  const activePeriod = inScope.filter((p) => p.daysActive > 0).length;
+  // Daily records started on 6 Oct 2026; before that only the last sign-in time is known.
+  const activePeriod = inScope.filter((p) => p.daysActive > 0 || daysSince(p.lastLoginAt) < Number(range)).length;
   const never = inScope.filter((p) => !p.lastLoginAt).length;
   const quietStudents = inScope.filter((p) => p.role === 'student' && daysSince(p.lastLoginAt) >= INACTIVE_DAYS);
   const avgDaily = days.length && !cls ? Math.round((series.reduce((t, d) => t + d.value, 0) / days.length) * 10) / 10 : null;
