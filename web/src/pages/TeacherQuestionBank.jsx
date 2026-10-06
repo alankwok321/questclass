@@ -832,7 +832,7 @@ export default function TeacherQuestionBank() {
         {/* Filters */}
         <div className="qcCard" style={{ padding: '16px 24px' }}>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10 }}>
-            <input value={q} onChange={e => setQ(e.target.value)} placeholder="搜尋題幹或主題…" style={inputStyle} />
+            <input value={q} onChange={e => setQ(e.target.value)} placeholder="搜尋題目或主題…" style={inputStyle} />
             <select value={filterType} onChange={e => setFilterType(e.target.value)} style={inputStyle}>
               <option value="">全部題型</option>
               {SUPPORTED_TYPES.map(t => <option key={t} value={t}>{typeLabel(t)}</option>)}

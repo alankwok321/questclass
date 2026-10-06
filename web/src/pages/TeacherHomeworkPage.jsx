@@ -212,7 +212,7 @@ function QuestionBankPicker({ alreadyIds, onAdd, onClose }) {
           background: '#fff',
           display: 'grid', gridTemplateColumns: '1fr auto auto', gap: 8,
         }}>
-          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="搜尋題幹或主題…" style={inputStyle} />
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="搜尋題目或主題…" style={inputStyle} />
           <select value={type} onChange={e => setType(e.target.value)} style={inputStyle}>
             <option value="">全部題型</option>
             <option value="TRUE_FALSE">是非題</option>
