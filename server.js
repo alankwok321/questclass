@@ -1013,6 +1013,56 @@ app.post('/api/school/settings/save', async (req, res) => {
   }
 });
 
+// School admin: change a member's role, status, class, children or class permissions.
+// Same limits as the Firestore rules (works even when the rules on the console are older).
+// The platform admin may also move someone to another school ('' = no school → awaiting approval).
+const USER_ROLES = ['student', 'teacher', 'admin', 'parent'];
+const USER_STATUSES = ['active', 'review', 'suspended'];
+const cleanList = (v, max) => Array.from(new Set((Array.isArray(v) ? v : []).map((x) => String(x ?? '').trim()).filter(Boolean))).slice(0, max);
+
+app.post('/api/school/users/update', async (req, res) => {
+  try {
+    const body = req.body || {};
+    const actor = await requireAdminActor(body.idToken);
+    const uid = String(body.uid || '').trim();
+    if (!uid || uid.includes('/')) throw httpError(400, 'uid required');
+    const { db } = getFirebaseAdmin();
+    const ref = db.collection('users').doc(uid);
+    const snap = await ref.get();
+    if (!snap.exists) throw httpError(404, '找不到這個帳戶');
+    const target = snap.data() || {};
+    if (!actor.platformAdmin) {
+      if (!actor.schoolId || target.schoolId !== actor.schoolId) throw httpError(403, '這個帳戶不屬於你的學校');
+      if (target.platformAdmin === true) throw httpError(403, '不能修改平台管理員');
+    }
+    const update = { updatedAt: FieldValue.serverTimestamp() };
+    if (body.role !== undefined) {
+      if (!USER_ROLES.includes(String(body.role))) throw httpError(400, '角色不正確');
+      update.role = String(body.role);
+    }
+    if (body.accountStatus !== undefined) {
+      if (!USER_STATUSES.includes(String(body.accountStatus))) throw httpError(400, '帳戶狀態不正確');
+      update.accountStatus = String(body.accountStatus);
+    }
+    if (body.class !== undefined) update.class = String(body.class || '').trim().slice(0, 40);
+    if (body.childUids !== undefined) update.childUids = cleanList(body.childUids, 50);
+    if (body.teacherClasses !== undefined) {
+      update.teacherClasses = body.teacherClasses === null ? FieldValue.delete() : cleanList(body.teacherClasses, 60);
+    }
+    if (body.schoolId !== undefined) {
+      if (!actor.platformAdmin) throw httpError(403, '只有平台管理員可以把帳戶轉到另一間學校');
+      const sid = String(body.schoolId || '');
+      if (sid && !(await db.collection('schools').doc(sid).get()).exists) throw httpError(404, '找不到這間學校');
+      update.schoolId = sid;
+      if (!sid) update.accountStatus = 'review';
+    }
+    await ref.set(update, { merge: true });
+    return res.json({ ok: true });
+  } catch (error) {
+    return sendError(res, error, 'update user failed');
+  }
+});
+
 // Serve public/js (Firebase config + bridge). The old static pages were removed.
 // These scripts keep the same name between releases, so browsers must re-check them every time
 // (a 4-hour cache kept people on old code after an update). The page also asks for them with

@@ -428,6 +428,25 @@ window.QuestClassFirebase = {
       await sdk.setDoc(sdk.doc(db, 'users', uid), payload, { merge: true });
       return { ok: true };
     } catch (error) {
+      // Rules on the console older than this app (e.g. without teacherClasses): let the server
+      // apply the same, server-checked change.
+      if (/permission/i.test(String(error?.code || error?.message || ''))) return this._adminUpdateUserOnServer(uid, input, payload);
+      return { ok: false, error: error?.message || 'Account update failed' };
+    }
+  },
+
+  async _adminUpdateUserOnServer(uid, input, payload) {
+    try {
+      const idToken = await this.getIdToken();
+      const body = { idToken, uid: String(uid), accountStatus: payload.accountStatus };
+      ['role', 'class', 'childUids', 'schoolId'].forEach((k) => { if (k in payload) body[k] = payload[k]; });
+      if ('teacherClasses' in input) body.teacherClasses = input.teacherClasses === null ? null : payload.teacherClasses;
+      const res = await fetch('/api/school/users/update', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+      });
+      const data = await res.json().catch(() => ({}));
+      return res.ok ? { ok: true } : { ok: false, error: data?.error || '儲存失敗' };
+    } catch (error) {
       return { ok: false, error: error?.message || 'Account update failed' };
     }
   },
