@@ -103,3 +103,41 @@ export function TrendMark({ trend }) {
   if (trend < 0) return <span style={{ color: '#B8000F', fontWeight: 700 }} title="最近退步">↓ 退步</span>;
   return <span style={{ color: MUTED }} title="大致穩定">→ 穩定</span>;
 }
+
+/** Count per day (e.g. people who signed in). items: [{ day: 'YYYY-MM-DD', value, note }] */
+export function DayBars({ items, height = 170, unit = '人' }) {
+  const [hover, setHover] = useState(null);
+  if (!items.length) return null;
+  const max = Math.max(1, ...items.map((d) => d.value));
+  const top = Math.max(1, Math.ceil(max / 5) * 5);
+  const n = items.length;
+  const slot = 100 / n;
+  const every = n <= 10 ? 1 : n <= 31 ? 5 : 15;
+  const label = (d) => { const [, m, dd] = d.split('-'); return `${Number(dd)}/${Number(m)}`; };
+  return (
+    <figure style={{ margin: 0 }}>
+      <div style={{ position: 'relative', height, marginLeft: 30 }} onMouseLeave={() => setHover(null)}>
+        {[0, top / 2, top].map((v) => (
+          <div key={v} aria-hidden="true" style={{ position: 'absolute', left: 0, right: 0, bottom: `${(v / top) * 100}%`, borderTop: `1px solid ${GRID}` }}>
+            <span style={{ position: 'absolute', left: -30, top: -8, width: 24, textAlign: 'right', fontSize: 11, color: MUTED }}>{Math.round(v)}</span>
+          </div>
+        ))}
+        {items.map((d, i) => {
+          const on = hover === i;
+          const h = (d.value / top) * 100;
+          return (
+            <div key={d.day} tabIndex={0} onMouseEnter={() => setHover(i)} onFocus={() => setHover(i)} onBlur={() => setHover(null)}
+              aria-label={`${d.day}：${d.value} ${unit}`}
+              style={{ position: 'absolute', top: 0, bottom: 0, left: `${slot * i}%`, width: `${slot}%`, outline: 'none' }}>
+              <div style={{ position: 'absolute', bottom: 0, left: '50%', transform: 'translateX(-50%)', width: '62%', maxWidth: 22, minWidth: 3,
+                height: `${d.value ? Math.max(1.5, h) : 0}%`, background: hover == null || on ? BAR : BAR_DIM, borderRadius: '4px 4px 0 0' }} />
+              {on ? <Tooltip x="50%" y={`${100 - h}%`}><b>{d.day}</b><br />{d.value} {unit}{d.note ? ` · ${d.note}` : ''}</Tooltip> : null}
+              {(n - 1 - i) % every === 0 ? <div aria-hidden="true" style={{ position: 'absolute', bottom: -18, left: '50%', transform: 'translateX(-50%)', fontSize: 11, color: MUTED, whiteSpace: 'nowrap' }}>{label(d.day)}</div> : null}
+            </div>
+          );
+        })}
+      </div>
+      <div style={{ height: 22 }} />
+    </figure>
+  );
+}

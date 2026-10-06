@@ -480,6 +480,86 @@ function adminEmails() {
     .split(',').map((e) => e.trim().toLowerCase()).filter(Boolean);
 }
 
+// ── Login records (分析) ───────────────────────────────────────────────────
+// One document per person per Hong Kong day: loginDays/{uid}_{YYYY-MM-DD} { count, first, last }.
+// Opening the app again within 30 minutes counts as the same visit.
+const HK_OFFSET_MS = 8 * 3600 * 1000;
+const hkDay = (ms = Date.now()) => new Date(ms + HK_OFFSET_MS).toISOString().slice(0, 10);
+const VISIT_GAP_MS = 30 * 60 * 1000;
+
+async function recordLogin(db, uid, now = Date.now()) {
+  const user = (await db.collection('users').doc(uid).get()).data();
+  if (!user || !user.schoolId || user.platformAdmin === true) return;
+  const day = hkDay(now);
+  const ref = db.collection('loginDays').doc(`${uid}_${day}`);
+  const prev = (await ref.get()).data();
+  const lastMs = prev?.lastMs || 0;
+  if (prev && now - lastMs < VISIT_GAP_MS) {
+    await ref.set({ lastMs: now }, { merge: true });
+  } else {
+    await ref.set({
+      uid, schoolId: user.schoolId, role: String(user.role || 'student').toLowerCase(), class: String(user.class || ''),
+      day, count: (prev?.count || 0) + 1, firstMs: prev?.firstMs || now, lastMs: now,
+    }, { merge: true });
+  }
+  await db.collection('users').doc(uid).set({ lastLoginAt: new Date(now).toISOString() }, { merge: true });
+}
+
+// Login statistics for a school: per day and per person, for the last N days (max 90).
+app.post('/api/analytics/logins', async (req, res) => {
+  try {
+    const body = req.body || {};
+    const actor = await verifyUserFromToken(body.idToken);
+    if (!actor) throw httpError(401, '請先登入');
+    requireActive(actor);
+    if (!['teacher', 'admin'].includes(actor.role)) throw httpError(403, '只有老師和管理員可以查看');
+    const schoolId = actor.platformAdmin && body.schoolId ? String(body.schoolId) : actor.schoolId;
+    if (!schoolId) throw httpError(400, actor.platformAdmin ? '請先選擇學校' : '你的帳戶尚未加入學校');
+    const daysWanted = Math.max(1, Math.min(90, Number(body.days) || 30));
+    const { db } = getFirebaseAdmin();
+    const now = Number(body.now) && process.env.NODE_ENV === 'test' ? Number(body.now) : Date.now();
+    const days = Array.from({ length: daysWanted }, (_, i) => hkDay(now - (daysWanted - 1 - i) * 86400000));
+
+    // A teacher limited to some classes sees the students of those classes (and all staff).
+    let limit = null;
+    if (actor.role === 'teacher') {
+      const me = (await db.collection('users').doc(actor.uid).get()).data() || {};
+      if (Array.isArray(me.teacherClasses)) limit = new Set(me.teacherClasses.map((c) => String(c).trim().toLowerCase()));
+    }
+    const visible = (u) => !limit || String(u.role || 'student').toLowerCase() !== 'student' || limit.has(String(u.class || '').trim().toLowerCase());
+
+    const userSnap = await db.collection('users').where('schoolId', '==', schoolId).get();
+    const people = userSnap.docs.map((d) => ({ uid: d.id, ...d.data() }))
+      .filter((u) => u.platformAdmin !== true && visible(u))
+      .map((u) => ({
+        uid: u.uid, name: u.name || u.email || '—', email: u.email || '', photoURL: u.photoURL || '',
+        role: String(u.role || 'student').toLowerCase(), class: u.class || '', accountStatus: u.accountStatus || 'active',
+        lastLoginAt: u.lastLoginAt || null, daysActive: 0, visits: 0,
+      }));
+    const byUid = new Map(people.map((p) => [p.uid, p]));
+
+    const records = [];
+    for (let i = 0; i < days.length; i += 30) {
+      const snap = await db.collection('loginDays').where('schoolId', '==', schoolId).where('day', 'in', days.slice(i, i + 30)).get();
+      snap.docs.forEach((d) => records.push(d.data()));
+    }
+    const perDay = Object.fromEntries(days.map((d) => [d, { day: d, total: 0, student: 0, teacher: 0, parent: 0, admin: 0, visits: 0 }]));
+    for (const r of records) {
+      const p = byUid.get(r.uid);
+      if (!p || !perDay[r.day]) continue;
+      p.daysActive += 1;
+      p.visits += Number(r.count) || 0;
+      const d = perDay[r.day];
+      d.total += 1;
+      d.visits += Number(r.count) || 0;
+      if (d[p.role] != null) d[p.role] += 1;
+    }
+    return res.json({ ok: true, days: days.map((d) => perDay[d]), people, today: hkDay(now) });
+  } catch (error) {
+    return sendError(res, error, 'login statistics failed');
+  }
+});
+
 app.post('/api/auth/sync-role', async (req, res) => {
   try {
     const { idToken } = req.body || {};
@@ -493,13 +573,18 @@ app.post('/api/auth/sync-role', async (req, res) => {
       return res.status(401).json({ error: 'Invalid auth token' });
     }
     const email = String(decoded.email || '').toLowerCase();
+    // Every sign-in / app open is recorded for 分析 (login statistics), after any role change.
+    const finish = async (payload) => {
+      try { await recordLogin(db, decoded.uid); } catch { /* statistics only */ }
+      return res.json(payload);
+    };
     const ref = db.collection('users').doc(decoded.uid);
     // Only a Google-verified address counts.
     if (!email || decoded.email_verified !== true || !list.includes(email)) {
       // Imported from Excel by a school admin before this person ever signed in.
       if (email && decoded.email_verified === true && !list.includes(email)) {
         try {
-          if (await applyInvite(db, decoded.uid, email)) return res.json({ ok: true, changed: true, invited: true });
+          if (await applyInvite(db, decoded.uid, email)) return finish({ ok: true, changed: true, invited: true });
         } catch { /* sign-in still works; the invite stays for next time */ }
       }
       // Removed from ADMIN_EMAILS: no longer a platform admin (their school role stays).
@@ -507,16 +592,16 @@ app.post('/api/auth/sync-role', async (req, res) => {
         const snap = await ref.get();
         if (snap.exists && snap.data()?.platformAdmin === true) {
           await ref.set({ platformAdmin: FieldValue.delete(), updatedAt: FieldValue.serverTimestamp() }, { merge: true });
-          return res.json({ ok: true, changed: true, platformAdmin: false });
+          return finish({ ok: true, changed: true, platformAdmin: false });
         }
       }
-      return res.json({ ok: true, changed: false });
+      return finish({ ok: true, changed: false });
     }
 
     const snap = await ref.get();
     const current = snap.exists ? String(snap.data()?.role || '').toLowerCase() : '';
     if (current === 'admin' && (snap.data()?.accountStatus || 'active') === 'active' && snap.data()?.platformAdmin === true) {
-      return res.json({ ok: true, changed: false });
+      return finish({ ok: true, changed: false });
     }
 
     // ADMIN_EMAILS accounts run the whole platform (create schools, move people between them).
@@ -528,7 +613,7 @@ app.post('/api/auth/sync-role', async (req, res) => {
       updatedAt: FieldValue.serverTimestamp(),
       ...(snap.exists ? {} : { name: decoded.name || email.split('@')[0], createdAt: FieldValue.serverTimestamp() }),
     }, { merge: true });
-    return res.json({ ok: true, changed: true, role: 'admin', platformAdmin: true });
+    return finish({ ok: true, changed: true, role: 'admin', platformAdmin: true });
   } catch (error) {
     return res.status(500).json({ error: error?.message || 'role sync failed' });
   }

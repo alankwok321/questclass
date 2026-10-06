@@ -196,3 +196,8 @@ export async function listRosterInvites(schoolId) {
 export async function cancelRosterInvite(email, schoolId) {
   return postJson('/api/school/roster/cancel', await withAuth({ email, ...(schoolId ? { schoolId } : {}) }));
 }
+
+// 分析: login statistics for my school (per day and per person) for the last `days` days.
+export async function getLoginStats(days = 30) {
+  return postJson('/api/analytics/logins', await withAuth({ days }));
+}

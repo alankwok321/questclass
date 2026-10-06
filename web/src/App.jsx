@@ -35,6 +35,7 @@ import JoinSchool from './pages/JoinSchool.jsx';
 import Dashboard from './pages/Dashboard.jsx';
 import ReportsPage from './pages/Reports.jsx';
 import AssignmentsPage from './pages/Assignments.jsx';
+import AnalyticsPage from './pages/Analytics.jsx';
 import PlaceholderTab from './pages/PlaceholderTab.jsx';
 import Landing from './pages/Landing.jsx';
 import ParentPage from './pages/Parent.jsx';
@@ -275,7 +276,7 @@ function AppRoutes({ user }) {
       <Route path="/admin" element={<AdminPage user={user} />} />
       <Route path="/admin/ai-settings" element={<AiSettingsPage user={user} />} />
       <Route path="/admin/schools" element={<SchoolsPage user={user} />} />
-      <Route path="/analytics" element={<PlaceholderTab title="分析" />} />
+      <Route path="/analytics" element={<AnalyticsPage />} />
 
       <Route path="*" element={<PlaceholderTab title="找不到頁面" />} />
     </Routes>
