@@ -42,7 +42,7 @@ const GROUPS = [
 const ALL = GROUPS.flatMap((g) => g.tools);
 
 function Tag({ children, tone }) {
-  return <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 999, background: tone === 'ai' ? '#EEF0FF' : '#F2F2F5', color: tone === 'ai' ? '#3634A3' : '#6E6E73' }}>{children}</span>;
+  return <span style={{ whiteSpace: 'nowrap', fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 999, background: tone === 'ai' ? '#EEF0FF' : '#F2F2F5', color: tone === 'ai' ? '#3634A3' : '#6E6E73' }}>{children}</span>;
 }
 
 export default function Teacher() {
