@@ -483,3 +483,4 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   .qcGrid4 > .qcCard { min-height: 0 !important; padding: 14px 16px; }
   .qcCard { word-break: normal; overflow-wrap: anywhere; }
 }
+.qcCard.qcEmpty { padding: 20px 22px; }
