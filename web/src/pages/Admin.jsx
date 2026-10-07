@@ -205,7 +205,7 @@ export default function AdminPage({ user }) {
         <RosterImport schoolId={platform ? viewSchool : undefined} onDone={() => refresh()} />
       ) : null}
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(240px, 320px) minmax(0, 1fr)', gap: 14 }}>
+      <div className="qcAdminLayout" style={{ display: 'grid', gridTemplateColumns: 'minmax(240px, 320px) minmax(0, 1fr)', gap: 14 }}>
         <div className="qcCard" style={{ padding: 12, overflow: 'hidden' }}>
           <div role="tablist" aria-label="篩選" style={{ display: 'inline-flex', padding: 2, borderRadius: 9, background: '#E3E3E8', marginBottom: 10 }}>
             {[['active', `啟用 ${activeCount}`], ['review', `待審核 ${reviewCount}`], ...(suspendedCount ? [['suspended', `停用 ${suspendedCount}`]] : [])].map(([k, text]) => (

@@ -468,3 +468,18 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   .qcCard { box-shadow: none !important; border: 1px solid #E8E8ED; break-inside: avoid; }
   body { background: #fff !important; }
 }
+
+/* Phones: one-line page title, no search box, roomier cards */
+@media (max-width: 720px) {
+  .header { gap: 10px; }
+  .header > div:nth-child(2) { min-width: 0; }
+  .hTitle { font-size: 22px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .searchWrap { display: none; }
+  .headerRight { gap: 6px; flex-shrink: 0; }
+  .qcAdminLayout { grid-template-columns: minmax(0, 1fr) !important; }
+}
+@media (max-width: 560px) {
+  .qcGrid4 .qcRing { display: none; }
+  .qcGrid4 > .qcCard { min-height: 0 !important; padding: 14px 16px; }
+  .qcCard { word-break: normal; overflow-wrap: anywhere; }
+}

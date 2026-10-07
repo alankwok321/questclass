@@ -818,7 +818,7 @@ export default function TeacherQuestionBank() {
             <div style={{ fontWeight: 700, fontSize: 16, color: '#1D1D1F' }}>題庫</div>
             <div style={{ color: '#6E6E73', fontWeight: 500, fontSize: 12, marginTop: 2 }}>管理班級的題目庫</div>
           </div>
-          <div style={{ display: 'flex', gap: 10 }}>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
             <button onClick={openNew} style={btnGhost}>＋ 新增題目</button>
             <button onClick={() => setImportOpen(true)} style={{ ...btnGhost }}>
               📥 Excel 匯入
