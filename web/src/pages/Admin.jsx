@@ -138,8 +138,10 @@ export default function AdminPage({ user }) {
   if (!isAdmin(user)) return <div className="qcCard" style={{ color: '#D70015', fontWeight: 600 }}>只有管理員可使用此頁面。</div>;
   if (!user.schoolId && !platform) return <div className="qcCard">你的帳戶尚未加入學校。</div>;
 
-  const reviewCount = users.filter((u) => u.accountStatus === 'review').length;
-  const shown = filter === 'review' ? users.filter((u) => u.accountStatus === 'review') : filter === 'never' ? users.filter(neverLoggedIn) : users;
+  // 待審核 also lists people an admin added who have not signed in yet (marked 未登入過).
+  const isPending = (u) => u.accountStatus === 'review' || neverLoggedIn(u);
+  const reviewCount = users.filter(isPending).length;
+  const shown = filter === 'review' ? users.filter(isPending) : users;
   const students = users.filter((u) => String(u.role || '').toLowerCase() === 'student');
   const classNames = [...new Set([
     ...students.map((u) => String(u.class || '').trim()),
@@ -207,7 +209,7 @@ export default function AdminPage({ user }) {
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(240px, 320px) minmax(0, 1fr)', gap: 14 }}>
         <div className="qcCard" style={{ padding: 12, overflow: 'hidden' }}>
           <div role="tablist" aria-label="篩選" style={{ display: 'inline-flex', padding: 2, borderRadius: 9, background: '#E3E3E8', marginBottom: 10 }}>
-            {[['all', `全部 ${users.length}`], ['review', `待審核 ${reviewCount}`], ['never', `未登入過 ${users.filter(neverLoggedIn).length}`]].map(([k, text]) => (
+            {[['all', `全部 ${users.length}`], ['review', `待審核 ${reviewCount}`]].map(([k, text]) => (
               <button key={k} type="button" role="tab" aria-selected={filter === k} onClick={() => setFilter(k)} style={{
                 height: 28, padding: '0 12px', border: 0, borderRadius: 7, cursor: 'pointer', fontSize: 12,
                 fontWeight: filter === k ? 600 : 500, background: filter === k ? '#FFFFFF' : 'transparent',
