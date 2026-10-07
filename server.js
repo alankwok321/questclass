@@ -586,7 +586,8 @@ app.post('/api/auth/sync-role', async (req, res) => {
         try {
           const mine = (await ref.get()).data() || {};
           if (mine.pendingFirstLogin === true) {
-            await ref.set({ pendingFirstLogin: FieldValue.delete() }, { merge: true });
+            await ref.set({ pendingFirstLogin: FieldValue.delete(), accountStatus: 'active', updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+            return finish({ ok: true, changed: true, activated: true });
           } else if (await claimPrecreatedAccount(db, auth, decoded.uid, email)) {
             return finish({ ok: true, changed: true, invited: true });
           } else if (await applyInvite(db, decoded.uid, email)) {
@@ -1191,7 +1192,7 @@ async function rosterUpdate(db, schoolId, r) {
 
 // Create the account straight away (Firebase Auth user + profile) for someone who has never
 // signed in. When they first sign in with Google using this e-mail, Firebase signs them in to
-// this same account. The profile is marked pendingFirstLogin until then (shown as 未登入過).
+// this same account. The account is 待審核 (review) and marked pendingFirstLogin until then.
 async function createAccount(db, auth, schoolId, r, byUid) {
   let uid;
   try {
@@ -1203,6 +1204,7 @@ async function createAccount(db, auth, schoolId, r, byUid) {
   const update = await rosterUpdate(db, schoolId, r);
   await db.collection('users').doc(uid).set({
     ...update,
+    accountStatus: 'review', // 待審核 until their first sign-in, which activates the account
     email: r.email,
     name: r.name || r.email.split('@')[0],
     pendingFirstLogin: true,
@@ -1221,7 +1223,7 @@ async function claimPrecreatedAccount(db, auth, uid, email) {
   const me = (await db.collection('users').doc(uid).get()).data() || {};
   if (me.platformAdmin === true || (me.schoolId && (me.accountStatus || 'active') === 'active')) return false;
   const { pendingFirstLogin, addedBy, createdAt, ...fields } = pre.data();
-  await db.collection('users').doc(uid).set({ ...fields, email, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+  await db.collection('users').doc(uid).set({ ...fields, email, accountStatus: 'active', updatedAt: FieldValue.serverTimestamp() }, { merge: true });
   await db.collection('users').doc(pre.id).delete();
   try { await auth.deleteUser(pre.id); } catch { /* already gone */ }
   if (fields.role === 'student') await syncSubmissionClasses(db, fields.schoolId, uid);
@@ -1254,7 +1256,9 @@ app.post('/api/school/roster/import', async (req, res) => {
         if (u.schoolId && u.schoolId !== actor.schoolId && (u.accountStatus || 'active') === 'active') {
           result.skipped.push({ email: r.email, reason: '已屬於另一間學校' }); continue;
         }
-        await db.collection('users').doc(u.id).set(await rosterUpdate(db, actor.schoolId, r), { merge: true });
+        const upd = await rosterUpdate(db, actor.schoolId, r);
+        if (u.pendingFirstLogin === true) upd.accountStatus = 'review'; // still waiting for their first sign-in
+        await db.collection('users').doc(u.id).set(upd, { merge: true });
         if (r.role === 'student') await syncSubmissionClasses(db, actor.schoolId, u.id);
         await db.collection('schoolInvites').doc(inviteId(r.email)).delete();
         result.updated.push(r.email);

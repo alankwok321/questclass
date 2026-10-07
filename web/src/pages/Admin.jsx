@@ -13,8 +13,6 @@ function isAdmin(user) {
 }
 
 const UNASSIGNED = '__none__';
-// Added by an admin (one by one or from Excel) and not signed in yet.
-const neverLoggedIn = (u) => u.pendingFirstLogin === true || !u.lastLoginAt;
 
 export default function AdminPage({ user }) {
   const confirm = useConfirm();
@@ -138,10 +136,8 @@ export default function AdminPage({ user }) {
   if (!isAdmin(user)) return <div className="qcCard" style={{ color: '#D70015', fontWeight: 600 }}>只有管理員可使用此頁面。</div>;
   if (!user.schoolId && !platform) return <div className="qcCard">你的帳戶尚未加入學校。</div>;
 
-  // 待審核 also lists people an admin added who have not signed in yet (marked 未登入過).
-  const isPending = (u) => u.accountStatus === 'review' || neverLoggedIn(u);
-  const reviewCount = users.filter(isPending).length;
-  const shown = filter === 'review' ? users.filter(isPending) : users;
+  const reviewCount = users.filter((u) => u.accountStatus === 'review').length;
+  const shown = filter === 'review' ? users.filter((u) => u.accountStatus === 'review') : users;
   const students = users.filter((u) => String(u.role || '').toLowerCase() === 'student');
   const classNames = [...new Set([
     ...students.map((u) => String(u.class || '').trim()),
@@ -232,7 +228,6 @@ export default function AdminPage({ user }) {
                   {u.class ? ` · ${u.class}` : ''}
                   {String(u.role || '').toLowerCase() === 'teacher' && Array.isArray(u.teacherClasses) ? ` · ${u.teacherClasses.join('、') || '未指定班別'}` : ''}
                   {(u.accountStatus || 'active') !== 'active' ? <span style={{ color: u.accountStatus === 'review' ? '#B25000' : '#D70015' }}> · {STATUS_NAMES[u.accountStatus] || u.accountStatus}</span> : null}
-                  {neverLoggedIn(u) ? <span style={{ color: '#86868B' }}> · 未登入過</span> : null}
                 </div>
                 </div>
               </button>

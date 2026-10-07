@@ -6,7 +6,7 @@ import { ROLE_LABEL, TEMPLATE, parseRosterRows } from '../services/roster.js';
 import { useToast } from './Toast.jsx';
 
 // Excel 匯入: rows for existing accounts update them; everyone else gets an account straight away
-// (shown as 未登入過 until they first sign in with that Google e-mail).
+// (待審核 until they first sign in with that Google e-mail, which activates it).
 export default function RosterImport({ schoolId, onDone }) {
   const toast = useToast();
   const [open, setOpen] = useState(false);
@@ -122,7 +122,7 @@ export default function RosterImport({ schoolId, onDone }) {
 
           {result ? (
             <div style={{ display: 'grid', gap: 6, fontSize: 14, background: '#F5F9F6', borderRadius: 12, padding: 12 }}>
-              <div><b>完成：</b>已加入 {(result.updated?.length || 0) + (result.created?.length || 0)} 人{result.created?.length ? `（其中 ${result.created.length} 人未登入過，第一次用該 Google 電郵登入時直接使用這個帳戶）` : ''}。</div>
+              <div><b>完成：</b>已加入 {(result.updated?.length || 0) + (result.created?.length || 0)} 人{result.created?.length ? `（其中 ${result.created.length} 人狀態為待審核，第一次登入後自動啟用）` : ''}。</div>
               {result.skipped?.length ? (
                 <div style={{ color: '#B8000F' }}>略過 {result.skipped.length} 行：{result.skipped.map((s) => `${s.email || `第 ${s.line} 行`}（${s.reason}）`).join('、')}</div>
               ) : null}

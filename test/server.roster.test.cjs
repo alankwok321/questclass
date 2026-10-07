@@ -42,20 +42,24 @@ test('import: updates existing accounts, creates accounts for the rest, reports 
   assert.deepEqual([nb.schoolId, nb.role, nb.class, nb.accountStatus, nb.name], ['a', 'student', '6C', 'active', 'New Bie']);
   assert.equal(h.fbState.data.users.other.schoolId, 'b', 'never moved out of another school');
   const made = Object.entries(h.fbState.data.users).filter(([, u]) => u.pendingFirstLogin);
-  assert.deepEqual(made.map(([, u]) => [u.email, u.role, u.schoolId, u.class, u.teacherClasses, u.name]).sort(), [
-    ['fresh@school.hk', 'student', 'a', '5A', undefined, '陳大文'],
-    ['teach@school.hk', 'teacher', 'a', undefined, ['5A', '5B'], '李老師'],
+  assert.deepEqual(made.map(([, u]) => [u.email, u.role, u.schoolId, u.class, u.teacherClasses, u.name, u.accountStatus]).sort(), [
+    ['fresh@school.hk', 'student', 'a', '5A', undefined, '陳大文', 'review'],
+    ['teach@school.hk', 'teacher', 'a', undefined, ['5A', '5B'], '李老師', 'review'],
   ]);
   for (const [uid] of made) assert.ok(h.fbState.authUsers[uid], 'a sign-in account exists for them');
 });
 
-test('first sign-in uses the created account and clears "not signed in yet"', async () => {
+test('first sign-in uses the created account and activates it', async () => {
   await imp({ idToken: 'adm', rows });
   const [uid] = Object.entries(h.fbState.data.users).find(([, u]) => u.email === 'fresh@school.hk');
   h.fbState.tokens.fresh = { uid, email: 'Fresh@School.hk', email_verified: true };
-  await h.post(app, '/api/auth/sync-role', { idToken: 'fresh' });
+  const r = await h.post(app, '/api/auth/sync-role', { idToken: 'fresh' });
+  assert.equal(r.body.changed, true, 'the app reloads the profile');
   const u = h.fbState.data.users[uid];
   assert.equal(u.pendingFirstLogin, undefined);
+  assert.equal(u.accountStatus, 'active');
+  await imp({ idToken: 'adm', rows: [{ email: 'teach@school.hk', role: '老師' }] });
+  assert.equal(Object.values(h.fbState.data.users).find((x) => x.email === 'teach@school.hk').accountStatus, 'review', 're-importing keeps a not-yet-signed-in account pending');
   assert.ok(u.lastLoginAt);
   assert.deepEqual([u.schoolId, u.class], ['a', '5A']);
 });
@@ -66,7 +70,7 @@ test('if Google sign-in made a different account, the created profile moves onto
   h.fbState.data.users.f2 = { email: 'teach@school.hk', role: 'student', accountStatus: 'review' };
   const r = await h.post(app, '/api/auth/sync-role', { idToken: 'freshT' });
   assert.equal(r.body.changed, true);
-  assert.deepEqual([h.fbState.data.users.f2.role, h.fbState.data.users.f2.schoolId, h.fbState.data.users.f2.teacherClasses], ['teacher', 'a', ['5A', '5B']]);
+  assert.deepEqual([h.fbState.data.users.f2.role, h.fbState.data.users.f2.schoolId, h.fbState.data.users.f2.teacherClasses, h.fbState.data.users.f2.accountStatus], ['teacher', 'a', ['5A', '5B'], 'active']);
   assert.equal(h.fbState.data.users[preUid], undefined);
   assert.equal(h.fbState.authUsers[preUid], undefined);
 });

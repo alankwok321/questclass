@@ -27,7 +27,7 @@ export default function AddUser({ schoolId, schoolName, classes = [], onDone }) 
       } else {
         setMsg({ bad: false, text: r.updated?.length
           ? `已把 ${f.email.trim()} 加入${schoolName ? `「${schoolName}」` : '學校'}。`
-          : `已加入 ${f.email.trim()}（未登入過）。` });
+          : `已加入 ${f.email.trim()}（待審核，第一次登入後自動啟用）。` });
         setF({ email: '', name: '', role: f.role, class: f.role === 'student' ? f.class : '', children: '' });
         onDone?.();
       }
