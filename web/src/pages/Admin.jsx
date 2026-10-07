@@ -26,7 +26,7 @@ export default function AdminPage({ user }) {
   // to no school and picks one (starting with the first school once the list has loaded).
   const [viewSchool, setViewSchool] = useState(platform ? (window.QuestClassFirebase?.getActiveSchool?.() || '') : (user?.schoolId || ''));
   const [users, setUsers] = useState([]);
-  const [filter, setFilter] = useState('all');
+  const [filter, setFilter] = useState('active');
 
   const [selectedUid, setSelectedUid] = useState('');
   const selectedUser = useMemo(() => users.find((u) => u.uid === selectedUid) || null, [users, selectedUid]);
@@ -137,7 +137,10 @@ export default function AdminPage({ user }) {
   if (!user.schoolId && !platform) return <div className="qcCard">你的帳戶尚未加入學校。</div>;
 
   const reviewCount = users.filter((u) => u.accountStatus === 'review').length;
-  const shown = filter === 'review' ? users.filter((u) => u.accountStatus === 'review') : users;
+  const statusOf = (u) => u.accountStatus || 'active';
+  const activeCount = users.filter((u) => statusOf(u) === 'active').length;
+  const suspendedCount = users.filter((u) => statusOf(u) === 'suspended').length;
+  const shown = users.filter((u) => statusOf(u) === filter);
   const students = users.filter((u) => String(u.role || '').toLowerCase() === 'student');
   const classNames = [...new Set([
     ...students.map((u) => String(u.class || '').trim()),
@@ -205,7 +208,7 @@ export default function AdminPage({ user }) {
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(240px, 320px) minmax(0, 1fr)', gap: 14 }}>
         <div className="qcCard" style={{ padding: 12, overflow: 'hidden' }}>
           <div role="tablist" aria-label="篩選" style={{ display: 'inline-flex', padding: 2, borderRadius: 9, background: '#E3E3E8', marginBottom: 10 }}>
-            {[['all', `全部 ${users.length}`], ['review', `待審核 ${reviewCount}`]].map(([k, text]) => (
+            {[['active', `啟用 ${activeCount}`], ['review', `待審核 ${reviewCount}`], ...(suspendedCount ? [['suspended', `停用 ${suspendedCount}`]] : [])].map(([k, text]) => (
               <button key={k} type="button" role="tab" aria-selected={filter === k} onClick={() => setFilter(k)} style={{
                 height: 28, padding: '0 12px', border: 0, borderRadius: 7, cursor: 'pointer', fontSize: 12,
                 fontWeight: filter === k ? 600 : 500, background: filter === k ? '#FFFFFF' : 'transparent',
