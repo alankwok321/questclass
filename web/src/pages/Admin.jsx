@@ -218,7 +218,7 @@ export default function AdminPage({ user }) {
           <div style={{ maxHeight: 560, overflow: 'auto', display: 'grid', gap: 8 }}>
             {shown.length === 0 ? <div style={{ color: '#86868B', fontSize: 13, padding: 8 }}>沒有使用者</div> : null}
             {shown.map((u) => (
-              <button key={u.uid} type="button" onClick={() => setSelectedUid(u.uid)} style={{
+              <button key={u.uid} type="button" onClick={() => { setSelectedUid(u.uid); if (window.innerWidth <= 720) setTimeout(() => document.getElementById('qc-user-editor')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50); }} style={{
                 textAlign: 'left', border: 0, borderRadius: 14, padding: 10, cursor: 'pointer',
                 background: u.uid === selectedUid ? 'rgba(0,113,227,0.10)' : '#F2F2F7',
                 display: 'flex', alignItems: 'center', gap: 10,
@@ -238,7 +238,7 @@ export default function AdminPage({ user }) {
           </div>
         </div>
 
-        <div className="qcCard">
+        <div className="qcCard" id="qc-user-editor" style={{ scrollMarginTop: 80 }}>
           {!selectedUser ? (
             <div style={{ color: '#6E6E73' }}>尚未選擇使用者</div>
           ) : (
