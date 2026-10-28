@@ -1,6 +1,7 @@
 import React from 'react';
 import { CheckCircle2 } from './QuestionTypeBadge.jsx';
 import MathText from './MathText.jsx';
+import { OptionContent, optionsHaveFigures } from '../figures/Figure.jsx';
 
 export default function QuestionPreview({ q }) {
   if (!q) return <div style={{ color: '#6E6E73', fontWeight: 500, padding: '12px 0' }}>未選擇題目</div>;
@@ -31,9 +32,9 @@ export default function QuestionPreview({ q }) {
       return (
         <div style={{ display: 'grid', gap: 10, marginTop: 10 }}>
           {options.map((opt) => (
-            <div key={opt.id} style={mcRow(Boolean(opt.is_correct))}>
+            <div key={opt.id} style={{ ...mcRow(Boolean(opt.is_correct)), alignItems: optionsHaveFigures(options) ? 'flex-start' : 'center' }}>
               <div style={optBadge(Boolean(opt.is_correct))}>{opt.id}</div>
-              <MathText as="div" text={opt.text} style={{ fontWeight: 600, color: opt.is_correct ? '#065F46' : '#1D1D1F', minWidth: 0 }} />
+              <div style={{ fontWeight: 600, color: opt.is_correct ? '#065F46' : '#1D1D1F', minWidth: 0 }}><OptionContent opt={opt} /></div>
               {opt.is_correct ? <CheckCircle2 className="w-5 h-5" style={{ marginLeft: 'auto', color: '#34C759' }} /> : null}
             </div>
           ))}

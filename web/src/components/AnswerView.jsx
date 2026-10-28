@@ -1,5 +1,6 @@
 import React from 'react';
 import MathText from './MathText.jsx';
+import { OptionContent } from '../figures/Figure.jsx';
 
 // Shared by 我的作業 (student results) and 作業批改 (teacher marking).
 // ── Read-only submitted answer display ────────────────────────────────────────
@@ -25,7 +26,7 @@ export function SubmittedAnswer({ q, submittedAnswers }) {
     const chosen = opts.find(o => o.id === val || o.value === val);
     return (
       <span style={{ fontWeight: 600, fontSize: 13, color: '#1D1D1F' }}>
-        {chosen ? <>{chosen.id}. <MathText text={chosen.text} /></> : String(val)}
+        {chosen ? <>{chosen.id}. <OptionContent opt={chosen} figWidth={180} /></> : String(val)}
       </span>
     );
   }

@@ -4,6 +4,7 @@ import { gradeMySubmission, listMyHomework, listMySubmissions, submitHomework } 
 import QuestionTypeBadge from '../components/QuestionTypeBadge.jsx';
 import MathText from '../components/MathText.jsx';
 import QuestionStem from '../components/QuestionStem.jsx';
+import { OptionContent, optionsHaveFigures } from '../figures/Figure.jsx';
 import { CheckCircle2, ClipboardList, PartyPopper, RefreshCw } from 'lucide-react';
 import { useConfirm } from '../components/Confirm.jsx';
 
@@ -32,8 +33,9 @@ function AnswerInput({ q, value, onChange }) {
 
   if (type === 'MULTIPLE_CHOICE') {
     const options = q?.options || [];
+    const withFigs = optionsHaveFigures(options);
     return (
-      <div style={{ display: 'grid', gap: 8 }}>
+      <div style={{ display: 'grid', gap: 8, gridTemplateColumns: withFigs ? 'repeat(auto-fill, minmax(230px, 1fr))' : undefined }}>
         {options.map((c) => {
           const id = c.id || c.value;
           const isSelected = value === id;
@@ -43,7 +45,7 @@ function AnswerInput({ q, value, onChange }) {
               border: isSelected ? '2px solid #0071E3' : '1px solid rgba(0,0,0,0.10)',
               background: isSelected ? 'rgba(0,113,227,0.08)' : '#fff',
               cursor: 'pointer', fontWeight: 600, fontSize: 14, color: '#1D1D1F',
-              display: 'flex', alignItems: 'center', gap: 10,
+              display: 'flex', alignItems: withFigs ? 'flex-start' : 'center', gap: 10,
             }}>
               <span style={{
                 width: 22, height: 22, borderRadius: 999, flexShrink: 0,
@@ -53,7 +55,7 @@ function AnswerInput({ q, value, onChange }) {
               }}>
                 {isSelected && <span style={{ width: 8, height: 8, borderRadius: 999, background: '#fff', display: 'block' }} />}
               </span>
-              <span><strong>{id}.</strong> <MathText text={c.text} /></span>
+              <span style={{ minWidth: 0 }}><strong>{id}.</strong> <OptionContent opt={c} /></span>
             </button>
           );
         })}

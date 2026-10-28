@@ -116,3 +116,59 @@ export default function MathText({ text, inline = false, as: Tag = 'span', style
     </Tag>
   );
 }
+
+// ── Text blocks with tables ───────────────────────────────────────────────────
+// Lines that start with "|" form a table:  | 分數 | 10–19 | 20–29 |  (a |---| line is optional;
+// with one, the first row is a header).
+function splitBlocks(text) {
+  const lines = String(text ?? '').split('\n');
+  const blocks = [];
+  let buf = [];
+  let table = null;
+  const flushText = () => { if (buf.length) { blocks.push({ type: 'text', value: buf.join('\n') }); buf = []; } };
+  const flushTable = () => { if (table) { blocks.push({ type: 'table', rows: table }); table = null; } };
+  for (const line of lines) {
+    const t = line.trim();
+    if (t.startsWith('|') && t.length > 1) {
+      flushText();
+      if (!table) table = [];
+      table.push(t);
+    } else {
+      flushTable();
+      buf.push(line);
+    }
+  }
+  flushTable(); flushText();
+  return blocks;
+}
+
+function Table({ rows }) {
+  const cells = (r) => r.replace(/^\|/, '').replace(/\|$/, '').split('|').map((c) => c.trim());
+  const sepIdx = rows.findIndex((r) => /^\|?\s*:?-{2,}/.test(r.replace(/\s/g, '')));
+  const head = sepIdx === 1 ? cells(rows[0]) : null;
+  const body = rows.filter((_, i) => i !== sepIdx && !(head && i === 0)).map(cells);
+  const td = { border: '1px solid #C7C7CC', padding: '5px 10px', textAlign: 'center', fontWeight: 500 };
+  return (
+    <div style={{ overflowX: 'auto', margin: '6px 0' }}>
+      <table style={{ borderCollapse: 'collapse', fontSize: '0.95em', background: '#fff' }}>
+        {head && <thead><tr>{head.map((c, i) => <th key={i} style={{ ...td, background: '#F2F2F7', fontWeight: 700 }}><MathText text={c} /></th>)}</tr></thead>}
+        <tbody>{body.map((r, i) => <tr key={i}>{r.map((c, j) => <td key={j} style={td}><MathText text={c} /></td>)}</tr>)}</tbody>
+      </table>
+    </div>
+  );
+}
+
+/** Multi-line question text: maths plus "| … |" tables. */
+export function RichText({ text, style, className }) {
+  const blocks = useMemo(() => splitBlocks(text), [text]);
+  if (!blocks.some((b) => b.type === 'table')) {
+    return <MathText as="div" text={text} style={{ whiteSpace: 'pre-wrap', ...style }} className={className} />;
+  }
+  return (
+    <div style={style} className={className}>
+      {blocks.map((b, i) => (b.type === 'table'
+        ? <Table key={i} rows={b.rows} />
+        : <MathText key={i} as="div" text={b.value.replace(/^\n+|\n+$/g, '')} style={{ whiteSpace: 'pre-wrap' }} />))}
+    </div>
+  );
+}

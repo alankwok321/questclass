@@ -514,7 +514,7 @@ window.QuestClassFirebase = {
     const { correct_answer, answer, answerKey, ideal_answer, grading_rubric, correctChoiceIds, ...rest } = q;
     const out = { ...rest };
     const choice = (o) => (o && typeof o === 'object'
-      ? this._dropUndefined({ id: o.id, value: o.value, text: o.text })
+      ? this._dropUndefined({ id: o.id, value: o.value, text: o.text, figures: Array.isArray(o.figures) && o.figures.length ? o.figures : undefined })
       : o);
     if (Array.isArray(q.options)) out.options = q.options.map(choice);
     if (Array.isArray(q.choices)) out.choices = q.choices.map(choice);

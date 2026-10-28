@@ -15,6 +15,7 @@ import QuestionTypeBadge, { formatTypeLabel } from '../components/QuestionTypeBa
 import QuestionPreview from '../components/QuestionPreview.jsx';
 import MathText from '../components/MathText.jsx';
 import QuestionStem, { questionGraph } from '../components/QuestionStem.jsx';
+import { OptionContent } from '../figures/Figure.jsx';
 import Avatar from '../components/Avatar.jsx';
 
 const EMPTY_FORM = { title: '', description: '', dueAt: '', targetType: 'all', targetClass: '', targetStudentUids: [] };
@@ -278,7 +279,7 @@ function QuestionBankPicker({ alreadyIds, onAdd, onClose }) {
                         opacity: alreadyAdded ? 0.4 : 1, flex: 1,
                       }}>
                         <MathText text={it.question_text || it.prompt || '（無題幹）'} inline />
-                        {questionGraph(it) ? ' 📈' : ''}
+                        {questionGraph(it) ? ' 📐' : ''}
                         {alreadyAdded && <span style={{ marginLeft: 6, color: '#86868B', fontSize: 11 }}>已加入</span>}
                       </div>
                     </div>
@@ -340,7 +341,7 @@ function AiModal({ form, onClose, onAdd }) {
           mode: 'generate',
           studentName: 'teacher',
           message: `標題：${form.title}\n主題：${aiForm.topic || form.title}\n年級：${aiForm.level}\n題數：${aiForm.count}`,
-          system: `你是一個老師助教。請產出「作業題目」JSON，輸出必須是純 JSON，不要 markdown。\n只能使用以下題型：TRUE_FALSE、MULTIPLE_CHOICE、SHORT_ANSWER、FILL_IN_BLANK\n依照香港學制（HK）調整難度，target_level: ${aiForm.level}\n輸出格式：{"questions":[{"type":"MULTIPLE_CHOICE","question_text":"題目","options":[{"id":"A","text":"選項A","is_correct":true},{"id":"B","text":"選項B","is_correct":false}],"points":1},{"type":"TRUE_FALSE","question_text":"陳述句","correct_answer":true,"points":1},{"type":"SHORT_ANSWER","question_text":"問題","ideal_answer":"參考答案","points":2}]}\n請產出 ${aiForm.count} 題。`,
+          system: `你是一個老師助教。請產出「作業題目」JSON，輸出必須是純 JSON，不要 markdown。\n只能使用以下題型：TRUE_FALSE、MULTIPLE_CHOICE、SHORT_ANSWER、FILL_IN_BLANK\n依照香港學制（HK）調整難度，target_level: ${aiForm.level}\n數學式用 LaTeX 並以 $…$ 包住（JSON 內反斜線寫兩個，如 \\\\frac）。\n輸出格式：{"questions":[{"type":"MULTIPLE_CHOICE","question_text":"題目","options":[{"id":"A","text":"選項A","is_correct":true},{"id":"B","text":"選項B","is_correct":false}],"points":1},{"type":"TRUE_FALSE","question_text":"陳述句","correct_answer":true,"points":1},{"type":"SHORT_ANSWER","question_text":"問題","ideal_answer":"參考答案","points":2}]}\n請產出 ${aiForm.count} 題。`,
       });
       const newQs = generated.map((q, i) => stripUndefined({
         ...q,
@@ -440,7 +441,7 @@ function SubmissionsView({ assignment, onBack }) {
     if (type === 'MULTIPLE_CHOICE') {
       const opts = q.options || [];
       const chosen = opts.find(o => o.id === val || o.value === val);
-      const label = chosen ? <>{chosen.id}. <MathText text={chosen.text} /></> : String(val);
+      const label = chosen ? <>{chosen.id}. <OptionContent opt={chosen} figWidth={180} /></> : String(val);
       const isCorrect = q.correct_answer != null
         ? val === q.correct_answer
         : chosen?.is_correct;

@@ -3,7 +3,8 @@
 //
 // Supports: + - * / ^ (also **), brackets, implicit multiplication (2x, 3(x+1), (x+1)(x-1), 2pi),
 // constants pi / π / e, and the functions below. A leading "y =" or "f(x) =" is ignored.
-// Trig functions use radians; the *d versions (sind, cosd, tand) use degrees.
+// Trig functions use radians (degrees when compiled with degrees=true, for a 0°–360° axis);
+// the *d versions (sind, cosd, tand) always use degrees.
 
 const FUNCS = {
   sin: Math.sin, cos: Math.cos, tan: Math.tan,
@@ -14,6 +15,11 @@ const FUNCS = {
   sqrt: Math.sqrt, cbrt: Math.cbrt, abs: Math.abs,
   ln: Math.log, log: Math.log10, exp: Math.exp,
   floor: Math.floor, ceil: Math.ceil, round: Math.round, sign: Math.sign,
+};
+// On a degree axis (0°–360°), sin/cos/tan take degrees.
+const DEG_FUNCS = {
+  sin: FUNCS.sind, cos: FUNCS.cosd, tan: FUNCS.tand,
+  asin: (v) => (Math.asin(v) * 180) / Math.PI, acos: (v) => (Math.acos(v) * 180) / Math.PI, atan: (v) => (Math.atan(v) * 180) / Math.PI,
 };
 const CONSTS = { pi: Math.PI, 'π': Math.PI, e: Math.E };
 
@@ -66,7 +72,7 @@ function tokenize(src) {
 }
 
 // Recursive descent → closure tree.
-function parse(tokens) {
+function parse(tokens, degrees = false) {
   let pos = 0;
   const peek = () => tokens[pos];
   const isOp = (v) => peek() && peek().t === 'op' && peek().v === v;
@@ -116,7 +122,7 @@ function parse(tokens) {
     if (tok.t === 'id') {
       if (tok.v === 'x') return (x) => x;
       if (tok.v in CONSTS) { const v = CONSTS[tok.v]; return () => v; }
-      const fn = FUNCS[tok.v];
+      const fn = degrees && DEG_FUNCS[tok.v] ? DEG_FUNCS[tok.v] : FUNCS[tok.v];
       if (fn) {
         // sin x^2 is ambiguous; require sin(…) or sin x (single atom)
         const arg = isOp('(') ? atom() : power();
@@ -134,18 +140,19 @@ function parse(tokens) {
 const cache = new Map();
 
 /** Compile an expression in x. Returns { fn, error }. fn(x) returns NaN when undefined. */
-export function compileExpr(raw) {
+export function compileExpr(raw, degrees = false) {
   const src = String(raw || '').trim().replace(/^(y|f\s*\(\s*x\s*\))\s*=\s*/i, '');
-  if (cache.has(src)) return cache.get(src);
+  const key = (degrees ? 'D:' : 'R:') + src;
+  if (cache.has(key)) return cache.get(key);
   let result;
   try {
     if (!src) throw new Error('請輸入算式');
-    const f = parse(tokenize(src));
+    const f = parse(tokenize(src), degrees);
     result = { fn: (x) => { const v = f(x); return Number.isFinite(v) ? v : NaN; }, error: null };
   } catch (e) {
     result = { fn: null, error: e.message || '算式錯誤' };
   }
   if (cache.size > 500) cache.clear();
-  cache.set(src, result);
+  cache.set(key, result);
   return result;
 }
