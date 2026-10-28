@@ -5,6 +5,10 @@ import { getIdToken } from '../services/firebase.js';
 import { generateQuestions } from '../services/api.js';
 import QuestionTypeBadge from '../components/QuestionTypeBadge.jsx';
 import { useConfirm } from '../components/Confirm.jsx';
+import MathText from '../components/MathText.jsx';
+import { MathField, MathHelp, GraphEditor } from '../components/MathEditors.jsx';
+import { graphIsEmpty } from '../components/MathGraph.jsx';
+import { questionGraph } from '../components/QuestionStem.jsx';
 
 const SUPPORTED_TYPES = ['TRUE_FALSE','MULTIPLE_CHOICE','FILL_IN_BLANK','MATCHING','SHORT_ANSWER','LONG_ANSWER'];
 const GRADES = ['P1','P2','P3','P4','P5','P6','S1','S2','S3','S4','S5','S6'];
@@ -27,6 +31,20 @@ function stripUndef(obj) {
     );
   }
   return obj;
+}
+
+// Tidy a question before saving: drop empty accepted answers and an empty graph.
+function cleanForSave(item) {
+  const out = { ...item };
+  if (Array.isArray(out.blanks)) {
+    out.blanks = out.blanks.map(b => ({ ...b, accepted: (Array.isArray(b.accepted) ? b.accepted : []).map(a => String(a).trim()).filter(Boolean) }));
+  }
+  if (out.media && typeof out.media === 'object') {
+    const media = { ...out.media };
+    if (media.graph && graphIsEmpty(media.graph)) delete media.graph;
+    out.media = media;
+  }
+  return stripUndef(out);
 }
 
 // ── Styles (matching TeacherHomeworkPage) ─────────────────────────────────────
@@ -73,12 +91,13 @@ const EMPTY_ITEM = {
 function QuestionEditForm({ item, onChange }) {
   const ty = String(item.type || '').toUpperCase();
 
-  function field(label, content) {
+  function field(label, content, { asDiv = false } = {}) {
+    const Tag = asDiv ? 'div' : 'label';
     return (
-      <label style={labelStyle}>
+      <Tag style={labelStyle}>
         {label}
         {content}
-      </label>
+      </Tag>
     );
   }
 
@@ -114,18 +133,32 @@ function QuestionEditForm({ item, onChange }) {
           onChange={e => onChange({ ...item, topic: e.target.value })} />
       )}
 
-      {field('題目文字',
-        <textarea
+      <div style={labelStyle}>
+        題目文字
+        <MathField
+          multiline
           value={item.question_text || ''}
-          style={{ ...inputStyle, minHeight: 100, resize: 'vertical' }}
-          placeholder="輸入題目內容…"
-          onChange={e => {
-            const next = { ...item, question_text: e.target.value };
-            if (ty === 'FILL_IN_BLANK') next.blanks = parseBlanks(e.target.value, item.blanks);
+          placeholder={'輸入題目內容…　數學式用 $…$，例如 解 $x^2-5x+6=0$。'}
+          onChange={v => {
+            const next = { ...item, question_text: v };
+            if (ty === 'FILL_IN_BLANK') next.blanks = parseBlanks(v, item.blanks);
             onChange(next);
           }}
         />
-      )}
+        <MathHelp />
+      </div>
+
+      <div style={labelStyle}>
+        圖像（可選）
+        <GraphEditor
+          graph={item.media?.graph || null}
+          onChange={g => {
+            const media = { ...(item.media || {}) };
+            if (g) media.graph = g; else delete media.graph;
+            onChange({ ...item, media });
+          }}
+        />
+      </div>
 
       {/* TRUE_FALSE */}
       {ty === 'TRUE_FALSE' && (
@@ -145,11 +178,11 @@ function QuestionEditForm({ item, onChange }) {
 
       {/* MULTIPLE_CHOICE */}
       {ty === 'MULTIPLE_CHOICE' && (
-        <label style={labelStyle}>
+        <div style={labelStyle}>
           選項（點擊 ✔ 標記正確答案）
           <div style={{ display: 'grid', gap: 8 }}>
             {(item.options || []).map((opt, i) => (
-              <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center', minWidth: 0 }}>
+              <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', minWidth: 0 }}>
                 <button type="button"
                   style={{ ...( opt.is_correct ? btnPrimary : btnGhost ), padding: '8px 12px', flexShrink: 0 }}
                   onClick={() => {
@@ -157,14 +190,14 @@ function QuestionEditForm({ item, onChange }) {
                     opts[i] = { ...opts[i], is_correct: !opts[i].is_correct };
                     onChange({ ...item, options: opts });
                   }}>✔</button>
-                <div style={{ fontWeight: 700, width: 20, flexShrink: 0, color: '#6E6E73' }}>
+                <div style={{ fontWeight: 700, width: 20, flexShrink: 0, color: '#6E6E73', paddingTop: 9 }}>
                   {opt.id || String.fromCharCode(65 + i)}
                 </div>
-                <input value={opt.text || ''} style={{ ...inputStyle, flex: 1 }}
+                <MathField value={opt.text || ''} style={{ flex: 1, minWidth: 0 }}
                   placeholder={`選項 ${opt.id || String.fromCharCode(65 + i)}`}
-                  onChange={e => {
+                  onChange={v => {
                     const opts = [...(item.options||[])];
-                    opts[i] = { ...opts[i], text: e.target.value };
+                    opts[i] = { ...opts[i], text: v };
                     onChange({ ...item, options: opts });
                   }} />
                 <button type="button" style={{ ...btnGhost, padding: '8px 12px', color: '#D70015', flexShrink: 0 }}
@@ -180,7 +213,7 @@ function QuestionEditForm({ item, onChange }) {
                 onChange({ ...item, options: opts });
               }}>＋ 新增選項</button>
           </div>
-        </label>
+        </div>
       )}
 
       {/* FILL_IN_BLANK */}
@@ -194,12 +227,12 @@ function QuestionEditForm({ item, onChange }) {
                   空格 {blank.position || i + 1}
                 </span>
                 <input
-                  value={(Array.isArray(blank.accepted) && blank.accepted[0]) || ''}
+                  value={(Array.isArray(blank.accepted) ? blank.accepted : []).join('; ')}
                   style={{ ...inputStyle, flex: 1 }}
-                  placeholder="接受的答案"
+                  placeholder="接受的答案（多個答案用 ; 分隔，例如 0.5; 1/2）"
                   onChange={e => {
                     const blanks = [...(item.blanks||[])];
-                    blanks[i] = { ...blanks[i], accepted: [e.target.value] };
+                    blanks[i] = { ...blanks[i], accepted: e.target.value.split(/\s*[;；]\s*/) };
                     onChange({ ...item, blanks });
                   }} />
               </div>
@@ -210,21 +243,21 @@ function QuestionEditForm({ item, onChange }) {
 
       {/* MATCHING */}
       {ty === 'MATCHING' && (
-        <label style={labelStyle}>
+        <div style={labelStyle}>
           配對（左欄提示 → 右欄答案）
           <div style={{ display: 'grid', gap: 8 }}>
             {(item.pairs || []).map((pair, i) => (
-              <div key={i} style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) minmax(0,1fr) auto', gap: 8 }}>
-                <input value={pair.prompt || ''} style={inputStyle} placeholder="提示"
-                  onChange={e => {
+              <div key={i} style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) minmax(0,1fr) auto', gap: 8, alignItems: 'start' }}>
+                <MathField value={pair.prompt || ''} placeholder="提示"
+                  onChange={v => {
                     const pairs = [...(item.pairs||[])];
-                    pairs[i] = { ...pairs[i], prompt: e.target.value };
+                    pairs[i] = { ...pairs[i], prompt: v };
                     onChange({ ...item, pairs });
                   }} />
-                <input value={pair.match || ''} style={inputStyle} placeholder="配對答案"
-                  onChange={e => {
+                <MathField value={pair.match || ''} placeholder="配對答案"
+                  onChange={v => {
                     const pairs = [...(item.pairs||[])];
-                    pairs[i] = { ...pairs[i], match: e.target.value };
+                    pairs[i] = { ...pairs[i], match: v };
                     onChange({ ...item, pairs });
                   }} />
                 <button type="button" style={{ ...btnGhost, padding: '8px 12px', color: '#D70015' }}
@@ -238,20 +271,22 @@ function QuestionEditForm({ item, onChange }) {
               ＋ 新增配對
             </button>
           </div>
-        </label>
+        </div>
       )}
 
       {/* SHORT_ANSWER */}
       {ty === 'SHORT_ANSWER' && field('理想答案',
-        <input value={item.ideal_answer || ''} style={inputStyle} placeholder="參考答案"
-          onChange={e => onChange({ ...item, ideal_answer: e.target.value })} />
+        <MathField value={item.ideal_answer || ''} placeholder="參考答案"
+          onChange={v => onChange({ ...item, ideal_answer: v })} />,
+        { asDiv: true }
       )}
 
       {/* LONG_ANSWER */}
       {ty === 'LONG_ANSWER' && field('評分標準',
-        <textarea value={item.grading_rubric || ''} style={{ ...inputStyle, minHeight: 80, resize: 'vertical' }}
+        <MathField multiline minHeight={80} value={item.grading_rubric || ''}
           placeholder="描述評分標準…"
-          onChange={e => onChange({ ...item, grading_rubric: e.target.value })} />
+          onChange={v => onChange({ ...item, grading_rubric: v })} />,
+        { asDiv: true }
       )}
     </div>
   );
@@ -296,8 +331,11 @@ function AiModal({ onClose, onSave }) {
         '你是老師助教。請產出「題庫題目」JSON，輸出必須是純 JSON，不要 markdown。',
         `只能使用以下題型：${typesStr}`,
         `依照香港學制（HK）調整難度，target_level: ${level}`,
+        '數學式一律用 KaTeX/LaTeX 寫並用 $…$ 包住（獨立一行用 $$…$$），題目、選項、答案都適用，例如 "解 $x^2-5x+6=0$"、"$\\\\frac{3}{4}$"。JSON 字串內的反斜線要寫成兩個（\\\\frac）。金錢可寫 $5（$ 後面直接接數字）。',
+        '如題目需要座標圖（函數圖像、直線、座標上的點或圖形），加上 "media":{"graph":{"xMin":-5,"xMax":5,"yMin":-5,"yMax":5,"functions":[{"expr":"x^2-2x-3","label":"y=x^2-2x-3"}],"points":[{"x":3,"y":0,"label":"A"}],"segments":[{"x1":0,"y1":0,"x2":2,"y2":3}]}}。expr 只用 x、+ - * / ^、括號、sqrt abs sin cos tan（弧度；sind cosd tand 用度）ln log exp pi。範圍要包含重要的點。不需要圖就不要加 media。',
         '輸出格式示例：{"questions":[',
         '{"type":"MULTIPLE_CHOICE","question_text":"題目","topic":"主題","target_level":"S1","points":1,"options":[{"id":"A","text":"A選項","is_correct":true},{"id":"B","text":"B選項","is_correct":false}]},',
+        '{"type":"MULTIPLE_CHOICE","question_text":"下圖是 $y=x^2-2x-3$ 的圖像。它與 $x$ 軸的交點是？","points":1,"media":{"graph":{"xMin":-3,"xMax":5,"yMin":-5,"yMax":6,"functions":[{"expr":"x^2-2x-3"}]}},"options":[{"id":"A","text":"$(-1,0)$ 和 $(3,0)$","is_correct":true},{"id":"B","text":"$(1,0)$ 和 $(-3,0)$","is_correct":false}]},',
         '{"type":"TRUE_FALSE","question_text":"陳述句","correct_answer":true,"points":1},',
         '{"type":"SHORT_ANSWER","question_text":"問題","ideal_answer":"答案","points":2},',
         '{"type":"FILL_IN_BLANK","question_text":"句子[____]填空","blanks":[{"position":1,"accepted":["答案"]}],"points":1},',
@@ -333,7 +371,7 @@ function AiModal({ onClose, onSave }) {
     let ok = 0;
     const errors = [];
     for (const { q } of chosen) {
-      const res = await upsertQuestionBankItem({ ...stripUndef(q) });
+      const res = await upsertQuestionBankItem(cleanForSave(q));
       if (res?.ok) ok++;
       else errors.push(res?.error || '未知錯誤');
     }
@@ -452,7 +490,8 @@ function AiModal({ onClose, onSave }) {
                           fontWeight: 700, fontSize: 13, color: '#1D1D1F',
                           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1,
                         }}>
-                          {q.question_text || '（無題幹）'}
+                          <MathText text={q.question_text || '（無題幹）'} inline />
+                          {questionGraph(q) ? ' 📈' : ''}
                         </div>
                       </div>
                       <div style={{ paddingLeft: 23, display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -544,6 +583,18 @@ function parseExcelRows(rows) {
     const ideal_answer = get('ideal_answer', 'idealanswer', 'answer', 'model_answer');
 
     let result = { type, question_text, points, topic, target_level, _row: i + 2 };
+
+    // Optional graph: "graph" = functions separated by ; (e.g. "x^2-1; 2x+3"),
+    // "graph_range" = xMin,xMax,yMin,yMax (e.g. "-5,5,-5,5").
+    const graphFns = get('graph', 'graph_functions', 'graphfunctions');
+    if (graphFns) {
+      const range = get('graph_range', 'graphrange').split(/[,，\s]+/).map(Number).filter(Number.isFinite);
+      const [xMin = -5, xMax = 5, yMin = -5, yMax = 5] = range.length === 4 ? range : [];
+      result.media = { graph: {
+        xMin, xMax, yMin, yMax, grid: true, xLabel: 'x', yLabel: 'y', points: [], segments: [],
+        functions: graphFns.split(/[;；]/).map(s => s.trim()).filter(Boolean).map(expr => ({ expr })),
+      } };
+    }
 
     if (type === 'TRUE_FALSE') {
       const ca = get('correct_answer', 'correctanswer', 'answer').toUpperCase();
@@ -639,7 +690,9 @@ function ExcelImportModal({ onClose, onDone }) {
             <strong>type 值：</strong> TRUE_FALSE、MULTIPLE_CHOICE、SHORT_ANSWER、FILL_IN_BLANK、LONG_ANSWER<br />
             <strong>選擇題：</strong> option_A/B/C/D 填選項，correct_answer 填 A/B/C/D<br />
             <strong>是非題：</strong> correct_answer 填 TRUE 或 FALSE<br />
-            <strong>其他：</strong> points（分數）、topic（主題）、target_level（年級如 S1）、ideal_answer
+            <strong>其他：</strong> points（分數）、topic（主題）、target_level（年級如 S1）、ideal_answer<br />
+            <strong>數學式：</strong> 用 $…$ 包住 LaTeX，例如 {'$\frac{1}{2}x^2$'}<br />
+            <strong>圖像（可選）：</strong> graph 填函數，多個用 ; 分隔（如 x^2-1; 2x+3），graph_range 填 xMin,xMax,yMin,yMax（如 -5,5,-5,5）
           </div>
 
           {/* Download template button */}
@@ -647,10 +700,11 @@ function ExcelImportModal({ onClose, onDone }) {
             style={{ ...btnGhost, alignSelf: 'flex-start', fontSize: 12 }}
             onClick={() => {
               const ws = XLSX.utils.aoa_to_sheet([
-                ['type','question_text','option_A','option_B','option_C','option_D','correct_answer','points','topic','target_level','ideal_answer'],
+                ['type','question_text','option_A','option_B','option_C','option_D','correct_answer','points','topic','target_level','ideal_answer','graph','graph_range'],
                 ['MULTIPLE_CHOICE','以下哪個是香港的法定語文？','英文','日文','韓文','法文','A',1,'常識','P5',''],
                 ['TRUE_FALSE','香港特別行政區於1997年成立。','','','','','TRUE',1,'歷史','S1',''],
                 ['SHORT_ANSWER','請簡述香港的地理位置。','','','','','',2,'地理','S2','位於中國南部沿海'],
+                ['MULTIPLE_CHOICE','下圖是 $y=x^2-2x-3$ 的圖像，它的頂點是？','$(1,-4)$','$(-1,4)$','$(1,4)$','$(2,-3)$','A',1,'二次函數','S4','','x^2-2x-3','-3,5,-5,6'],
               ]);
               const wb = XLSX.utils.book_new();
               XLSX.utils.book_append_sheet(wb, ws, 'Questions');
@@ -681,7 +735,9 @@ function ExcelImportModal({ onClose, onDone }) {
                       <span style={{ background: typeColor[r.type] || '#86868B', color: '#fff', borderRadius: 99, padding: '2px 8px', fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap', marginTop: 2 }}>
                         {r.type}
                       </span>
-                      <div style={{ flex: 1, fontSize: 13, fontWeight: 500, color: '#1D1D1F', lineHeight: 1.4 }}>{r.question_text}</div>
+                      <div style={{ flex: 1, fontSize: 13, fontWeight: 500, color: '#1D1D1F', lineHeight: 1.4 }}>
+                        <MathText text={r.question_text} />{questionGraph(r) ? ' 📈' : ''}
+                      </div>
                       <span style={{ fontSize: 11, color: '#86868B', fontWeight: 700, whiteSpace: 'nowrap' }}>{r.points}分</span>
                     </div>
                   ))}
@@ -782,7 +838,7 @@ export default function TeacherQuestionBank() {
     setSaving(true);
     try {
       const { _cid, ...rest } = editItem;
-      const res = await upsertQuestionBankItem({ ...stripUndef(rest) });
+      const res = await upsertQuestionBankItem(cleanForSave(rest));
       if (!res?.ok) { alert(res?.error || '儲存失敗'); return; }
       await refresh();
       setView('list');
@@ -883,10 +939,11 @@ export default function TeacherQuestionBank() {
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 6, color: '#1D1D1F',
                       overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {it.question_text || '（未填寫題目）'}
+                      <MathText text={it.question_text || '（未填寫題目）'} inline />
                     </div>
                     <div style={{ fontSize: 12, fontWeight: 500, color: '#6E6E73', display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
                       <QuestionTypeBadge type={it.type} />
+                      {questionGraph(it) && <span title="附座標圖">📈 圖像</span>}
                       {it.topic && <span>· {it.topic}</span>}
                       {it.target_level && <span>· {it.target_level}</span>}
                       <span>· {it.points ?? 1} 分</span>

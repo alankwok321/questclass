@@ -1,5 +1,6 @@
 import React from 'react';
 import { CheckCircle2 } from './QuestionTypeBadge.jsx';
+import MathText from './MathText.jsx';
 
 export default function QuestionPreview({ q }) {
   if (!q) return <div style={{ color: '#6E6E73', fontWeight: 500, padding: '12px 0' }}>未選擇題目</div>;
@@ -32,7 +33,7 @@ export default function QuestionPreview({ q }) {
           {options.map((opt) => (
             <div key={opt.id} style={mcRow(Boolean(opt.is_correct))}>
               <div style={optBadge(Boolean(opt.is_correct))}>{opt.id}</div>
-              <div style={{ fontWeight: 600, color: opt.is_correct ? '#065F46' : '#1D1D1F' }}>{opt.text}</div>
+              <MathText as="div" text={opt.text} style={{ fontWeight: 600, color: opt.is_correct ? '#065F46' : '#1D1D1F', minWidth: 0 }} />
               {opt.is_correct ? <CheckCircle2 className="w-5 h-5" style={{ marginLeft: 'auto', color: '#34C759' }} /> : null}
             </div>
           ))}
@@ -49,7 +50,7 @@ export default function QuestionPreview({ q }) {
           <div style={panel}>
             {parts.map((part, idx) => (
               <React.Fragment key={idx}>
-                {part}
+                <MathText text={part} />
                 {idx < parts.length - 1 ? (
                   <input
                     readOnly
@@ -64,7 +65,7 @@ export default function QuestionPreview({ q }) {
             允許答案：
             <ul>
               {blanks.map((b) => (
-                <li key={b.position}>空格 {b.position}: {(b.accepted || []).join(', ')}</li>
+                <li key={b.position}>空格 {b.position}: <MathText text={(b.accepted || []).join(', ')} /></li>
               ))}
             </ul>
           </div>
@@ -79,7 +80,7 @@ export default function QuestionPreview({ q }) {
           <div style={{ display: 'grid', gap: 8 }}>
             <div style={sectionLabel}>提示</div>
             {pairs.map((p, i) => (
-              <div key={`p-${i}`} style={panel}>{p.prompt}</div>
+              <MathText as="div" key={`p-${i}`} style={panel} text={p.prompt} />
             ))}
           </div>
           <div style={{ display: 'grid', gap: 8 }}>
@@ -88,7 +89,7 @@ export default function QuestionPreview({ q }) {
               <div key={`m-${i}`} style={{ ...panel, borderColor: 'rgba(16,185,129,0.35)', background: 'rgba(16,185,129,0.08)' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 700, color: '#065F46' }}>
                   <CheckCircle2 className="w-4 h-4" style={{ color: '#34C759' }} />
-                  {p.match}
+                  <MathText text={p.match} />
                 </div>
               </div>
             ))}
@@ -100,7 +101,7 @@ export default function QuestionPreview({ q }) {
     case 'SHORT_ANSWER': {
       return (
         <div style={{ marginTop: 10, display: 'grid', gap: 10 }}>
-          <input readOnly value={String(q.ideal_answer || '')} style={shortAnswerInput} />
+          <MathText as="div" text={String(q.ideal_answer || '—')} style={{ ...shortAnswerInput, whiteSpace: 'pre-wrap' }} />
           <div style={{ color: '#6E6E73', fontWeight: 600, fontSize: 12 }}>
             字數上限：{q.max_word_count ?? '—'}
           </div>
@@ -114,7 +115,7 @@ export default function QuestionPreview({ q }) {
           <textarea readOnly rows={4} placeholder="學生將在此輸入…" style={essayBox} />
           <div style={{ ...panel, background: '#FFF4E5' }}>
             <div style={{ fontWeight: 700, color: '#92400E' }}>評分標準</div>
-            <div style={{ marginTop: 6, color: '#92400E', fontWeight: 600 }}>{String(q.grading_rubric || '')}</div>
+            <MathText as="div" text={String(q.grading_rubric || '')} style={{ marginTop: 6, color: '#92400E', fontWeight: 600, whiteSpace: 'pre-wrap' }} />
             <div style={{ marginTop: 6, color: '#B45309', fontWeight: 600, fontSize: 12 }}>
               字數上限：{q.max_word_count ?? '—'}
             </div>

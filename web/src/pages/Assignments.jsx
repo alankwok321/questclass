@@ -3,6 +3,8 @@ import { ArrowLeft, Bot, Check, RefreshCw } from 'lucide-react';
 import Avatar from '../components/Avatar.jsx';
 import QuestionTypeBadge from '../components/QuestionTypeBadge.jsx';
 import { SubmittedAnswer } from '../components/AnswerView.jsx';
+import MathText from '../components/MathText.jsx';
+import QuestionStem from '../components/QuestionStem.jsx';
 import { Segmented } from '../components/ClassStats.jsx';
 import { useToast } from '../components/Toast.jsx';
 import { useConfirm } from '../components/Confirm.jsx';
@@ -326,7 +328,7 @@ function MarkSubmission({ sub, student, onBack, onSaved, hasNext, isAdmin, onDel
                   {r?.markedBy === 'ai' ? <span style={{ fontSize: 12, fontWeight: 700, color: '#3634A3' }}>AI 評分</span> : null}
                   {r?.markedBy === 'teacher' ? <span style={{ fontSize: 12, fontWeight: 700, color: '#1E7B34' }}>老師已批改</span> : null}
                 </div>
-                <div style={{ fontSize: 15, fontWeight: 600, lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{q.question_text || '（未填寫題目）'}</div>
+                <QuestionStem q={q} style={{ fontSize: 15, fontWeight: 600, lineHeight: 1.5 }} />
               </div>
             </div>
 
@@ -338,13 +340,13 @@ function MarkSubmission({ sub, student, onBack, onSaved, hasNext, isAdmin, onDel
               {q.ideal_answer || q.correctAnswer ? (
                 <div>
                   <div style={{ fontWeight: 600, fontSize: 12, color: '#1E7B34', marginBottom: 4 }}>{isOpen ? '參考答案' : '正確答案'}</div>
-                  <div style={{ fontSize: 13, whiteSpace: 'pre-wrap' }}>{q.ideal_answer || q.correctAnswer}</div>
+                  <MathText as="div" text={q.ideal_answer || q.correctAnswer} style={{ fontSize: 13, whiteSpace: 'pre-wrap' }} />
                 </div>
               ) : null}
               {q.grading_rubric ? (
                 <div>
                   <div style={{ fontWeight: 600, fontSize: 12, color: '#6E6E73', marginBottom: 4 }}>評分準則</div>
-                  <div style={{ fontSize: 13, whiteSpace: 'pre-wrap', color: '#3A3A3C' }}>{q.grading_rubric}</div>
+                  <MathText as="div" text={q.grading_rubric} style={{ fontSize: 13, whiteSpace: 'pre-wrap', color: '#3A3A3C' }} />
                 </div>
               ) : null}
 

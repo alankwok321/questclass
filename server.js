@@ -1500,7 +1500,7 @@ app.post('/api/chat', async (req, res) => {
     try {
       const text = String(result.text || '').trim();
       const match = text.match(/\{[\s\S]*\}/);
-      const json = match ? JSON.parse(match[0]) : JSON.parse(text);
+      const json = JSON.parse(fixLatexBackslashes(match ? match[0] : text));
       return res.json({ mode: 'live', ...json });
     } catch (e) {
       return res.status(422).json({
@@ -1513,6 +1513,37 @@ app.post('/api/chat', async (req, res) => {
 
   res.json({ mode: 'live', reply: result.text });
 });
+
+// AI models often write LaTeX inside JSON strings with single backslashes: "\frac{1}{2}" is a
+// form feed + "rac", "\(" is an invalid escape. Inside string literals, double any backslash that
+// isn't a real JSON escape, and any \b \f \n \r \t that is actually the start of a LaTeX command.
+const LATEX_ESCAPE_WORDS = new Set([
+  'frac', 'dfrac', 'tfrac', 'times', 'theta', 'tan', 'tanh', 'text', 'textbf', 'textit', 'textrm', 'triangle', 'triangleq',
+  'to', 'top', 'tau', 'tilde', 'therefore', 'beta', 'bar', 'bot', 'binom', 'boxed', 'big', 'bigl', 'bigr', 'because', 'bigcup', 'bigcap',
+  'nabla', 'ne', 'neq', 'neg', 'not', 'nu', 'ni', 'notin', 'nless', 'ngtr', 'nleq', 'ngeq', 'right', 'rho', 'rangle', 'rightarrow',
+  'rfloor', 'rceil', 'forall', 'flat', 'frown', 'fbox', 'tbinom', 'textstyle',
+]);
+
+function fixLatexBackslashes(text) {
+  let out = '';
+  let inStr = false;
+  for (let i = 0; i < text.length; i += 1) {
+    const c = text[i];
+    if (!inStr) { out += c; if (c === '"') inStr = true; continue; }
+    if (c === '"') { out += c; inStr = false; continue; }
+    if (c !== '\\') { out += c; continue; }
+    const n = text[i + 1];
+    if (n === '\\' || n === '"' || n === '/') { out += c + n; i += 1; continue; }
+    if (n === 'u' && /^[0-9a-fA-F]{4}$/.test(text.slice(i + 2, i + 6))) { out += c; continue; }
+    if ('bfnrt'.includes(n)) {
+      const word = (/^[a-zA-Z]+/.exec(text.slice(i + 1)) || [''])[0];
+      out += LATEX_ESCAPE_WORDS.has(word) ? '\\\\' : '\\';
+      continue;
+    }
+    out += '\\\\'; // invalid JSON escape (\( \frac-less \sqrt \{ …) → literal backslash
+  }
+  return out;
+}
 
 // ── Marking a student's homework ───────────────────────────────────────────
 // Runs on the server because the answers live in homeworkAnswerKeys, which students cannot read.
@@ -1762,6 +1793,7 @@ app.post('/api/teacher/submissions/detail', async (req, res) => {
       questions: questions.map((q, i) => ({
         id: String(q.id ?? i), type: q.type || '', points: Number(q.points) || 1,
         question_text: q.question_text || q.prompt || '', options: q.options || null, blanks: q.blanks || null, pairs: q.pairs || null,
+        media: q.media && typeof q.media === 'object' ? q.media : null,
         correctAnswer: describeCorrect(q), ideal_answer: q.ideal_answer || '', grading_rubric: q.grading_rubric || '', topic: q.topic || '',
       })),
     });

@@ -13,6 +13,8 @@ import { useConfirm } from '../components/Confirm.jsx';
 import { useToast } from '../components/Toast.jsx';
 import QuestionTypeBadge, { formatTypeLabel } from '../components/QuestionTypeBadge.jsx';
 import QuestionPreview from '../components/QuestionPreview.jsx';
+import MathText from '../components/MathText.jsx';
+import QuestionStem, { questionGraph } from '../components/QuestionStem.jsx';
 import Avatar from '../components/Avatar.jsx';
 
 const EMPTY_FORM = { title: '', description: '', dueAt: '', targetType: 'all', targetClass: '', targetStudentUids: [] };
@@ -96,9 +98,7 @@ function QuestionCard({ q, index, onRemove }) {
           <span style={{ fontSize: 12, color: '#86868B', fontWeight: 500 }}>{q.points || 1} 分</span>
           {q.topic && <span style={{ fontSize: 12, color: '#86868B', fontWeight: 500 }}>· {q.topic}</span>}
         </div>
-        <div style={{ fontSize: 14, fontWeight: 500, color: text ? '#1D1D1F' : '#86868B' }}>
-          {text || '（未填寫題目）'}
-        </div>
+        <QuestionStem q={q} text={text} graphWidth={320} style={{ fontSize: 14, fontWeight: 500, color: '#1D1D1F' }} />
       </div>
       <button
         onClick={onRemove}
@@ -167,6 +167,7 @@ function QuestionBankPicker({ alreadyIds, onAdd, onClose }) {
       grading_rubric: it.grading_rubric,
       max_word_count: it.max_word_count,
       target_level: it.target_level,
+      media: it.media && Object.keys(it.media).length ? it.media : undefined,
       bankId: it.id,
     })));
     onClose();
@@ -276,7 +277,8 @@ function QuestionBankPicker({ alreadyIds, onAdd, onClose }) {
                         overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                         opacity: alreadyAdded ? 0.4 : 1, flex: 1,
                       }}>
-                        {it.question_text || it.prompt || '（無題幹）'}
+                        <MathText text={it.question_text || it.prompt || '（無題幹）'} inline />
+                        {questionGraph(it) ? ' 📈' : ''}
                         {alreadyAdded && <span style={{ marginLeft: 6, color: '#86868B', fontSize: 11 }}>已加入</span>}
                       </div>
                     </div>
@@ -309,9 +311,7 @@ function QuestionBankPicker({ alreadyIds, onAdd, onClose }) {
               )}
             </div>
             <div style={{ marginTop: 12 }}>
-              <div style={{ fontWeight: 700, fontSize: 18 }}>
-                {preview?.question_text || preview?.prompt || '（未選取）'}
-              </div>
+              <QuestionStem q={preview} placeholder="（未選取）" style={{ fontWeight: 700, fontSize: 18 }} />
               <div style={{ marginTop: 6, color: '#6E6E73', fontWeight: 700, fontSize: 12 }}>
                 topic: {preview?.topic || '—'}
               </div>
@@ -440,7 +440,7 @@ function SubmissionsView({ assignment, onBack }) {
     if (type === 'MULTIPLE_CHOICE') {
       const opts = q.options || [];
       const chosen = opts.find(o => o.id === val || o.value === val);
-      const label = chosen ? `${chosen.id}. ${chosen.text}` : String(val);
+      const label = chosen ? <>{chosen.id}. <MathText text={chosen.text} /></> : String(val);
       const isCorrect = q.correct_answer != null
         ? val === q.correct_answer
         : chosen?.is_correct;
@@ -450,7 +450,7 @@ function SubmissionsView({ assignment, onBack }) {
         </span>
       );
     }
-    return <span style={{ fontWeight: 600, color: '#1D1D1F' }}>{String(val)}</span>;
+    return <MathText text={String(val)} style={{ fontWeight: 600, color: '#1D1D1F', whiteSpace: 'pre-wrap' }} />;
   }
 
   return (
@@ -569,7 +569,7 @@ function SubmissionsView({ assignment, onBack }) {
                                     </span>
                                   ) : null}
                                 </div>
-                                <div style={{ fontSize: 13, fontWeight: 600, color: '#1D1D1F', marginBottom: 8 }}>{text}</div>
+                                <QuestionStem q={q} text={text} graphWidth={320} style={{ fontSize: 13, fontWeight: 600, color: '#1D1D1F', marginBottom: 8 }} />
                                 <div style={{ fontSize: 12, fontWeight: 500, color: '#6E6E73', marginBottom: 4 }}>學生答案</div>
                                 <div style={{ fontSize: 13 }}>{getAnswerDisplay(q, sub.answers)}</div>
                                 {r?.feedback ? <div style={{ fontSize: 12, color: '#3A3A3C', marginTop: 6 }}>💬 {r.feedback}</div> : null}

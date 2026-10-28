@@ -242,3 +242,13 @@ test('the platform admin uses the AI key of the school picked in the switcher; o
   await chat({ idToken: 'stu', message: 'hi', schoolId: 'b' });
   assert.equal(h.ai.last.headers.Authorization, 'Bearer sk-school-a-key', 'a student stays on their own school');
 });
+
+test('format json: LaTeX written with single backslashes survives (\\frac, \\times, \\(, \\sqrt)', async () => {
+  h.ai.reply('{"questions":[{"question_text":"計算 $\\frac{1}{2} \\times 4$ 和 \\(\\sqrt{9}\\)，然後 $x \\neq 2$","note":"line1\\nline2","ok":"$\\\\pi$"}]}');
+  const r = await chat({ idToken: 'tea', message: 'make questions', format: 'json' });
+  assert.equal(r.status, 200);
+  const q = r.body.questions[0];
+  assert.equal(q.question_text, '計算 $\\frac{1}{2} \\times 4$ 和 \\(\\sqrt{9}\\)，然後 $x \\neq 2$');
+  assert.equal(q.note, 'line1\nline2');
+  assert.equal(q.ok, '$\\pi$');
+});

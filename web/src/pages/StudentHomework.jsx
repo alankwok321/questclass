@@ -2,6 +2,8 @@ import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import { ResultBadge, SubmittedAnswer } from '../components/AnswerView.jsx';
 import { gradeMySubmission, listMyHomework, listMySubmissions, submitHomework } from '../services/firebase.js';
 import QuestionTypeBadge from '../components/QuestionTypeBadge.jsx';
+import MathText from '../components/MathText.jsx';
+import QuestionStem from '../components/QuestionStem.jsx';
 import { CheckCircle2, ClipboardList, PartyPopper, RefreshCw } from 'lucide-react';
 import { useConfirm } from '../components/Confirm.jsx';
 
@@ -51,7 +53,7 @@ function AnswerInput({ q, value, onChange }) {
               }}>
                 {isSelected && <span style={{ width: 8, height: 8, borderRadius: 999, background: '#fff', display: 'block' }} />}
               </span>
-              <span><strong>{id}.</strong> {c.text}</span>
+              <span><strong>{id}.</strong> <MathText text={c.text} /></span>
             </button>
           );
         })}
@@ -101,9 +103,7 @@ function QuestionCard({ q, index, value, onChange }) {
             <span style={{ fontSize: 12, color: '#86868B', fontWeight: 500 }}>{q.points || 1} 分</span>
             {q.topic && <span style={{ fontSize: 12, color: '#86868B', fontWeight: 500 }}>· {q.topic}</span>}
           </div>
-          <div style={{ fontSize: 15, fontWeight: 600, color: text ? '#1D1D1F' : '#86868B', lineHeight: 1.5 }}>
-            {text || '（未填寫題目）'}
-          </div>
+          <QuestionStem q={q} text={text} style={{ fontSize: 15, fontWeight: 600, color: '#1D1D1F', lineHeight: 1.5 }} />
         </div>
       </div>
       <div style={{ paddingLeft: 32 }}>
@@ -197,7 +197,7 @@ function CompletedDetail({ assignment, submission, onBack, onGraded }) {
                         <QuestionTypeBadge type={q.type} />
                         {r ? <ResultBadge r={r} /> : <span style={{ fontSize: 12, color: '#86868B', fontWeight: 500 }}>{q.points || 1} 分</span>}
                       </div>
-                      <div style={{ fontSize: 15, fontWeight: 600, color: '#1D1D1F', lineHeight: 1.5 }}>{text || '（未填寫題目）'}</div>
+                      <QuestionStem q={q} text={text} style={{ fontSize: 15, fontWeight: 600, color: '#1D1D1F', lineHeight: 1.5 }} />
                     </div>
                   </div>
                   <div style={{ paddingLeft: 32, display: 'grid', gap: 10 }}>
@@ -208,7 +208,7 @@ function CompletedDetail({ assignment, submission, onBack, onGraded }) {
                     {r && r.correctAnswer && !r.correct ? (
                       <div>
                         <div style={{ fontWeight: 600, fontSize: 12, color: '#1E7B34', marginBottom: 4 }}>{r.pending || ['SHORT_ANSWER', 'LONG_ANSWER', 'ESSAY'].includes(String(q.type).toUpperCase()) ? '參考答案' : '正確答案'}</div>
-                        <div style={{ fontSize: 13, fontWeight: 600, color: '#1D1D1F', whiteSpace: 'pre-wrap' }}>{r.correctAnswer}</div>
+                        <MathText as="div" text={r.correctAnswer} style={{ fontSize: 13, fontWeight: 600, color: '#1D1D1F', whiteSpace: 'pre-wrap' }} />
                       </div>
                     ) : null}
                     {r?.feedback ? (

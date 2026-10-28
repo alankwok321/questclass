@@ -1,4 +1,5 @@
 import React from 'react';
+import MathText from './MathText.jsx';
 
 // Shared by 我的作業 (student results) and 作業批改 (teacher marking).
 // ── Read-only submitted answer display ────────────────────────────────────────
@@ -24,12 +25,12 @@ export function SubmittedAnswer({ q, submittedAnswers }) {
     const chosen = opts.find(o => o.id === val || o.value === val);
     return (
       <span style={{ fontWeight: 600, fontSize: 13, color: '#1D1D1F' }}>
-        {chosen ? `${chosen.id}. ${chosen.text}` : String(val)}
+        {chosen ? <>{chosen.id}. <MathText text={chosen.text} /></> : String(val)}
       </span>
     );
   }
 
-  return <span style={{ fontWeight: 500, fontSize: 13, color: '#1D1D1F', whiteSpace: 'pre-wrap' }}>{String(val)}</span>;
+  return <MathText text={String(val)} style={{ fontWeight: 500, fontSize: 13, color: '#1D1D1F', whiteSpace: 'pre-wrap' }} />;
 }
 
 // ── Result of one question ───────────────────────────────────────────────────
