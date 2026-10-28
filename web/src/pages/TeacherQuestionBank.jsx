@@ -9,7 +9,7 @@ import MathText from '../components/MathText.jsx';
 import { MathField, MathHelp } from '../components/MathEditors.jsx';
 import { questionGraph } from '../components/QuestionStem.jsx';
 import FiguresEditor from '../figures/FigureEditors.jsx';
-import { editableFigures, figureIsEmpty, mediaWithFigures } from '../figures/model.js';
+import { editableFigures, figuresToSave, mediaWithFigures } from '../figures/model.js';
 
 const SUPPORTED_TYPES = ['TRUE_FALSE','MULTIPLE_CHOICE','FILL_IN_BLANK','MATCHING','SHORT_ANSWER','LONG_ANSWER'];
 const GRADES = ['P1','P2','P3','P4','P5','P6','S1','S2','S3','S4','S5','S6'];
@@ -46,7 +46,7 @@ function cleanForSave(item) {
   if (Array.isArray(out.options)) {
     out.options = out.options.map(o => {
       if (!o || !Array.isArray(o.figures)) return o;
-      const figs = o.figures.filter(f => !figureIsEmpty(f));
+      const figs = figuresToSave(o.figures);
       const { figures, ...rest } = o; // eslint-disable-line no-unused-vars
       return figs.length ? { ...rest, figures: figs } : rest;
     });

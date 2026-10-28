@@ -79,11 +79,22 @@ export function figureIsEmpty(f) {
   }
 }
 
+/** Drops editor-only fields (keys starting with "_", e.g. the source picture kept for comparison). */
+export function stripPrivate(fig) {
+  if (!fig || typeof fig !== 'object') return fig;
+  return Object.fromEntries(Object.entries(fig).filter(([k]) => !k.startsWith('_')));
+}
+
+/** Figures ready to save: no empty ones, no editor-only fields. */
+export function figuresToSave(figures) {
+  return (Array.isArray(figures) ? figures : []).filter((f) => !figureIsEmpty(f)).map(stripPrivate);
+}
+
 /** Media object to save: figures without empty ones; drops the old single graph. */
 export function mediaWithFigures(media, figures) {
   const out = { ...(media && typeof media === 'object' ? media : {}) };
   delete out.graph;
-  const keep = (figures || []).filter((f) => !figureIsEmpty(f));
+  const keep = figuresToSave(figures);
   if (keep.length) out.figures = keep; else delete out.figures;
   return out;
 }

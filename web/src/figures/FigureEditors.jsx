@@ -7,6 +7,7 @@ import { SOLIDS, solidInfo } from './SolidFigure.jsx';
 import { CHARTS } from './StatsFigure.jsx';
 import { VENN_REGIONS } from './OtherFigures.jsx';
 import { ARROWS, Check, ColorPick, ListEdit, MARKS, NumIn, S, Section, Select, TICKS, TextIn } from './editorKit.jsx';
+import { figureFromImage } from '../services/api.js';
 
 // ── Plot (coordinates + plane geometry) ──────────────────────────────────────
 function PlotEditor({ fig, set }) {
@@ -400,18 +401,18 @@ function TreeEditor({ fig, set }) {
 
 // ── Image ────────────────────────────────────────────────────────────────────
 const MAX_IMAGE_BYTES = 150 * 1024;
-async function shrinkImage(file) {
+async function shrinkImage(file, { maxDim = 1000, maxBytes = MAX_IMAGE_BYTES, type = 'image/webp' } = {}) {
   const url = URL.createObjectURL(file);
   try {
     const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = url; });
     let w = img.naturalWidth; let h = img.naturalHeight;
-    const scale = Math.min(1, 1000 / Math.max(w, h));
+    const scale = Math.min(1, maxDim / Math.max(w, h));
     w = Math.round(w * scale); h = Math.round(h * scale);
     for (let attempt = 0; attempt < 6; attempt += 1) {
       const c = document.createElement('canvas'); c.width = w; c.height = h;
       const ctx = c.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, w, h); ctx.drawImage(img, 0, 0, w, h);
-      const data = c.toDataURL('image/webp', 0.82 - attempt * 0.08);
-      if (data.length * 0.75 <= MAX_IMAGE_BYTES) return data;
+      const data = c.toDataURL(type, 0.86 - attempt * 0.08);
+      if (data.length * 0.75 <= maxBytes) return data;
       w = Math.round(w * 0.8); h = Math.round(h * 0.8);
     }
     throw new Error('圖片太大');
@@ -436,7 +437,7 @@ function ImageEditor({ fig, set }) {
         {fig.src && <span style={S.muted}>約 {Math.round((fig.src.length * 0.75) / 1024)} KB</span>}
         <TextIn value={fig.alt} placeholder="圖片描述（給讀屏器及 AI 批改用）" onChange={(v) => set({ alt: v })} />
       </div>
-      <div style={S.muted}>圖片會自動壓縮（最大約 150 KB）。能用其他圖形類型畫的，建議用該類型：清晰、可修改，亦不佔空間。</div>
+      <div style={S.muted}>圖片會自動壓縮（最大約 150 KB）。按上方「🪄 轉成可編輯圖形」可讓 AI 把它轉成可修改的圖形，題庫便只需儲存文字描述。</div>
       {err && <div style={{ color: '#D70015', fontSize: 12, fontWeight: 600 }}>{err}</div>}
     </div>
   );
@@ -444,9 +445,57 @@ function ImageEditor({ fig, set }) {
 
 const EDITORS = { plot: PlotEditor, solid: SolidEditor, stats: StatsEditor, numberline: NumberLineEditor, venn: VennEditor, tree: TreeEditor, image: ImageEditor };
 
+// ── Picture → editable figure (AI) ───────────────────────────────────────────
+// For the AI the picture is sent once at good resolution; only the figure description is saved.
+const forAi = (file) => shrinkImage(file, { maxDim: 1600, maxBytes: 900 * 1024, type: 'image/jpeg' });
+
+function AiConvertPanel({ image, onCancel, onDone }) {
+  const [hint, setHint] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  async function run() {
+    setBusy(true); setErr('');
+    try {
+      const r = await figureFromImage({ image, hint });
+      onDone(r.figures.map((f) => ({ ...f, _source: image, _note: r.note || '' })));
+    } catch (e) {
+      setErr(e.message || '轉換失敗');
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <div style={{ border: '1px dashed #5E5CE6', borderRadius: 14, padding: 12, background: 'rgba(94,92,230,0.04)', display: 'grid', gap: 10 }}>
+      <b style={{ fontSize: 14 }}>🪄 圖片轉成可編輯圖形（AI）</b>
+      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-start' }}>
+        <img src={image} alt="上載的圖" style={{ maxWidth: 260, maxHeight: 220, borderRadius: 10, border: '1px solid rgba(0,0,0,0.1)', background: '#fff' }} />
+        <div style={{ flex: '1 1 240px', display: 'grid', gap: 8 }}>
+          <textarea value={hint} onChange={(e) => setHint(e.target.value)} placeholder="補充說明（可選），例如：ABCD 是長方體；只要右邊的圖；曲線是 y = 2^x"
+            style={{ ...S.input, minHeight: 70, resize: 'vertical' }} />
+          <div style={S.muted}>AI 會讀取圖中的形狀、標籤和數字，產生可編輯的圖形（SVG）。題庫只會儲存圖形描述，不會儲存這張圖片。轉換後請對照原圖檢查。</div>
+          {err && <div style={{ color: '#D70015', fontSize: 12, fontWeight: 600 }}>{err}</div>}
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button type="button" onClick={run} disabled={busy} style={{ ...S.ghost, background: '#5E5CE6', color: '#fff', fontWeight: 600 }}>{busy ? 'AI 轉換中…（約 10–30 秒）' : '開始轉換'}</button>
+            <button type="button" onClick={onCancel} disabled={busy} style={S.ghost}>取消</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── All figures of a question ────────────────────────────────────────────────
 export default function FiguresEditor({ figures, onChange }) {
   const list = Array.isArray(figures) ? figures : [];
+  const fileRef = useRef(null);
+  const [convert, setConvert] = useState(null); // { image, replaceIndex }
+  const [prepErr, setPrepErr] = useState('');
+  async function pickForAi(e) {
+    const f = e.target.files?.[0]; e.target.value = '';
+    if (!f) return;
+    setPrepErr('');
+    try { setConvert({ image: await forAi(f), replaceIndex: null }); } catch (x) { setPrepErr(x.message || '無法讀取圖片'); }
+  }
   const setAt = (i, patch) => onChange(list.map((f, j) => (j === i ? { ...f, ...patch } : f)));
   const move = (i, d) => { const j = i + d; if (j < 0 || j >= list.length) return; const next = [...list]; [next[i], next[j]] = [next[j], next[i]]; onChange(next); };
   const groups = [...new Set(TEMPLATES.map((t) => t.group))];
@@ -460,6 +509,9 @@ export default function FiguresEditor({ figures, onChange }) {
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
               <b style={{ fontSize: 14, color: '#1D1D1F' }}>圖 {i + 1}：{typeLabel(f.type || 'plot')}</b>
               <TextIn value={f.caption} placeholder="圖下說明（可選）" width={140} onChange={(v) => setAt(i, { caption: v })} />
+              {f.type === 'image' && f.src && (
+                <button type="button" style={{ ...S.ghost, background: '#5E5CE6', color: '#fff' }} onClick={() => setConvert({ image: f.src, replaceIndex: i })}>🪄 轉成可編輯圖形</button>
+              )}
               <Select value={f.size || 'M'} onChange={(v) => setAt(i, { size: v })} options={[['S', '小'], ['M', '中'], ['L', '大']]} />
               <span style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
                 {list.length > 1 && <>
@@ -474,13 +526,35 @@ export default function FiguresEditor({ figures, onChange }) {
               <div style={{ minWidth: 0, position: 'sticky', top: 8 }}>
                 <div style={{ ...S.sub, marginBottom: 6 }}>預覽</div>
                 <Figure fig={f} maxWidth={420} />
+                {f._source && (
+                  <div style={{ marginTop: 10 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                      <span style={S.sub}>原圖（只作對照，不會儲存）</span>
+                      <button type="button" style={{ ...S.ghost, padding: '3px 9px' }} onClick={() => setAt(i, { _source: undefined, _note: undefined })}>隱藏</button>
+                    </div>
+                    {f._note && <div style={{ ...S.muted, color: '#B25000', marginBottom: 4 }}>AI：{f._note}</div>}
+                    <img src={f._source} alt="原圖" style={{ maxWidth: '100%', maxHeight: 260, borderRadius: 10, border: '1px dashed rgba(0,0,0,0.2)' }} />
+                  </div>
+                )}
               </div>
             </div>
           </div>
         );
       })}
 
+      {convert && (
+        <AiConvertPanel image={convert.image} onCancel={() => setConvert(null)} onDone={(figs) => {
+          const at = convert.replaceIndex;
+          onChange(at == null ? [...list, ...figs] : [...list.slice(0, at), ...figs, ...list.slice(at + 1)]);
+          setConvert(null);
+        }} />
+      )}
+      <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={pickForAi} />
+      {prepErr && <div style={{ color: '#D70015', fontSize: 12, fontWeight: 600 }}>{prepErr}</div>}
+
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+        <button type="button" onClick={() => fileRef.current?.click()} disabled={!!convert}
+          style={{ ...S.ghost, padding: '8px 14px', fontWeight: 600, background: '#5E5CE6', color: '#fff' }}>🪄 上載圖片轉成圖形（AI）</button>
         <select value="" onChange={(e) => {
           const v = e.target.value; if (!v) return;
           const [kind, key] = v.split(':');
@@ -489,7 +563,7 @@ export default function FiguresEditor({ figures, onChange }) {
         }} style={{ ...S.input, padding: '8px 12px', fontWeight: 600, background: '#E3E3E8', border: 0, borderRadius: 999, cursor: 'pointer' }}>
           <option value="">{list.length ? '＋ 再加入圖形…' : '📐 加入圖形 / 圖表…'}</option>
           <optgroup label="空白">
-            {FIGURE_TYPES.map((t) => <option key={t.type} value={`n:${t.type}`}>{t.label}（{t.hint}）</option>)}
+            {FIGURE_TYPES.map((t) => <option key={t.type} value={`n:${t.type}`}>{t.type === 'image' ? '上載圖片（保留為圖片）' : `${t.label}（${t.hint}）`}</option>)}
           </optgroup>
           {groups.map((g) => (
             <optgroup key={g} label={`範本：${g}`}>

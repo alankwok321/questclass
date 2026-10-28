@@ -194,3 +194,8 @@ export async function importRoster(rows, schoolId) {
 export async function getLoginStats(days = 30) {
   return postJson('/api/analytics/logins', await withAuth({ days }));
 }
+
+// Picture of a maths diagram → editable figure descriptions (drawn as SVG; the picture isn't kept).
+export async function figureFromImage({ image, hint = '' }) {
+  return postJson('/api/teacher/figure-from-image', await withAuth({ image, hint }));
+}

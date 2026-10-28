@@ -10,7 +10,7 @@ const app = express();
 const PORT = process.env.PORT || 18890;
 const publicDir = path.join(__dirname, 'public');
 
-app.use(express.json({ limit: '2mb' }));
+app.use(express.json({ limit: '3mb' }));
 
 function getFirebaseRuntimeConfig() {
   const config = {
@@ -225,8 +225,11 @@ async function getChatgptCredential(schoolId, stored) {
 }
 
 // One request to the Codex backend (streamed; the text deltas are joined).
-async function callChatgptCodex({ system, user, history = [], apiKey, accountId, model, responseFormat }) {
-  const content = (role, text) => ({ role, content: [{ type: role === 'assistant' ? 'output_text' : 'input_text', text: String(text || '') }] });
+async function callChatgptCodex({ system, user, history = [], apiKey, accountId, model, responseFormat, images = [] }) {
+  const content = (role, text, imgs = []) => ({ role, content: [
+    { type: role === 'assistant' ? 'output_text' : 'input_text', text: String(text || '') },
+    ...imgs.map((url) => ({ type: 'input_image', image_url: url })),
+  ] });
   try {
     const response = await fetch(CHATGPT.responsesUrl, {
       method: 'POST',
@@ -243,7 +246,7 @@ async function callChatgptCodex({ system, user, history = [], apiKey, accountId,
         store: false,
         stream: true,
         instructions: system || 'You are a helpful assistant.',
-        input: [...history.map((m) => content(m.role, m.content)), content('user', user)],
+        input: [...history.map((m) => content(m.role, m.content)), content('user', user, images)],
         ...(responseFormat?.type === 'json_object' ? { text: { format: { type: 'json_object' } } } : {}),
       }),
     });
@@ -341,6 +344,7 @@ function sendError(res, e, fallback) {
 const AI_ROLES = {
   chat: ['admin', 'teacher', 'student'],
   lessonLoop: ['admin', 'teacher'],
+  figure: ['admin', 'teacher'],
 };
 
 // Who may use AI, and with which settings. Always the school's settings; never a browser-sent key.
@@ -374,7 +378,7 @@ function usesResponsesApi(model) {
   return /codex/i.test(String(model || ''));
 }
 
-async function callResponsesApi({ system, user, history = [], apiKey, apiBaseUrl, model, responseFormat }) {
+async function callResponsesApi({ system, user, history = [], apiKey, apiBaseUrl, model, responseFormat, images = [] }) {
   const base = String(apiBaseUrl || '').replace(/\/+$/, '');
   try {
     const response = await fetch(base + '/responses', {
@@ -383,7 +387,9 @@ async function callResponsesApi({ system, user, history = [], apiKey, apiBaseUrl
       body: JSON.stringify({
         model,
         ...(system ? { instructions: system } : {}),
-        input: [...history, { role: 'user', content: user }],
+        input: [...history, { role: 'user', content: images.length
+          ? [{ type: 'input_text', text: user }, ...images.map((url) => ({ type: 'input_image', image_url: url }))]
+          : user }],
         ...(responseFormat?.type === 'json_object' ? { text: { format: { type: 'json_object' } } } : {}),
       }),
     });
@@ -406,10 +412,11 @@ async function callResponsesApi({ system, user, history = [], apiKey, apiBaseUrl
   }
 }
 
-async function callChatCompletion({ system, user, history = [], apiKey, apiBaseUrl, model, temperature = 0.7, responseFormat, mode, accountId }) {
+// `images`: optional data: URLs sent with the user message (needs a vision-capable model).
+async function callChatCompletion({ system, user, history = [], apiKey, apiBaseUrl, model, temperature = 0.7, responseFormat, mode, accountId, images = [] }) {
   if (!apiKey) return { ok: false, status: 400, error: 'AI provider is not configured. Set an API key first.' };
-  if (mode === 'chatgpt') return callChatgptCodex({ system, user, history, apiKey, accountId, model, responseFormat });
-  if (usesResponsesApi(model)) return callResponsesApi({ system, user, history, apiKey, apiBaseUrl, model, responseFormat });
+  if (mode === 'chatgpt') return callChatgptCodex({ system, user, history, apiKey, accountId, model, responseFormat, images });
+  if (usesResponsesApi(model)) return callResponsesApi({ system, user, history, apiKey, apiBaseUrl, model, responseFormat, images });
 
   const base = String(apiBaseUrl || '').replace(/\/+$/, '');
   const candidates = [base];
@@ -432,7 +439,9 @@ async function callChatCompletion({ system, user, history = [], apiKey, apiBaseU
           messages: [
             ...(system ? [{ role: 'system', content: system }] : []),
             ...history,
-            { role: 'user', content: user },
+            { role: 'user', content: images.length
+              ? [{ type: 'text', text: user }, ...images.map((url) => ({ type: 'image_url', image_url: { url } }))]
+              : user },
           ],
         }),
       });
@@ -1544,6 +1553,99 @@ function fixLatexBackslashes(text) {
   }
   return out;
 }
+
+// ── Picture of a diagram → editable figure ───────────────────────────────────
+// The teacher uploads a photo/scan of a maths diagram; the school's AI (a vision model) describes it
+// in QuestClass's figure format, which the browser then draws as SVG. Nothing of the image is stored.
+const FIGURE_TYPES = new Set(['plot', 'solid', 'stats', 'numberline', 'venn', 'tree']);
+const FIGURE_SCHEMA = [
+  'You convert pictures of maths diagrams (Hong Kong HKDSE / secondary school) into QuestClass figure JSON, which is drawn as SVG.',
+  'Return ONLY JSON: {"figures":[…], "note":"(Traditional Chinese, one short sentence: anything you were unsure about, else empty)"}.',
+  'Usually one figure; several only if the picture clearly holds separate diagrams. Copy every label, number, unit and angle exactly as printed.',
+  'Write maths in labels as LaTeX inside $…$ (e.g. "$\\theta$", "$40^\\circ$", "$x$ cm"). In JSON strings write backslashes twice.',
+  'Figure types:',
+  '1) "plot" — coordinate graphs AND plane geometry: {"type":"plot","xMin","xMax","yMin","yMax","axes":true|false,"grid":bool,"xLabel":"x","yLabel":"y","xUnit":""|"deg"|"pi","xStep","yStep",',
+  '  "functions":[{"expr":"x^2-2x-3","label":"","dashed":false,"shade":""|"above"|"below","from","to"}],',
+  '  "points":[{"x","y","label","open":false}],',
+  '  "segments":[{"x1","y1","x2","y2","label","ticks":0-3,"arrows":0-3,"dashed":false}],',
+  '  "lines":[{"x1","y1","x2","y2","kind":"line"|"ray","label"}],',
+  '  "polygons":[{"vertices":[{"x","y","label","mark":"none"|"1"|"2"|"3"|"right","angleLabel"}],"sides":[{"label","ticks","arrows"}],"closed":true,"fill":false,"dashed":false}],',
+  '  "circles":[{"cx","cy","r","centreLabel","showCentre","showRadius","radiusAngle","radiusLabel","dashed","fill"}],',
+  '  "arcs":[{"cx","cy","r","start","end","sector":bool,"fill":bool,"label"}] (degrees, anticlockwise from +x),',
+  '  "angles":[{"ax","ay","bx","by","cx","cy","mark","label"}] (angle ABC drawn at B),',
+  '  "texts":[{"x","y","text"}]}',
+  '  sides[i] is the side from vertex i to vertex i+1. ticks = equal-length marks, arrows = parallel marks, mark = angle arcs / right angle.',
+  '  For geometry WITHOUT coordinate axes use "axes":false and invent coordinates that keep the picture\'s shape and proportions (right angles stay right, equal sides equal, points on a circle exactly on it); set the window to fit with a small margin.',
+  '  For graphs WITH axes keep the axis range and tick step shown. expr may use only x, numbers, + - * / ^, brackets, sqrt abs sin cos tan ln log exp pi (sin/cos/tan take degrees when "xUnit":"deg"). Straight-line pieces / piecewise graphs: use segments.',
+  '2) "solid" — 3D figures: {"type":"solid","shape":"cuboid"|"cube"|"pyramid"|"tetrahedron"|"prism"|"rightprism"|"cylinder"|"cone"|"frustum"|"sphere"|"hemisphere","a","b","c","labels":"A,B,C,…","flip":false,',
+  '  "points":[{"label":"M","of":"BC","t":0.5}] (point on edge, t from first letter; 3+ letters = centre of that face),',
+  '  "segments":[{"from":"A","to":"G","style":"solid"|"dashed"|"none","label":"8 cm"}] ("none" = only label an existing edge),',
+  '  "angles":[{"at":"A","from":"C","to":"G","mark","label"}]}',
+  '  Vertex order: cuboid/cube A,B,C,D bottom (A front-left, B front-right, C back-right, D back-left), E,F,G,H above them; pyramid A,B,C,D base + V apex; tetrahedron A,B,C base + D apex;',
+  '  prism/rightprism A,B,C front triangle (rightprism: right angle at A) + D,E,F behind; cylinder/frustum O bottom centre, P top centre, A,B bottom right/left, C,D top right/left; cone V apex, O base centre, A,B base right/left; sphere O,A; hemisphere O,A,T.',
+  '  Map the picture\'s own letters onto these positions through "labels" (use "-" for an unlabelled position). a,b,c = length, depth, height (cylinder/cone: a = radius, c = height; frustum b = top radius).',
+  '3) "stats" — {"type":"stats","chart":"bar"|"line"|"histogram"|"freqpoly"|"cumfreq"|"pie"|"box"|"scatter"|"stemleaf"|"dot","title","xLabel","yLabel","yMax","yStep","xMin","xMax","xStep","data":"lines"}',
+  '  data lines: bar/line "label, value" (several series: first line "category, series1, series2"); histogram/freqpoly "10-19, 4"; cumfreq "upper boundary, cumulative frequency"; pie "label, value"; box "name, min, Q1, median, Q3, max"; scatter "x, y"; stemleaf "stem | leaves" per line; dot raw values. Read values off the axes as accurately as possible.',
+  '4) "numberline" — {"type":"numberline","min","max","step","intervals":[{"from","to","fromIncl","toIncl"}],"points":[{"at","open","label"}]} ("" = infinity).',
+  '5) "venn" — {"type":"venn","sets":2|3,"labels":["A","B","C"],"universal":"U","regions":{"a","b","c","ab","ac","bc","abc","none"},"shaded":["ab",…]} (region keys = the sets the region is inside; "a" = only A).',
+  '6) "tree" — {"type":"tree","text":"R | $\\frac{3}{5}$\n  R | $\\frac{2}{4}$\n  B | $\\frac{2}{4}$\nB | $\\frac{2}{5}$","showOutcomes":false} (two spaces per level).',
+  'If the picture is not a maths diagram, return {"figures":[],"note":"…"}.',
+].join('\n');
+
+function cleanFigure(f) {
+  if (!f || typeof f !== 'object' || Array.isArray(f)) return null;
+  const type = String(f.type || '').trim();
+  if (!FIGURE_TYPES.has(type)) return null;
+  const json = JSON.stringify(f);
+  if (json.length > 40000) return null;
+  // Plain data only: drop anything that isn't JSON-safe or looks like an embedded image.
+  const out = JSON.parse(json, (k, v) => (typeof v === 'string' && v.startsWith('data:') ? undefined : v));
+  out.type = type;
+  return out;
+}
+
+app.post('/api/teacher/figure-from-image', async (req, res) => {
+  const body = req.body || {};
+  const image = String(body.image || '');
+  if (!/^data:image\/(png|jpe?g|webp|gif);base64,[A-Za-z0-9+/=]+$/.test(image)) {
+    return res.status(400).json({ error: '請上載 PNG、JPG 或 WebP 圖片' });
+  }
+  if (image.length > 1_400_000) return res.status(413).json({ error: '圖片太大，請先裁剪或縮細' });
+
+  let cfg;
+  try {
+    cfg = await resolveProviderConfig(body, AI_ROLES.figure);
+  } catch (e) {
+    return res.status(e.status || 401).json({ error: e.message || 'Invalid auth token' });
+  }
+  if (!cfg.apiKey) return res.status(400).json({ error: 'AI 尚未設定：請管理員到「AI 設定」頁面輸入 API Key。' });
+
+  const hint = String(body.hint || '').trim().slice(0, 500);
+  const result = await callChatCompletion({
+    ...cfg,
+    system: FIGURE_SCHEMA,
+    user: `把這張圖轉成 QuestClass 圖形 JSON。${hint ? `\n老師補充：${hint}` : ''}`,
+    images: [image],
+    temperature: 0.2,
+    responseFormat: { type: 'json_object' },
+  });
+  if (!result.ok) {
+    const msg = /image|vision|multimodal|modalit/i.test(result.error || '')
+      ? '學校設定的 AI 模型不支援讀取圖片，請管理員在「AI 設定」改用支援圖片的模型（例如 GPT-4o、GPT-4.1、Gemini、Claude）。'
+      : result.error;
+    return res.status(result.status || 502).json({ error: msg });
+  }
+  try {
+    const text = String(result.text || '').trim();
+    const match = text.match(/\{[\s\S]*\}/);
+    const json = JSON.parse(fixLatexBackslashes(match ? match[0] : text));
+    const figures = (Array.isArray(json.figures) ? json.figures : json.type ? [json] : []).map(cleanFigure).filter(Boolean).slice(0, 4);
+    if (!figures.length) return res.status(422).json({ error: json.note || 'AI 未能從圖片中辨認出圖形，請試試更清晰的圖片或加上說明。' });
+    return res.json({ ok: true, figures, note: String(json.note || '').slice(0, 300) });
+  } catch {
+    return res.status(422).json({ error: 'AI 回應格式有誤，請再試一次' });
+  }
+});
 
 // ── Marking a student's homework ───────────────────────────────────────────
 // Runs on the server because the answers live in homeworkAnswerKeys, which students cannot read.
