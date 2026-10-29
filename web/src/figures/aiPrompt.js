@@ -2,6 +2,24 @@
 import { compileExpr } from '../lib/mathExpr.js';
 import { figureIsEmpty } from './model.js';
 
+// Language of generated questions. The teacher's last choice is remembered in this browser.
+export const QUESTION_LANGS = [['zh', '中文'], ['en', 'English']];
+
+export function loadQuestionLang() {
+  try { return window.localStorage?.getItem('qc_question_lang') === 'en' ? 'en' : 'zh'; } catch { return 'zh'; }
+}
+export function saveQuestionLang(lang) {
+  try { window.localStorage?.setItem('qc_question_lang', lang); } catch { /* not available */ }
+}
+
+/** The language instruction for the generator's system prompt. */
+export function languageRule(lang) {
+  if (lang === 'en') {
+    return 'LANGUAGE: Write EVERYTHING in English — question_text, options, answers (correct_answer / ideal_answer / blanks accepted answers), matching pairs, grading_rubric, topic, and every figure label, axis title and chart category (e.g. "Find the value of $x$.", "Frequency", "Marks"). Use the mathematical English of Hong Kong secondary schools / HKDSE English-version papers. Do not use any Chinese. The Chinese examples in this prompt only show the JSON format.';
+  }
+  return '語言：全部用繁體中文（香港用語）書寫，包括題目、選項、答案、評分標準、主題，以及圖形的標籤、軸名和統計圖類別。';
+}
+
 export const FIGURE_MODES = [
   ['auto', '需要時加圖'],
   ['always', '每題都要有圖'],

@@ -10,7 +10,7 @@ import { MathField, MathHelp } from '../components/MathEditors.jsx';
 import { questionGraph } from '../components/QuestionStem.jsx';
 import FiguresEditor from '../figures/FigureEditors.jsx';
 import { editableFigures, figuresToSave, mediaWithFigures } from '../figures/model.js';
-import { FIGURE_EXAMPLES, FIGURE_MODES, figurePromptLines, normalizeAiQuestion } from '../figures/aiPrompt.js';
+import { FIGURE_EXAMPLES, FIGURE_MODES, QUESTION_LANGS, figurePromptLines, languageRule, loadQuestionLang, normalizeAiQuestion, saveQuestionLang } from '../figures/aiPrompt.js';
 
 const SUPPORTED_TYPES = ['TRUE_FALSE','MULTIPLE_CHOICE','FILL_IN_BLANK','MATCHING','SHORT_ANSWER','LONG_ANSWER'];
 const GRADES = ['P1','P2','P3','P4','P5','P6','S1','S2','S3','S4','S5','S6'];
@@ -332,6 +332,7 @@ function AiModal({ onClose, onSave }) {
   const [count, setCount] = useState(5);
   const [level, setLevel] = useState('S1');
   const [figureMode, setFigureMode] = useState('auto');
+  const [lang, setLang] = useState(loadQuestionLang);
   const [types, setTypes] = useState({
     MULTIPLE_CHOICE: true, TRUE_FALSE: true, SHORT_ANSWER: true,
     FILL_IN_BLANK: false, MATCHING: false, LONG_ANSWER: false,
@@ -359,6 +360,7 @@ function AiModal({ onClose, onSave }) {
         `只能使用以下題型：${typesStr}`,
         `依照香港學制（HK）調整難度，target_level: ${level}`,
         '數學式一律用 KaTeX/LaTeX 寫並用 $…$ 包住（獨立一行用 $$…$$），題目、選項、答案都適用，例如 "解 $x^2-5x+6=0$"、"$\\\\frac{3}{4}$"。JSON 字串內的反斜線要寫成兩個（\\\\frac）。金錢可寫 $5（$ 後面直接接數字）。',
+        languageRule(lang),
         ...figurePromptLines(figureMode),
         '輸出格式示例：{"questions":[',
         '{"type":"MULTIPLE_CHOICE","question_text":"題目","topic":"主題","target_level":"S1","points":1,"options":[{"id":"A","text":"A選項","is_correct":true},{"id":"B","text":"B選項","is_correct":false}]},',
@@ -369,11 +371,13 @@ function AiModal({ onClose, onSave }) {
         '{"type":"MATCHING","question_text":"配對","pairs":[{"prompt":"A","match":"1"}],"points":2},',
         '{"type":"LONG_ANSWER","question_text":"申論題","grading_rubric":"評分標準","points":4}',
         `]}\n請產出 ${count} 題，混合使用以下題型：${typesStr}。`,
+        languageRule(lang),
       ].join('\n');
       const generated = await generateQuestions({
         idToken: token, topic: 'teacher-question-bank', mode: 'generate',
         studentName: 'teacher',
-        message: `主題：${topic || '（不限）'}\n年級：${level}\n題數：${count}\n題型：${typesStr}\n圖形：${FIGURE_MODES.find(m => m[0] === figureMode)?.[1]}`,
+        message: `主題：${topic || '（不限）'}\n年級：${level}\n題數：${count}\n題型：${typesStr}\n圖形：${FIGURE_MODES.find(m => m[0] === figureMode)?.[1]}\n語言 / Language：${lang === 'en' ? 'English' : '繁體中文'}`,
+        language: lang,
         system,
       });
       const qs = generated
@@ -477,6 +481,21 @@ function AiModal({ onClose, onSave }) {
                         : { ...btnGhost, padding: '8px 16px' }}
                       onClick={() => setTypes(prev => ({ ...prev, [t]: !prev[t] }))}>
                       {typeLabel(t)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: '#6E6E73' }}>題目語言</div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                  {QUESTION_LANGS.map(([v, label]) => (
+                    <button key={v} type="button"
+                      style={lang === v
+                        ? { ...btnPrimary, background: '#5E5CE6', padding: '8px 16px' }
+                        : { ...btnGhost, padding: '8px 16px' }}
+                      onClick={() => { setLang(v); saveQuestionLang(v); }}>
+                      {label}
                     </button>
                   ))}
                 </div>

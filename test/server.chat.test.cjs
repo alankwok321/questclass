@@ -252,3 +252,12 @@ test('format json: LaTeX written with single backslashes survives (\\frac, \\tim
   assert.equal(q.note, 'line1\nline2');
   assert.equal(q.ok, '$\\pi$');
 });
+
+test('format json: language "en" asks the AI for English; default stays Traditional Chinese', async () => {
+  h.ai.reply('{"questions":[]}');
+  await chat({ idToken: 'tea', message: 'make questions', format: 'json', system: 'Return JSON', language: 'en' });
+  assert.match(h.ai.last.body.messages.at(-1).content, /Respond in English\./);
+  assert.doesNotMatch(h.ai.last.body.messages.at(-1).content, /Traditional Chinese/);
+  await chat({ idToken: 'tea', message: 'make questions', format: 'json', system: 'Return JSON' });
+  assert.match(h.ai.last.body.messages.at(-1).content, /Respond in Traditional Chinese\./);
+});
