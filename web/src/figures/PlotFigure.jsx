@@ -1,7 +1,8 @@
 import React, { useMemo, useId } from 'react';
 import { compileExpr } from '../lib/mathExpr.js';
 import { COLORS, isNum, num } from './model.js';
-import { AngleMark, Frame, Label, SideDecor, VertexLabel, centroid, fmtNum, niceStep } from './svg.jsx';
+import { AngleMark, Frame, Label, SideDecor, centroid, fmtNum, niceStep } from './svg.jsx';
+import { aroundPoint, besideSegment, createPlacer, textWidth } from './labelPlace.js';
 
 // Coordinate graphs + plane geometry.
 // {
@@ -71,7 +72,7 @@ export default function PlotFigure({ fig, maxWidth = 440, caption }) {
   const W = Math.round(Math.max(240, Math.min(440, maxWidth)));
   const data = useMemo(() => layout(fig, W), [fig, W]);
   if (!data) return null;
-  const { H, pad, pw, ph, sx, sy, g, curves, xTicks, yTicks, axisX, axisY, tickNums, errors } = data;
+  const { H, pad, pw, ph, sx, sy, g, curves, xTicks, yTicks, axisX, axisY, tickNums, errors, labels } = data;
   const P = (x, y) => ({ x: sx(+x), y: sy(+y) });
   const clip = `url(#${uid}c)`;
 
@@ -174,7 +175,13 @@ export default function PlotFigure({ fig, maxWidth = 440, caption }) {
                 if (!closed && k === n - 1) return null;
                 const s = sides[k] || {};
                 if (!s.label && !s.ticks && !s.arrows) return null;
-                return <SideDecor key={`sd${k}`} p1={a} p2={px[(k + 1) % n]} label={s.label} ticks={s.ticks} arrows={s.arrows} away={cen} color={color} />;
+                const L = labels.sides[i]?.[k];
+                return (
+                  <g key={`sd${k}`}>
+                    <SideDecor p1={a} p2={px[(k + 1) % n]} ticks={s.ticks} arrows={s.arrows} away={cen} color={color} />
+                    {L && <Label x={L.x} y={L.y} text={s.label} color={color} size={12} />}
+                  </g>
+                );
               })}
               {px.map((a, k) => {
                 const v = vs[k];
@@ -184,7 +191,9 @@ export default function PlotFigure({ fig, maxWidth = 440, caption }) {
                     {v.mark && v.mark !== 'none' || v.angleLabel ? (hasPrev && hasNext && n >= 3 ? (
                       <AngleMark V={a} P={px[(k - 1 + n) % n]} N={px[(k + 1) % n]} mark={v.mark || 'none'} label={v.angleLabel} color={color} />
                     ) : null) : null}
-                    <VertexLabel p={a} centre={n >= 3 ? cen : { x: a.x - 1, y: a.y + 1 }} text={v.label} />
+                    {labels.vertices[i]?.[k] && (
+                      <Label x={labels.vertices[i][k].x} y={labels.vertices[i][k].y} text={v.label} size={14} italic={!/[$\d]/.test(v.label)} />
+                    )}
                   </g>
                 );
               })}
@@ -193,16 +202,15 @@ export default function PlotFigure({ fig, maxWidth = 440, caption }) {
         })}
 
         {arr(g.segments).map((s, i) => pt(s.x1, s.y1) && pt(s.x2, s.y2) && (s.label || s.ticks || s.arrows) && (
-          <SideDecor key={`sdc${i}`} p1={P(s.x1, s.y1)} p2={P(s.x2, s.y2)} label={s.label} ticks={s.ticks} arrows={s.arrows} color={s.color || INK} />
+          <g key={`sdc${i}`}>
+            <SideDecor p1={P(s.x1, s.y1)} p2={P(s.x2, s.y2)} ticks={s.ticks} arrows={s.arrows} color={s.color || INK} />
+            {labels.segments[i] && <Label x={labels.segments[i].x} y={labels.segments[i].y} text={s.label} color={s.color || INK} size={12} />}
+          </g>
         ))}
 
-        {arr(g.lines).map((l, i) => {
-          if (!l.label || !pt(l.x1, l.y1) || !pt(l.x2, l.y2)) return null;
-          const [, b] = extend(l, g, l.kind === 'ray');
-          const e = P(b.x, b.y); const s0 = P(l.x1, l.y1);
-          const u = { x: s0.x - e.x, y: s0.y - e.y }; const L = Math.hypot(u.x, u.y) || 1;
-          return <Label key={`ll${i}`} x={e.x + (u.x / L) * 22} y={e.y + (u.y / L) * 22 - 10} text={l.label} color={l.color || INK} />;
-        })}
+        {arr(g.lines).map((l, i) => labels.lines[i] && (
+          <Label key={`ll${i}`} x={labels.lines[i].x} y={labels.lines[i].y} text={l.label} color={l.color || INK} />
+        ))}
 
         {arr(g.circles).map((c, i) => {
           if (!pt(c.cx, c.cy) || !isNum(c.r)) return null;
@@ -212,9 +220,9 @@ export default function PlotFigure({ fig, maxWidth = 440, caption }) {
           return (
             <g key={`cd${i}`}>
               {c.showRadius && <line x1={C.x} y1={C.y} x2={R.x} y2={R.y} stroke={c.color || INK} strokeWidth="1.6" />}
-              {c.showRadius && c.radiusLabel && <SideDecor p1={C} p2={R} label={c.radiusLabel} color={c.color || INK} />}
+              {labels.radii[i] && <Label x={labels.radii[i].x} y={labels.radii[i].y} text={c.radiusLabel} color={c.color || INK} size={12} />}
               {(c.showCentre || c.centreLabel) && <circle cx={C.x} cy={C.y} r="3" fill={c.color || INK} />}
-              {c.centreLabel && <Label x={C.x - 9} y={C.y + 11} text={c.centreLabel} size={14} italic anchor="middle" />}
+              {labels.centres[i] && <Label x={labels.centres[i].x} y={labels.centres[i].y} text={c.centreLabel} size={14} italic={!/[$\d]/.test(c.centreLabel)} />}
             </g>
           );
         })}
@@ -231,21 +239,19 @@ export default function PlotFigure({ fig, maxWidth = 440, caption }) {
           <AngleMark key={`an${i}`} V={P(a.bx, a.by)} P={P(a.ax, a.ay)} N={P(a.cx, a.cy)} mark={a.mark || '1'} label={a.label} color={a.color || INK} />
         ))}
 
-        {arr(g.functions).map((f, i) => {
-          const c = curves[i];
-          if (!f.label || !c?.lastVisible) return null;
-          return <Label key={`fl${i}`} x={Math.min(sx(c.lastVisible.x) - 4, W - 6)} y={Math.max(sy(c.lastVisible.y) - 12, 12)} text={f.label} color={c.color} anchor="end" />;
-        })}
+        {arr(g.functions).map((f, i) => labels.functions[i] && (
+          <Label key={`fl${i}`} x={labels.functions[i].x} y={labels.functions[i].y} text={f.label} color={curves[i].color} />
+        ))}
 
         {arr(g.points).map((p, i) => {
           if (!pt(p.x, p.y)) return null;
           const { x, y } = P(p.x, p.y);
           const color = p.color || INK;
-          const right = x < pad.l + pw - 60;
+          const L = labels.points[i];
           return (
             <g key={`pt${i}`}>
               <circle cx={x} cy={y} r="4" fill={p.open ? '#fff' : color} stroke={color} strokeWidth="1.8" />
-              <Label x={right ? x + 8 : x - 8} y={y - 11} text={p.label} color={color} anchor={right ? 'start' : 'end'} size={13} />
+              {L && <Label x={L.x} y={L.y} text={p.label} color={color} size={13} />}
             </g>
           );
         })}
@@ -356,6 +362,7 @@ function layout(fig, W) {
     let d = ''; let pen = false; let prev = null;
     const visible = [];
     const pts = [];
+    const runs = []; // on-screen pieces, for label placement
     for (let i = 0; i <= N; i += 1) {
       const x = from + ((to - from) * i) / N;
       const y = fn(x);
@@ -363,6 +370,8 @@ function layout(fig, W) {
       const jump = prev != null && Number.isFinite(y) && Math.abs(y - prev) > 1.5 * yRange;
       if (bad || jump) { pen = false; prev = bad ? null : y; if (bad) continue; }
       d += `${pen ? 'L' : 'M'}${sx(x).toFixed(2)},${sy(y).toFixed(2)}`;
+      if (!pen) runs.push([]);
+      runs[runs.length - 1].push({ x: sx(x), y: sy(y) });
       pen = true; prev = y;
       pts.push([x, y]);
       if (y >= yMin + 0.04 * yRange && y <= yMax - 0.06 * yRange) visible.push({ x, y });
@@ -374,8 +383,7 @@ function layout(fig, W) {
       shadeD = `M${sx(pts[0][0])},${sy(edge)} ` + pts.map(([x, y]) => `L${sx(x).toFixed(2)},${sy(clampY(y)).toFixed(2)}`).join(' ')
         + ` L${sx(pts[pts.length - 1][0])},${sy(edge)} Z`;
     }
-    const lastVisible = visible.length ? visible[Math.floor((visible.length - 1) * 0.86)] : null;
-    return { d, shadeD, color, dashed: !!f.dashed, lastVisible };
+    return { d, shadeD, color, dashed: !!f.dashed, visible, runs };
   });
 
   // ticks
@@ -395,18 +403,147 @@ function layout(fig, W) {
   const axisX = yMin <= 0 && yMax >= 0 ? sy(0) : (yMin > 0 ? sy(yMin) : sy(yMax));
   const axisY = xMin <= 0 && xMax >= 0 ? sx(0) : (xMin > 0 ? sx(xMin) : sx(xMax));
 
-  // Points (and their labels) win over axis numbers that would sit underneath them.
-  const marks = arr(fig.points).filter((p) => pt(p.x, p.y)).map((p) => ({ x: sx(+p.x), y: sy(+p.y) }));
-  const blocked = (x, y, w) => marks.some((m) => Math.abs(m.x - x) < w / 2 + 8 && Math.abs(m.y - y) < 16);
   const tickNums = {
     x: xTicks.filter((v) => Math.abs(v) > 1e-9 || Math.abs(axisY - sx(0)) > 1).map((v) => {
-      const text = tickLabel(v); const x = sx(v); const ly = Math.min(axisX + 13, H - 6);
-      return { v, x, ly, text, show: !blocked(x, ly, text.length * 6.5) };
+      const text = tickLabel(v); const x = sx(v); const ly = Math.min(axisX + 13, H - 6); const w = text.length * 6.2;
+      return { v, x, ly, text, show: true, box: { l: x - w / 2, r: x + w / 2, t: ly - 6, b: ly + 6 } };
     }),
     y: yTicks.filter((v) => Math.abs(v) > 1e-9 || Math.abs(axisX - sy(0)) > 1).map((v) => {
-      const text = fmtNum(v); const y = sy(v); const lx = axisY - 6;
-      return { v, y, lx, text, show: !blocked(lx - text.length * 3.25, y, text.length * 6.5) };
+      const text = fmtNum(v); const y = sy(v); const lx = axisY - 6; const w = text.length * 6.2;
+      return { v, y, lx, text, show: true, box: { l: lx - w, r: lx, t: y - 6, b: y + 6 } };
     }),
   };
-  return { H, pad, pw, ph, sx, sy, g, curves, xTicks, yTicks, axisX, axisY, tickNums, errors };
+  const data = { W, H, pad, pw, ph, sx, sy, g, curves, xTicks, yTicks, axisX, axisY, tickNums, errors };
+  data.labels = placeLabels(data);
+  return data;
+}
+
+// Decide where every name / length / formula label goes, so none sits on a line, curve, point,
+// axis number or another label. Axis numbers that a label still has to cover are hidden.
+function placeLabels(data) {
+  const { W, H, g, sx, sy, curves, axisX, axisY, pad, pw, ph, tickNums } = data;
+  const P = (x, y) => ({ x: sx(+x), y: sy(+y) });
+  const pl = createPlacer(W, H);
+  const out = { points: [], vertices: [], sides: [], segments: [], centres: [], radii: [], functions: [], lines: [] };
+
+  // Obstacles: everything drawn.
+  if (g.axes) {
+    pl.addSegment({ x: pad.l, y: axisX }, { x: pad.l + pw + 4, y: axisX });
+    pl.addSegment({ x: axisY, y: pad.t - 4 }, { x: axisY, y: pad.t + ph });
+    pl.addRect({ l: axisY - 8, r: axisY + 8, t: axisX - 8, b: axisX + 8 }, 4); // origin
+    pl.addRect({ l: pad.l + pw - 14, r: pad.l + pw + 4, t: axisX - 20, b: axisX - 2 }, 20); // "x"
+    pl.addRect({ l: axisY + 2, r: axisY + 18, t: pad.t - 2, b: pad.t + 16 }, 20); // "y"
+  }
+  curves.forEach((c) => (c.runs || []).forEach((run) => pl.addPolyline(run, 3)));
+  const lineEnds = arr(g.lines).map((l) => {
+    if (!pt(l.x1, l.y1) || !pt(l.x2, l.y2)) return null;
+    const [a, b] = extend(l, g, l.kind === 'ray');
+    const e = [P(a.x, a.y), P(b.x, b.y)];
+    pl.addSegment(e[0], e[1]);
+    return e;
+  });
+  arr(g.segments).forEach((s) => { if (pt(s.x1, s.y1) && pt(s.x2, s.y2)) pl.addSegment(P(s.x1, s.y1), P(s.x2, s.y2)); });
+  const polys = arr(g.polygons).map((p) => {
+    const vs = arr(p.vertices).filter((v) => pt(v.x, v.y));
+    const px = vs.map((v) => P(v.x, v.y));
+    const closed = p.closed !== false;
+    for (let k = 1; k < px.length; k += 1) pl.addSegment(px[k - 1], px[k]);
+    if (closed && px.length > 2) pl.addSegment(px[px.length - 1], px[0]);
+    return { p, vs, px, closed };
+  });
+  const ring = (cx, cy, r, from = 0, to = 360) => {
+    const pts = [];
+    for (let a = from; a <= to + 1e-9; a += 6) pts.push(P(cx + r * Math.cos((a * Math.PI) / 180), cy + r * Math.sin((a * Math.PI) / 180)));
+    return pts;
+  };
+  arr(g.circles).forEach((c) => { if (pt(c.cx, c.cy) && isNum(c.r)) pl.addPolyline(ring(+c.cx, +c.cy, +c.r)); });
+  arr(g.arcs).forEach((a) => {
+    if (!pt(a.cx, a.cy) || !isNum(a.r)) return;
+    let s0 = num(a.start, 0); let e0 = num(a.end, 90); while (e0 < s0) e0 += 360;
+    const pts = ring(+a.cx, +a.cy, +a.r, s0, e0);
+    pl.addPolyline(pts);
+    if (a.sector) { const C = P(a.cx, a.cy); pl.addSegment(C, pts[0]); pl.addSegment(C, pts[pts.length - 1]); }
+  });
+  arr(g.points).forEach((p) => { if (pt(p.x, p.y)) pl.addMarker(P(p.x, p.y)); });
+  arr(g.circles).forEach((c) => { if (pt(c.cx, c.cy) && (c.showCentre || c.centreLabel)) pl.addMarker(P(c.cx, c.cy), 4); });
+  [...tickNums.x, ...tickNums.y].forEach((t) => pl.addRect(t.box, 6));
+  arr(g.texts).forEach((t) => { if (pt(t.x, t.y)) { const w = textWidth(t.text); const c = P(t.x, t.y); pl.addRect({ l: c.x - w / 2, r: c.x + w / 2, t: c.y - 9, b: c.y + 9 }, 40); } });
+
+  // 1) point names
+  out.points = arr(g.points).map((p) => {
+    if (!pt(p.x, p.y) || !p.label) return null;
+    const c = P(p.x, p.y);
+    return pl.place(p.label, aroundPoint(c, p.label, { gap: 6 }));
+  });
+  // 2) polygon vertex names (away from the shape first)
+  out.vertices = polys.map(({ vs, px }) => {
+    const cen = centroid(px);
+    return vs.map((v, k) => {
+      if (!v.label) return null;
+      const a = px[k];
+      const prefer = px.length >= 3 ? { x: a.x - cen.x, y: a.y - cen.y } : { x: 1, y: -1 };
+      return pl.place(v.label, aroundPoint(a, v.label, { size: 14, gap: 3, prefer }), { size: 14 });
+    });
+  });
+  // 3) circle centres
+  out.centres = arr(g.circles).map((c) => {
+    if (!c.centreLabel || !pt(c.cx, c.cy)) return null;
+    return pl.place(c.centreLabel, aroundPoint(P(c.cx, c.cy), c.centreLabel, { size: 14, gap: 4, prefer: { x: -1, y: 1 } }), { size: 14 });
+  });
+  // 4) side lengths
+  out.sides = polys.map(({ p, px, closed }) => {
+    const cen = centroid(px); const n = px.length; const sides = arr(p.sides);
+    return px.map((a, k) => {
+      if (!closed && k === n - 1) return null;
+      const lab = sides[k]?.label;
+      if (!lab) return null;
+      return pl.place(lab, besideSegment(a, px[(k + 1) % n], lab, { away: n >= 3 ? cen : undefined }), { size: 12 });
+    });
+  });
+  out.segments = arr(g.segments).map((s) => {
+    if (!s.label || !pt(s.x1, s.y1) || !pt(s.x2, s.y2)) return null;
+    return pl.place(s.label, besideSegment(P(s.x1, s.y1), P(s.x2, s.y2), s.label), { size: 12 });
+  });
+  out.radii = arr(g.circles).map((c) => {
+    if (!c.showRadius || !c.radiusLabel || !pt(c.cx, c.cy) || !isNum(c.r)) return null;
+    const ang = (num(c.radiusAngle, 30) * Math.PI) / 180;
+    const C = P(c.cx, c.cy); const R = P(+c.cx + +c.r * Math.cos(ang), +c.cy + +c.r * Math.sin(ang));
+    return pl.place(c.radiusLabel, besideSegment(C, R, c.radiusLabel), { size: 12 });
+  });
+  // 5) formula labels: somewhere along the curve, beside it
+  out.functions = arr(g.functions).map((f, i) => {
+    const c = curves[i];
+    if (!f.label || !c?.visible?.length) return null;
+    const cands = [];
+    // Near the end of the curve first, then anywhere along it; beside it, then further out.
+    const fracs = [0.85, 0.9, 0.8, 0.95, 0.75, 0.7, 0.65, 0.6, 0.55, 0.5, 0.45, 0.4, 0.35, 0.3, 0.25, 0.2, 0.15, 0.1, 0.05];
+    fracs.forEach((frac, fi) => {
+      const v = c.visible[Math.floor((c.visible.length - 1) * frac)];
+      const q = P(v.x, v.y);
+      [6, 18, 32].forEach((gap, gi) => {
+        aroundPoint(q, f.label, { gap, prefer: { x: -1, y: -1 } }).slice(0, 8).forEach((cand, di) => {
+          cands.push({ ...cand, pen: fi * 0.6 + gi * 4 + di * 0.4 });
+        });
+      });
+    });
+    return pl.place(f.label, cands);
+  });
+  out.lines = arr(g.lines).map((l, i) => {
+    const e = lineEnds[i];
+    if (!l.label || !e) return null;
+    const [a, b] = e;
+    const cands = [];
+    for (const frac of [0.88, 0.72, 0.12, 0.28, 0.5]) {
+      const m = { x: a.x + (b.x - a.x) * frac, y: a.y + (b.y - a.y) * frac };
+      cands.push(...besideSegment({ x: m.x - (b.x - a.x) * 0.01, y: m.y - (b.y - a.y) * 0.01 }, { x: m.x + (b.x - a.x) * 0.01, y: m.y + (b.y - a.y) * 0.01 }, l.label).filter((_, k) => k % 5 === 0));
+    }
+    return pl.place(l.label, cands);
+  });
+
+  // Axis numbers under a point or a label make way.
+  const boxes = pl.placedBoxes();
+  const markers = arr(g.points).filter((p) => pt(p.x, p.y)).map((p) => { const c = P(p.x, p.y); return { l: c.x - 6, r: c.x + 6, t: c.y - 6, b: c.y + 6 }; });
+  const hits = (b) => [...boxes, ...markers].some((o) => Math.min(b.r, o.r) > Math.max(b.l, o.l) && Math.min(b.b, o.b) > Math.max(b.t, o.t));
+  [...tickNums.x, ...tickNums.y].forEach((t) => { t.show = !hits(t.box); });
+  return out;
 }
