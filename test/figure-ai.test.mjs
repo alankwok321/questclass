@@ -45,3 +45,11 @@ test('prompt modes', () => {
   assert.match(figurePromptLines('auto').join('\n'), /必須在該題加上/);
   assert.equal(figurePromptLines('none').length, 1);
 });
+
+test('"?" labels from the AI become letters', () => {
+  const f = cleanAiFigure({ type: 'plot', axes: false, polygons: [{ vertices: [{ x: 0, y: 0 }, { x: 4, y: 0 }, { x: 0, y: 3 }], sides: [{ label: '4 cm' }, { label: '?' }, { label: '? cm' }] }], points: [{ x: 0, y: -4, label: '(0, ?)' }] });
+  assert.equal(f.polygons[0].sides[1].label, '$x$');
+  assert.equal(f.polygons[0].sides[2].label, '$y$ cm');
+  assert.equal(f.points[0].label, '(0, $k$)');
+  assert.equal(f.polygons[0].sides[0].label, '4 cm');
+});

@@ -26,7 +26,7 @@ export function figurePromptLines(mode = 'auto') {
     '3) "stats" 統計圖：{"type":"stats","chart":"bar|line|histogram|freqpoly|cumfreq|pie|box|scatter|stemleaf|dot","xLabel":"分數","yLabel":"頻數","data":"10-19, 4\\n20-29, 9"}（每行一項；box 每行：名稱, 最小值, Q1, 中位數, Q3, 最大值；cumfreq 每行：上組界, 累積頻數；stemleaf 給原始數據）。',
     '4) "numberline"：{"type":"numberline","min":-5,"max":5,"step":1,"intervals":[{"from":-2,"to":"","fromIncl":true,"toIncl":false}]}（"" 表示無限）；5) "venn"：{"type":"venn","sets":2,"labels":["A","B"],"regions":{"a":"5","b":"8","ab":"3","none":"4"},"shaded":["ab"]}；6) "tree"：{"type":"tree","text":"R | $\\\\frac{3}{5}$\\n  R | $\\\\frac{2}{4}$\\n  B | $\\\\frac{2}{4}$\\nB | $\\\\frac{2}{5}$\\n  R | $\\\\frac{3}{4}$\\n  B | $\\\\frac{1}{4}$","showOutcomes":true}（下一層前加兩個空格）。',
     '選擇題的選項亦可各自有圖（例如「下列哪一個是 y = … 的圖像？」）：{"id":"A","text":"","is_correct":true,"figures":[…]}。表格可在 question_text 內用「| 分數 | 10–19 |」每行一列。',
-    '圖中的數據必須與題目和答案一致。',
+    '圖中的數據必須與題目和答案一致。圖中要學生求的未知量用字母標示（例如 $x$、$y$、$\\theta$），不要用「?」。',
   ];
 }
 
@@ -59,6 +59,25 @@ function guessType(f) {
   return null;
 }
 
+// A "?" the AI used for the unknown → a letter, the way exam diagrams label unknowns.
+const UNKNOWN = /(^|[\s(,，=])[?？](?=$|[\s),，cm°])/g;
+function unknownsToLetters(fig) {
+  const letters = ['x', 'y', 'z', 'a', 'b', 'c'];
+  const coordLetters = ['k', 'h', 'm', 'n']; // unknown coordinates: (0, k) reads better than (0, x)
+  let n = 0; let m = 0;
+  const walk = (v, key) => {
+    if (typeof v === 'string') {
+      if (key === 'data' || key === 'text' && fig.type === 'tree' || key === 'expr') return v;
+      const coord = /^\s*\(.*,.*\)\s*$/.test(v) || /^[A-Z]\s*\(.*,.*\)/.test(v.trim());
+      return v.replace(UNKNOWN, (_, pre) => `${pre}$${coord ? coordLetters[Math.min(m++, coordLetters.length - 1)] : letters[Math.min(n++, letters.length - 1)]}$`);
+    }
+    if (Array.isArray(v)) return v.map((x) => walk(x, key));
+    if (v && typeof v === 'object') return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, walk(x, k)]));
+    return v;
+  };
+  return walk(fig);
+}
+
 /** One figure from the AI → a valid figure, or null. */
 export function cleanAiFigure(raw) {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
@@ -77,7 +96,7 @@ export function cleanAiFigure(raw) {
     f.data = f.data.map((row) => (Array.isArray(row) ? row.join(', ') : typeof row === 'object' && row ? Object.values(row).join(', ') : String(row))).join('\n');
   }
   if (type === 'tree' && Array.isArray(f.text)) f.text = f.text.join('\n');
-  return figureIsEmpty(f) ? null : f;
+  return figureIsEmpty(f) ? null : unknownsToLetters(f);
 }
 
 /** Collect figures wherever the AI put them on a question (or an option). */

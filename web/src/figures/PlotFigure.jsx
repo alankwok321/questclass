@@ -71,7 +71,7 @@ export default function PlotFigure({ fig, maxWidth = 440, caption }) {
   const W = Math.round(Math.max(240, Math.min(440, maxWidth)));
   const data = useMemo(() => layout(fig, W), [fig, W]);
   if (!data) return null;
-  const { H, pad, pw, ph, sx, sy, g, curves, xTicks, yTicks, axisX, axisY, tickLabel, errors } = data;
+  const { H, pad, pw, ph, sx, sy, g, curves, xTicks, yTicks, axisX, axisY, tickNums, errors } = data;
   const P = (x, y) => ({ x: sx(+x), y: sy(+y) });
   const clip = `url(#${uid}c)`;
 
@@ -110,25 +110,10 @@ export default function PlotFigure({ fig, maxWidth = 440, caption }) {
           <>
             <line x1={pad.l} x2={pad.l + pw + 4} y1={axisX} y2={axisX} stroke={INK} strokeWidth="1.4" markerEnd={`url(#${uid}a)`} />
             <line x1={axisY} x2={axisY} y1={pad.t + ph} y2={pad.t - 4} stroke={INK} strokeWidth="1.4" markerEnd={`url(#${uid}a)`} />
-            <g fontSize="11" fill="#6E6E73" fontWeight="500">
-              {xTicks.filter((v) => Math.abs(v) > 1e-9 || Math.abs(axisY - sx(0)) > 1).map((v) => (
-                <g key={`tx${v}`}>
-                  <line x1={sx(v)} x2={sx(v)} y1={axisX - 3} y2={axisX + 3} stroke={INK} />
-                  <text x={sx(v)} y={Math.min(axisX + 14, H - 2)} textAnchor="middle">{tickLabel(v)}</text>
-                </g>
-              ))}
-              {yTicks.filter((v) => Math.abs(v) > 1e-9 || Math.abs(axisX - sy(0)) > 1).map((v) => (
-                <g key={`ty${v}`}>
-                  <line y1={sy(v)} y2={sy(v)} x1={axisY - 3} x2={axisY + 3} stroke={INK} />
-                  <text x={Math.max(axisY - 6, 10)} y={sy(v)} textAnchor="end" dominantBaseline="middle">{fmtNum(v)}</text>
-                </g>
-              ))}
-              {g.xMin <= 0 && g.xMax >= 0 && g.yMin <= 0 && g.yMax >= 0 && (
-                <text x={sx(0) - 6} y={sy(0) + 13} textAnchor="end" fontStyle="italic">O</text>
-              )}
+            <g stroke={INK}>
+              {tickNums.x.map((t) => <line key={`tx${t.v}`} x1={t.x} x2={t.x} y1={axisX - 3} y2={axisX + 3} />)}
+              {tickNums.y.map((t) => <line key={`ty${t.v}`} y1={t.y} y2={t.y} x1={axisY - 3} x2={axisY + 3} />)}
             </g>
-            <Label x={pad.l + pw - 2} y={axisX - 11} text={g.xLabel} anchor="end" size={14} weight={500} italic />
-            <Label x={axisY + 9} y={pad.t + 8} text={g.yLabel} anchor="start" size={14} weight={500} italic />
           </>
         )}
 
@@ -159,6 +144,19 @@ export default function PlotFigure({ fig, maxWidth = 440, caption }) {
             <path key={`ar${i}`} d={arcPath(a, sx, sy, !!a.sector)} stroke={a.color || INK} strokeWidth="1.8" strokeDasharray={a.dashed ? '7 6' : undefined} />
           ))}
         </g>
+
+        {/* axis numbers: above the curves (white halo) so lines never hide them */}
+        {g.axes && (
+          <g fontSize="11" fill="#3A3A3C" fontWeight="500" style={{ paintOrder: 'stroke', stroke: '#fff', strokeWidth: 3, strokeLinejoin: 'round' }}>
+            {tickNums.x.filter((t) => t.show).map((t) => <text key={`nx${t.v}`} x={t.x} y={t.ly} textAnchor="middle" dominantBaseline="central">{t.text}</text>)}
+            {tickNums.y.filter((t) => t.show).map((t) => <text key={`ny${t.v}`} x={t.lx} y={t.y} textAnchor="end" dominantBaseline="central">{t.text}</text>)}
+            {g.xMin <= 0 && g.xMax >= 0 && g.yMin <= 0 && g.yMax >= 0 && (
+              <text x={sx(0) - 6} y={sy(0) + 12} textAnchor="end" dominantBaseline="central" fontStyle="italic">O</text>
+            )}
+          </g>
+        )}
+        {g.axes && <Label x={pad.l + pw - 2} y={axisX - 11} text={g.xLabel} anchor="end" size={14} weight={500} italic />}
+        {g.axes && <Label x={axisY + 9} y={pad.t + 8} text={g.yLabel} anchor="start" size={14} weight={500} italic />}
 
         {/* decorations (not clipped so labels can sit outside the window) */}
         {arr(g.polygons).map((p, i) => {
@@ -313,10 +311,16 @@ function layout(fig, W) {
   if (yMax <= yMin) { yMin = -5; yMax = 5; }
 
   const equal = fig.equal != null ? !!fig.equal : (!g.axes || plotHasGeometry(fig));
-  // Leave room for tick labels when an axis sits on the left/bottom edge.
-  const pad = g.axes
-    ? { l: xMin >= 0 ? 36 : 14, r: 14, t: 14, b: yMin >= 0 ? 24 : 14 }
-    : { l: 28, r: 28, t: 24, b: 24 };
+  // Leave room for the axis numbers when an axis sits at (or near) the left/bottom edge.
+  let pad = { l: 28, r: 28, t: 24, b: 24 };
+  if (g.axes) {
+    const yNumW = Math.max(...[yMin, yMax].map((v) => fmtNum(Math.round(v * 100) / 100).length)) * 6.5 + 10;
+    const approxW = W - 28;
+    const leftRoom = xMin >= 0 ? 0 : ((0 - xMin) / (xMax - xMin)) * approxW;
+    const approxH = equal ? approxW * ((yMax - yMin) / (xMax - xMin)) : 300;
+    const bottomRoom = yMin >= 0 ? 0 : ((0 - yMin) / (yMax - yMin)) * Math.min(520, Math.max(206, approxH));
+    pad = { l: Math.max(14, Math.ceil(yNumW - leftRoom)), r: 14, t: 14, b: Math.max(14, Math.ceil(24 - bottomRoom)) };
+  }
   const pw = W - pad.l - pad.r;
   let ph;
   if (equal) {
@@ -383,13 +387,26 @@ function layout(fig, W) {
       const range = (xMax - xMin) / Math.PI;
       const k = [1 / 6, 1 / 4, 1 / 2, 1, 2].find((s) => range / s <= 12) || 2;
       xs = k * Math.PI; tickLabel = piLabel;
-    } else xs = isNum(fig.xStep) && +fig.xStep > 0 ? +fig.xStep : niceStep(xMax - xMin, Math.max(4, Math.min(12, pw / 40)));
-    const ys = isNum(fig.yStep) && +fig.yStep > 0 ? +fig.yStep : niceStep(yMax - yMin, Math.max(3, Math.min(12, ph / 32)));
+    } else xs = isNum(fig.xStep) && +fig.xStep > 0 ? +fig.xStep : niceStep(xMax - xMin, Math.max(4, Math.min(10, pw / 50)));
+    const ys = isNum(fig.yStep) && +fig.yStep > 0 ? +fig.yStep : niceStep(yMax - yMin, Math.max(3, Math.min(10, ph / 40)));
     if ((xMax - xMin) / xs <= 60) for (let v = Math.ceil(xMin / xs - 1e-9) * xs; v <= xMax + 1e-9; v += xs) xTicks.push(Math.round(v / xs) * xs);
     if ((yMax - yMin) / ys <= 60) for (let v = Math.ceil(yMin / ys - 1e-9) * ys; v <= yMax + 1e-9; v += ys) yTicks.push(Math.round(v / ys) * ys);
   }
   const axisX = yMin <= 0 && yMax >= 0 ? sy(0) : (yMin > 0 ? sy(yMin) : sy(yMax));
   const axisY = xMin <= 0 && xMax >= 0 ? sx(0) : (xMin > 0 ? sx(xMin) : sx(xMax));
 
-  return { H, pad, pw, ph, sx, sy, g, curves, xTicks, yTicks, axisX, axisY, tickLabel, errors };
+  // Points (and their labels) win over axis numbers that would sit underneath them.
+  const marks = arr(fig.points).filter((p) => pt(p.x, p.y)).map((p) => ({ x: sx(+p.x), y: sy(+p.y) }));
+  const blocked = (x, y, w) => marks.some((m) => Math.abs(m.x - x) < w / 2 + 8 && Math.abs(m.y - y) < 16);
+  const tickNums = {
+    x: xTicks.filter((v) => Math.abs(v) > 1e-9 || Math.abs(axisY - sx(0)) > 1).map((v) => {
+      const text = tickLabel(v); const x = sx(v); const ly = Math.min(axisX + 13, H - 6);
+      return { v, x, ly, text, show: !blocked(x, ly, text.length * 6.5) };
+    }),
+    y: yTicks.filter((v) => Math.abs(v) > 1e-9 || Math.abs(axisX - sy(0)) > 1).map((v) => {
+      const text = fmtNum(v); const y = sy(v); const lx = axisY - 6;
+      return { v, y, lx, text, show: !blocked(lx - text.length * 3.25, y, text.length * 6.5) };
+    }),
+  };
+  return { H, pad, pw, ph, sx, sy, g, curves, xTicks, yTicks, axisX, axisY, tickNums, errors };
 }
