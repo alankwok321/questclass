@@ -15,14 +15,14 @@ export function textWidth(text, size = 13) {
       t = t.replace(/\\(d?frac)\{([^}]*)\}\{([^}]*)\}/g, (_, __, a, b) => (a.length > b.length ? a : b));
       t = t.replace(/\\(sin|cos|tan|log|ln|exp|min|max)/g, '$1');
       t = t.replace(/\\[a-zA-Z]+/g, 'x');
-      extra += (t.match(/[=<>+\-−≤≥]|\\le|\\ge/g) || []).length * size * 0.45;
+      extra += (t.match(/[=<>+\-−≤≥]|\\le|\\ge/g) || []).length * size * 0.55;
       t = t.replace(/[{}^_\\]/g, '');
     }
     for (const ch of t) {
       w += /[⺀-鿿＀-￯]/.test(ch) ? size
-        : /[A-Z0-9()]/.test(ch) ? size * 0.64
+        : /[A-Z0-9()]/.test(ch) ? size * (math ? 0.75 : 0.64)
         : ch === ' ' ? size * 0.3
-        : size * (math ? 0.62 : 0.55);
+        : size * (math ? 0.72 : 0.55);
     }
     w += extra;
   });
@@ -49,12 +49,14 @@ export function createPlacer(width, height) {
   const segs = [];   // [x1, y1, x2, y2]
   const rects = [];  // { box, weight }
   const placed = []; // boxes of labels already placed
+  const owned = new Map(); // owner id → sampled points of that curve/line (to keep labels next to their own)
 
   const api = {
     addSegment(a, b) {
       if ([a.x, a.y, b.x, b.y].every(Number.isFinite)) segs.push([a.x, a.y, b.x, b.y]);
     },
-    addPolyline(pts, step = 1) {
+    addPolyline(pts, step = 1, owner) {
+      if (owner) owned.set(owner, [...(owned.get(owner) || []), ...pts.filter((_, i) => i % step === 0)]);
       for (let i = step; i < pts.length; i += step) api.addSegment(pts[i - step], pts[i]);
       if (pts.length > 1 && (pts.length - 1) % step) api.addSegment(pts[pts.length - 1 - ((pts.length - 1) % step)], pts[pts.length - 1]);
     },
@@ -65,8 +67,9 @@ export function createPlacer(width, height) {
       let c = 0;
       const pad = 3; const out = Math.max(0, pad - box.l) + Math.max(0, box.r - (width - pad)) + Math.max(0, pad - box.t) + Math.max(0, box.b - (height - pad));
       c += out * 8;
-      const shrunk = { l: box.l + 1, r: box.r - 1, t: box.t + 1, b: box.b - 1 };
-      for (const s of segs) if (segHitsBox(s[0], s[1], s[2], s[3], shrunk)) c += 25;
+      // A little breathing room: a line grazing the label's edge looks as bad as one through it.
+      const grown = { l: box.l - 3, r: box.r + 3, t: box.t - 2, b: box.b + 2 };
+      for (const s of segs) if (segHitsBox(s[0], s[1], s[2], s[3], grown)) c += 25;
       for (const { box: rb, weight } of rects) if (overlap(box, rb) > 0) c += weight + overlap(box, rb) * 0.05;
       for (const pb of placed) { const o = overlap(box, pb); if (o > 0) c += 60 + o * 0.2; }
       return c;
@@ -76,17 +79,48 @@ export function createPlacer(width, height) {
      * candidates: [{ x, y }] label centres in order of preference.
      * Returns the chosen centre and remembers the label so later ones avoid it.
      */
-    place(text, candidates, { size = 13, h = size + 5 } = {}) {
+    // Distance from a box to the nearest sampled point of a curve/line.
+    distTo(box, pts) {
+      let d = Infinity;
+      for (const p of pts) {
+        const dx = Math.max(box.l - p.x, 0, p.x - box.r); const dy = Math.max(box.t - p.y, 0, p.y - box.b);
+        const v = Math.hypot(dx, dy);
+        if (v < d) d = v;
+      }
+      return d;
+    },
+
+    /**
+     * candidates: [{ x, y, pen?, ax?, ay? }] label centres in order of preference.
+     * owner: the curve/line the label names — the label must end up nearer to it than to any other.
+     * Returns the chosen centre (plus a leader line when it sits away from its curve).
+     */
+    place(text, candidates, { size = 13, h = size + 5, owner } = {}) {
       const w = textWidth(text, size);
+      const mine = owner ? owned.get(owner) : null;
+      const others = owner ? [...owned].filter(([k]) => k !== owner).map(([, v]) => v) : [];
       let best = null;
       candidates.forEach((cand, i) => {
         const box = boxOf(cand.x, cand.y, w, h);
-        const c = api.cost(box) + (cand.pen ?? i * 0.8);
-        if (!best || c < best.c) best = { c, x: cand.x, y: cand.y, box };
+        let c = api.cost(box) + (cand.pen ?? i * 0.8);
+        if (mine?.length) {
+          const dMine = api.distTo(box, mine);
+          c += dMine * 0.6;
+          // Nearer to another curve than to its own: a reader would match it to the wrong graph.
+          for (const o of others) if (api.distTo(box, o) < dMine + 4) { c += 80; break; }
+        }
+        if (!best || c < best.c) best = { c, x: cand.x, y: cand.y, box, ax: cand.ax, ay: cand.ay, d: mine?.length ? api.distTo(box, mine) : 0 };
       });
       if (!best) return null;
       placed.push(best.box);
-      return { x: best.x, y: best.y, box: best.box };
+      const res = { x: best.x, y: best.y, box: best.box };
+      if (best.d > 10 && Number.isFinite(best.ax)) {
+        // Leader from the box edge to the curve point.
+        const ex = Math.max(best.box.l, Math.min(best.ax, best.box.r));
+        const ey = Math.max(best.box.t, Math.min(best.ay, best.box.b));
+        res.leader = { x1: ex, y1: ey, x2: best.ax, y2: best.ay };
+      }
+      return res;
     },
     placedBoxes: () => placed,
   };

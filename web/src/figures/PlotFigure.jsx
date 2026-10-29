@@ -209,7 +209,10 @@ export default function PlotFigure({ fig, maxWidth = 440, caption }) {
         ))}
 
         {arr(g.lines).map((l, i) => labels.lines[i] && (
-          <Label key={`ll${i}`} x={labels.lines[i].x} y={labels.lines[i].y} text={l.label} color={l.color || INK} />
+          <g key={`ll${i}`}>
+            {labels.lines[i].leader && <line {...labels.lines[i].leader} stroke={l.color || INK} strokeWidth="1" />}
+            <Label x={labels.lines[i].x} y={labels.lines[i].y} text={l.label} color={l.color || INK} />
+          </g>
         ))}
 
         {arr(g.circles).map((c, i) => {
@@ -240,7 +243,10 @@ export default function PlotFigure({ fig, maxWidth = 440, caption }) {
         ))}
 
         {arr(g.functions).map((f, i) => labels.functions[i] && (
-          <Label key={`fl${i}`} x={labels.functions[i].x} y={labels.functions[i].y} text={f.label} color={curves[i].color} />
+          <g key={`fl${i}`}>
+            {labels.functions[i].leader && <line {...labels.functions[i].leader} stroke={curves[i].color} strokeWidth="1" />}
+            <Label x={labels.functions[i].x} y={labels.functions[i].y} text={f.label} color={curves[i].color} />
+          </g>
         ))}
 
         {arr(g.points).map((p, i) => {
@@ -434,12 +440,14 @@ function placeLabels(data) {
     pl.addRect({ l: pad.l + pw - 14, r: pad.l + pw + 4, t: axisX - 20, b: axisX - 2 }, 20); // "x"
     pl.addRect({ l: axisY + 2, r: axisY + 18, t: pad.t - 2, b: pad.t + 16 }, 20); // "y"
   }
-  curves.forEach((c) => (c.runs || []).forEach((run) => pl.addPolyline(run, 3)));
-  const lineEnds = arr(g.lines).map((l) => {
+  curves.forEach((c, i) => (c.runs || []).forEach((run) => pl.addPolyline(run, 3, `f${i}`)));
+  const lineEnds = arr(g.lines).map((l, li) => {
     if (!pt(l.x1, l.y1) || !pt(l.x2, l.y2)) return null;
     const [a, b] = extend(l, g, l.kind === 'ray');
     const e = [P(a.x, a.y), P(b.x, b.y)];
-    pl.addSegment(e[0], e[1]);
+    const pts = [];
+    for (let k = 0; k <= 40; k += 1) pts.push({ x: e[0].x + ((e[1].x - e[0].x) * k) / 40, y: e[0].y + ((e[1].y - e[0].y) * k) / 40 });
+    pl.addPolyline(pts, 1, `l${li}`);
     return e;
   });
   arr(g.segments).forEach((s) => { if (pt(s.x1, s.y1) && pt(s.x2, s.y2)) pl.addSegment(P(s.x1, s.y1), P(s.x2, s.y2)); });
@@ -522,22 +530,24 @@ function placeLabels(data) {
       const q = P(v.x, v.y);
       [6, 18, 32].forEach((gap, gi) => {
         aroundPoint(q, f.label, { gap, prefer: { x: -1, y: -1 } }).slice(0, 8).forEach((cand, di) => {
-          cands.push({ ...cand, pen: fi * 0.6 + gi * 4 + di * 0.4 });
+          cands.push({ ...cand, ax: q.x, ay: q.y, pen: fi * 0.6 + gi * 4 + di * 0.4 });
         });
       });
     });
-    return pl.place(f.label, cands);
+    return pl.place(f.label, cands, { owner: `f${i}` });
   });
   out.lines = arr(g.lines).map((l, i) => {
     const e = lineEnds[i];
     if (!l.label || !e) return null;
     const [a, b] = e;
     const cands = [];
-    for (const frac of [0.88, 0.72, 0.12, 0.28, 0.5]) {
+    [0.88, 0.8, 0.72, 0.64, 0.12, 0.2, 0.28, 0.36, 0.5].forEach((frac, fi) => {
       const m = { x: a.x + (b.x - a.x) * frac, y: a.y + (b.y - a.y) * frac };
-      cands.push(...besideSegment({ x: m.x - (b.x - a.x) * 0.01, y: m.y - (b.y - a.y) * 0.01 }, { x: m.x + (b.x - a.x) * 0.01, y: m.y + (b.y - a.y) * 0.01 }, l.label).filter((_, k) => k % 5 === 0));
-    }
-    return pl.place(l.label, cands);
+      besideSegment({ x: m.x - (b.x - a.x) * 0.01, y: m.y - (b.y - a.y) * 0.01 }, { x: m.x + (b.x - a.x) * 0.01, y: m.y + (b.y - a.y) * 0.01 }, l.label)
+        .filter((_, k) => k % 5 === 0)
+        .forEach((cand, si) => cands.push({ ...cand, ax: m.x, ay: m.y, pen: fi * 0.6 + si * 1.5 }));
+    });
+    return pl.place(l.label, cands, { owner: `l${i}` });
   });
 
   // Axis numbers under a point or a label make way.
