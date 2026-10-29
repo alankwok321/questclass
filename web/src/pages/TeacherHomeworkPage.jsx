@@ -16,6 +16,7 @@ import QuestionPreview from '../components/QuestionPreview.jsx';
 import MathText from '../components/MathText.jsx';
 import QuestionStem, { questionGraph } from '../components/QuestionStem.jsx';
 import { OptionContent } from '../figures/Figure.jsx';
+import { FIGURE_EXAMPLES, FIGURE_MODES, figurePromptLines, normalizeAiQuestion } from '../figures/aiPrompt.js';
 import Avatar from '../components/Avatar.jsx';
 
 const EMPTY_FORM = { title: '', description: '', dueAt: '', targetType: 'all', targetClass: '', targetStudentUids: [] };
@@ -327,7 +328,7 @@ function QuestionBankPicker({ alreadyIds, onAdd, onClose }) {
 
 // ── AI Generate Modal ─────────────────────────────────────────────────────────
 function AiModal({ form, onClose, onAdd }) {
-  const [aiForm, setAiForm] = useState({ topic: form.title || '', count: 5, level: 'S1' });
+  const [aiForm, setAiForm] = useState({ topic: form.title || '', count: 5, level: 'S1', figures: 'auto' });
   const [loading, setLoading] = useState(false);
 
   async function generate() {
@@ -340,11 +341,23 @@ function AiModal({ form, onClose, onAdd }) {
           topic: 'teacher-homework',
           mode: 'generate',
           studentName: 'teacher',
-          message: `標題：${form.title}\n主題：${aiForm.topic || form.title}\n年級：${aiForm.level}\n題數：${aiForm.count}`,
-          system: `你是一個老師助教。請產出「作業題目」JSON，輸出必須是純 JSON，不要 markdown。\n只能使用以下題型：TRUE_FALSE、MULTIPLE_CHOICE、SHORT_ANSWER、FILL_IN_BLANK\n依照香港學制（HK）調整難度，target_level: ${aiForm.level}\n數學式用 LaTeX 並以 $…$ 包住（JSON 內反斜線寫兩個，如 \\\\frac）。\n輸出格式：{"questions":[{"type":"MULTIPLE_CHOICE","question_text":"題目","options":[{"id":"A","text":"選項A","is_correct":true},{"id":"B","text":"選項B","is_correct":false}],"points":1},{"type":"TRUE_FALSE","question_text":"陳述句","correct_answer":true,"points":1},{"type":"SHORT_ANSWER","question_text":"問題","ideal_answer":"參考答案","points":2}]}\n請產出 ${aiForm.count} 題。`,
+          message: `標題：${form.title}\n主題：${aiForm.topic || form.title}\n年級：${aiForm.level}\n題數：${aiForm.count}\n圖形：${FIGURE_MODES.find(m => m[0] === aiForm.figures)?.[1]}`,
+          system: [
+            '你是一個老師助教。請產出「作業題目」JSON，輸出必須是純 JSON，不要 markdown。',
+            '只能使用以下題型：TRUE_FALSE、MULTIPLE_CHOICE、SHORT_ANSWER、FILL_IN_BLANK',
+            `依照香港學制（HK）調整難度，target_level: ${aiForm.level}`,
+            '數學式用 LaTeX 並以 $…$ 包住（JSON 內反斜線寫兩個，如 \\\\frac）。',
+            ...figurePromptLines(aiForm.figures),
+            '輸出格式：{"questions":[',
+            '{"type":"MULTIPLE_CHOICE","question_text":"題目","options":[{"id":"A","text":"選項A","is_correct":true},{"id":"B","text":"選項B","is_correct":false}],"points":1},',
+            '{"type":"TRUE_FALSE","question_text":"陳述句","correct_answer":true,"points":1},',
+            ...(aiForm.figures === 'none' ? [] : FIGURE_EXAMPLES),
+            '{"type":"SHORT_ANSWER","question_text":"問題","ideal_answer":"參考答案","points":2}',
+            `]}\n請產出 ${aiForm.count} 題。`,
+          ].join('\n'),
       });
       const newQs = generated.map((q, i) => stripUndefined({
-        ...q,
+        ...normalizeAiQuestion(q),
         id: `q_${Date.now()}_${i}`,
         prompt: q.question_text || q.prompt || '',
       }));
@@ -393,6 +406,12 @@ function AiModal({ form, onClose, onAdd }) {
               {['P1','P2','P3','P4','P5','P6','S1','S2','S3','S4','S5','S6'].map(l => (
                 <option key={l} value={l}>{l}</option>
               ))}
+            </select>
+          </label>
+          <label style={labelStyle}>
+            圖形 / 圖表
+            <select style={inputStyle} value={aiForm.figures} onChange={e => setAiForm(f => ({ ...f, figures: e.target.value }))}>
+              {FIGURE_MODES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
             </select>
           </label>
         </div>

@@ -10,6 +10,7 @@ import { MathField, MathHelp } from '../components/MathEditors.jsx';
 import { questionGraph } from '../components/QuestionStem.jsx';
 import FiguresEditor from '../figures/FigureEditors.jsx';
 import { editableFigures, figuresToSave, mediaWithFigures } from '../figures/model.js';
+import { FIGURE_EXAMPLES, FIGURE_MODES, figurePromptLines, normalizeAiQuestion } from '../figures/aiPrompt.js';
 
 const SUPPORTED_TYPES = ['TRUE_FALSE','MULTIPLE_CHOICE','FILL_IN_BLANK','MATCHING','SHORT_ANSWER','LONG_ANSWER'];
 const GRADES = ['P1','P2','P3','P4','P5','P6','S1','S2','S3','S4','S5','S6'];
@@ -330,6 +331,7 @@ function AiModal({ onClose, onSave }) {
   const [topic, setTopic] = useState('');
   const [count, setCount] = useState(5);
   const [level, setLevel] = useState('S1');
+  const [figureMode, setFigureMode] = useState('auto');
   const [types, setTypes] = useState({
     MULTIPLE_CHOICE: true, TRUE_FALSE: true, SHORT_ANSWER: true,
     FILL_IN_BLANK: false, MATCHING: false, LONG_ANSWER: false,
@@ -357,15 +359,10 @@ function AiModal({ onClose, onSave }) {
         `只能使用以下題型：${typesStr}`,
         `依照香港學制（HK）調整難度，target_level: ${level}`,
         '數學式一律用 KaTeX/LaTeX 寫並用 $…$ 包住（獨立一行用 $$…$$），題目、選項、答案都適用，例如 "解 $x^2-5x+6=0$"、"$\\\\frac{3}{4}$"。JSON 字串內的反斜線要寫成兩個（\\\\frac）。金錢可寫 $5（$ 後面直接接數字）。',
-        '如題目需要圖形，加上 "media":{"figures":[…]}（不需要就不要加）。圖形種類（type）：',
-        '1) "plot" 座標圖／平面幾何：{"type":"plot","xMin":-5,"xMax":5,"yMin":-5,"yMax":5,"axes":true,"xUnit":""(或"deg"表示 0°–360°),"functions":[{"expr":"x^2-2x-3","label":"$y=x^2-2x-3$","shade":""}],"points":[{"x":1,"y":2,"label":"A"}],"lines":[{"x1":0,"y1":1,"x2":1,"y2":3,"label":"$L$"}],"segments":[{"x1":0,"y1":0,"x2":3,"y2":0,"label":"3 cm","ticks":0,"arrows":0}],"polygons":[{"vertices":[{"x":0,"y":0,"label":"A","mark":"right"},{"x":4,"y":0,"label":"B","mark":"1","angleLabel":"$\\\\theta$"},{"x":0,"y":3,"label":"C"}],"sides":[{"label":"4 cm"},{"label":"$x$"},{"label":"3 cm"}],"fill":false}],"circles":[{"cx":0,"cy":0,"r":3,"centreLabel":"O"}],"arcs":[{"cx":0,"cy":0,"r":3,"start":0,"end":60,"sector":true}],"angles":[{"ax":1,"ay":0,"bx":0,"by":0,"cx":0,"cy":1,"mark":"1","label":"$40^\\\\circ$"}],"texts":[{"x":1,"y":1,"text":"N"}]}。純幾何圖用 "axes":false，座標要按比例。mark 可為 none/1/2/3/right。expr 只用 x、+ - * / ^、括號、sqrt abs sin cos tan ln log exp pi。',
-        '2) "solid" 立體圖形：{"type":"solid","shape":"cuboid|cube|pyramid|tetrahedron|prism|rightprism|cylinder|cone|frustum|sphere|hemisphere","a":6,"b":4,"c":3,"labels":"A,B,C,D,E,F,G,H","points":[{"label":"M","of":"BC","t":0.5}],"segments":[{"from":"A","to":"G","style":"dashed","label":""}],"angles":[{"at":"A","from":"C","to":"G","mark":"1","label":"$\\\\theta$"}]}。長方體頂點 A,B,C,D 為底面（D 在後左），E,F,G,H 在其上；角錐 A,B,C,D 為底，V 為頂點；圓錐 labels 次序為 頂點,底圓心,底右,底左。',
-        '3) "stats" 統計圖：{"type":"stats","chart":"bar|line|histogram|freqpoly|cumfreq|pie|box|scatter|stemleaf|dot","xLabel":"","yLabel":"頻數","data":"每行一項，以逗號分隔，例如 10-19, 4\\n20-29, 9"}（box 每行：名稱, 最小值, Q1, 中位數, Q3, 最大值；cumfreq 每行：上組界, 累積頻數）。',
-        '4) "numberline"：{"type":"numberline","min":-5,"max":5,"step":1,"intervals":[{"from":-2,"to":"","fromIncl":true,"toIncl":false}]}（"" 表示無限）；5) "venn"：{"type":"venn","sets":2,"labels":["A","B"],"regions":{"a":"5","b":"8","ab":"3","none":"4"},"shaded":["ab"]}；6) "tree"：{"type":"tree","text":"R | $\\\\frac{3}{5}$\\n  R | $\\\\frac{2}{4}$\\n  B | $\\\\frac{2}{4}$\\nB | $\\\\frac{2}{5}$","showOutcomes":true}。',
-        '選擇題的選項亦可各自有圖：{"id":"A","text":"","is_correct":true,"figures":[…]}。表格可在 question_text 內用「| 分數 | 10–19 |」每行一列。',
+        ...figurePromptLines(figureMode),
         '輸出格式示例：{"questions":[',
         '{"type":"MULTIPLE_CHOICE","question_text":"題目","topic":"主題","target_level":"S1","points":1,"options":[{"id":"A","text":"A選項","is_correct":true},{"id":"B","text":"B選項","is_correct":false}]},',
-        '{"type":"MULTIPLE_CHOICE","question_text":"下圖是 $y=x^2-2x-3$ 的圖像。它與 $x$ 軸的交點是？","points":1,"media":{"figures":[{"type":"plot","xMin":-3,"xMax":5,"yMin":-5,"yMax":6,"functions":[{"expr":"x^2-2x-3"}]}]},"options":[{"id":"A","text":"$(-1,0)$ 和 $(3,0)$","is_correct":true},{"id":"B","text":"$(1,0)$ 和 $(-3,0)$","is_correct":false}]},',
+        ...(figureMode === 'none' ? [] : FIGURE_EXAMPLES),
         '{"type":"TRUE_FALSE","question_text":"陳述句","correct_answer":true,"points":1},',
         '{"type":"SHORT_ANSWER","question_text":"問題","ideal_answer":"答案","points":2},',
         '{"type":"FILL_IN_BLANK","question_text":"句子[____]填空","blanks":[{"position":1,"accepted":["答案"]}],"points":1},',
@@ -376,12 +373,12 @@ function AiModal({ onClose, onSave }) {
       const generated = await generateQuestions({
         idToken: token, topic: 'teacher-question-bank', mode: 'generate',
         studentName: 'teacher',
-        message: `主題：${topic || '（不限）'}\n年級：${level}\n題數：${count}\n題型：${typesStr}`,
+        message: `主題：${topic || '（不限）'}\n年級：${level}\n題數：${count}\n題型：${typesStr}\n圖形：${FIGURE_MODES.find(m => m[0] === figureMode)?.[1]}`,
         system,
       });
       const qs = generated
         .filter(q => q && selectedTypes.includes(String(q.type || '').toUpperCase()))
-        .map(q => stripUndef({ ...q, type: String(q.type).toUpperCase(), target_level: q.target_level || level }));
+        .map(q => stripUndef(normalizeAiQuestion({ ...q, type: String(q.type).toUpperCase(), target_level: q.target_level || level })));
       if (!qs.length) throw new Error('AI 產生的題型不符合所選題型，請再試一次');
       setCandidates(qs);
       setChecked(Object.fromEntries(qs.map((_, i) => [i, true])));
@@ -482,6 +479,24 @@ function AiModal({ onClose, onSave }) {
                       {typeLabel(t)}
                     </button>
                   ))}
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: '#6E6E73' }}>圖形 / 圖表</div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                  {FIGURE_MODES.map(([v, label]) => (
+                    <button key={v} type="button"
+                      style={figureMode === v
+                        ? { ...btnPrimary, background: '#5E5CE6', padding: '8px 16px' }
+                        : { ...btnGhost, padding: '8px 16px' }}
+                      onClick={() => setFigureMode(v)}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                <div style={{ fontSize: 12, color: '#86868B', fontWeight: 500 }}>
+                  「需要時加圖」：幾何、函數圖像、統計、概率等題目會附圖。「每題都要有圖」：每題都圍繞圖形出題。
                 </div>
               </div>
             </div>
