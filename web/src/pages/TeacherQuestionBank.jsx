@@ -36,7 +36,7 @@ function stripUndef(obj) {
 }
 
 // Tidy a question before saving: drop empty accepted answers and an empty graph.
-function cleanForSave(item) {
+export function cleanForSave(item) {
   const out = { ...item };
   if (Array.isArray(out.blanks)) {
     out.blanks = out.blanks.map(b => ({ ...b, accepted: (Array.isArray(b.accepted) ? b.accepted : []).map(a => String(a).trim()).filter(Boolean) }));
@@ -96,7 +96,7 @@ const EMPTY_ITEM = {
 };
 
 // ── Question Edit Form ─────────────────────────────────────────────────────────
-function QuestionEditForm({ item, onChange }) {
+export function QuestionEditForm({ item, onChange }) {
   const ty = String(item.type || '').toUpperCase();
 
   function field(label, content, { asDiv = false } = {}) {

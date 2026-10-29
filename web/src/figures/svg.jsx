@@ -49,7 +49,6 @@ export function AngleMark({ V, P, N, mark = '1', label, color = INK, radius = 20
   let d = Math.atan2(u2.y, u2.x) - a1;
   while (d <= -Math.PI) d += 2 * Math.PI;
   while (d > Math.PI) d -= 2 * Math.PI;
-  const mid = a1 + d / 2;
   const els = [];
   if (mark === 'right') {
     const s = 11;
@@ -69,10 +68,22 @@ export function AngleMark({ V, P, N, mark = '1', label, color = INK, radius = 20
     }
   }
   if (label) {
-    const r = (Math.abs(d) < 0.5 ? radius + 26 : radius + 16) + (mark === 'right' ? 4 : 0);
-    els.push(<Label key="l" x={V.x + r * Math.cos(mid)} y={V.y + r * Math.sin(mid)} text={label} color={color} size={12} />);
+    const q = angleLabelPos(V, P, N, mark, radius);
+    els.push(<Label key="l" x={q.x} y={q.y} text={label} color={color} size={12} />);
   }
   return <g>{els}</g>;
+}
+
+/** Where AngleMark puts its label (on the bisector, just outside the arc). */
+export function angleLabelPos(V, P, N, mark = '1', radius = 20) {
+  const u1 = unit(sub(P, V)); const u2 = unit(sub(N, V));
+  const a1 = Math.atan2(u1.y, u1.x);
+  let d = Math.atan2(u2.y, u2.x) - a1;
+  while (d <= -Math.PI) d += 2 * Math.PI;
+  while (d > Math.PI) d -= 2 * Math.PI;
+  const mid = a1 + d / 2;
+  const r = (Math.abs(d) < 0.5 ? radius + 26 : radius + 16) + (mark === 'right' ? 4 : 0);
+  return { x: V.x + r * Math.cos(mid), y: V.y + r * Math.sin(mid) };
 }
 
 /**
@@ -117,13 +128,14 @@ export function VertexLabel({ p, centre, text, color = INK, dist = 14 }) {
   return <Label x={p.x + d.x * dist} y={p.y + d.y * dist} text={text} color={color} size={14} weight={600} italic={!/[$\d]/.test(text)} />;
 }
 
-export function Frame({ width, height, children, label = '圖', maxWidth = 440, caption, style }) {
+export function Frame({ width, height, children, label = '圖', maxWidth = 440, caption, style, svgRef, svgProps, overlay }) {
   return (
-    <figure className="qcFigure" style={{ margin: 0, maxWidth, width: '100%', ...style }}>
-      <svg viewBox={`0 0 ${width} ${height}`} width="100%" role="img" aria-label={label}
-        style={{ display: 'block', background: '#fff', borderRadius: 12, border: '1px solid rgba(0,0,0,0.10)', fontFamily: 'inherit', overflow: 'visible' }}>
+    <figure className="qcFigure" style={{ margin: 0, maxWidth, width: '100%', position: 'relative', ...style }}>
+      <svg ref={svgRef} viewBox={`0 0 ${width} ${height}`} width="100%" role="img" aria-label={label} {...svgProps}
+        style={{ display: 'block', background: '#fff', borderRadius: 12, border: '1px solid rgba(0,0,0,0.10)', fontFamily: 'inherit', overflow: 'visible', touchAction: svgProps ? 'none' : undefined, ...(svgProps?.style || {}) }}>
         {children}
       </svg>
+      {overlay}
       {caption ? (
         <figcaption style={{ textAlign: 'center', fontSize: 13, color: '#3A3A3C', marginTop: 4 }}>
           <MathText text={caption} />

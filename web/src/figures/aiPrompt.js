@@ -26,6 +26,7 @@ export function figurePromptLines(mode = 'auto') {
     '3) "stats" 統計圖：{"type":"stats","chart":"bar|line|histogram|freqpoly|cumfreq|pie|box|scatter|stemleaf|dot","xLabel":"分數","yLabel":"頻數","data":"10-19, 4\\n20-29, 9"}（每行一項；box 每行：名稱, 最小值, Q1, 中位數, Q3, 最大值；cumfreq 每行：上組界, 累積頻數；stemleaf 給原始數據）。',
     '4) "numberline"：{"type":"numberline","min":-5,"max":5,"step":1,"intervals":[{"from":-2,"to":"","fromIncl":true,"toIncl":false}]}（"" 表示無限）；5) "venn"：{"type":"venn","sets":2,"labels":["A","B"],"regions":{"a":"5","b":"8","ab":"3","none":"4"},"shaded":["ab"]}；6) "tree"：{"type":"tree","text":"R | $\\\\frac{3}{5}$\\n  R | $\\\\frac{2}{4}$\\n  B | $\\\\frac{2}{4}$\\nB | $\\\\frac{2}{5}$\\n  R | $\\\\frac{3}{4}$\\n  B | $\\\\frac{1}{4}$","showOutcomes":true}（下一層前加兩個空格）。',
     '選擇題的選項亦可各自有圖（例如「下列哪一個是 y = … 的圖像？」）：{"id":"A","text":"","is_correct":true,"figures":[…]}。表格可在 question_text 內用「| 分數 | 10–19 |」每行一列。',
+    '標籤只寫題目需要的資料：點的名稱寫在點或頂點的 label；邊、線段、直線的 label 只可寫長度、數值或未知數（例如 "8 cm"、"$x$"），不要寫該線的名稱（不要寫 "AB"、"CA"、"AT"）；不需要的標籤留空。',
     '圖中的數據必須與題目和答案一致。圖中要學生求的未知量用字母標示（例如 $x$、$y$、$\\theta$），不要用「?」。',
   ];
 }
@@ -78,6 +79,27 @@ function unknownsToLetters(fig) {
   return walk(fig);
 }
 
+// A label that only repeats a line's own name ("AB" on segment AB) adds nothing and crowds the
+// figure — exam diagrams name the points, not the lines.
+const LINE_NAME = /^\$?\s*(\\overline\{)?\s*([A-Z][′']?)\s*([A-Z][′']?)\s*\}?\s*\$?$/;
+function dropLineNames(f) {
+  if (f.type !== 'plot') return f;
+  const names = new Set();
+  const pts = [...asList(f.points), ...asList(f.polygons).flatMap((p) => asList(p?.vertices))];
+  pts.forEach((p) => { if (p?.label) names.add(String(p.label).replace(/[$\s]|\(.*$/g, '')); });
+  asList(f.circles).forEach((c) => { if (c?.centreLabel) names.add(String(c.centreLabel).replace(/[$\s]/g, '')); });
+  const isName = (label) => {
+    const m = LINE_NAME.exec(String(label ?? '').trim());
+    return !!m && (names.has(m[2]) || names.has(m[3]) || names.size === 0);
+  };
+  const clean = (o) => (o && isName(o.label) ? { ...o, label: '' } : o);
+  const out = { ...f };
+  if (out.segments) out.segments = asList(out.segments).map(clean);
+  if (out.lines) out.lines = asList(out.lines).map(clean);
+  if (out.polygons) out.polygons = asList(out.polygons).map((p) => (p ? { ...p, sides: asList(p.sides).map(clean) } : p));
+  return out;
+}
+
 /** One figure from the AI → a valid figure, or null. */
 export function cleanAiFigure(raw) {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
@@ -96,7 +118,7 @@ export function cleanAiFigure(raw) {
     f.data = f.data.map((row) => (Array.isArray(row) ? row.join(', ') : typeof row === 'object' && row ? Object.values(row).join(', ') : String(row))).join('\n');
   }
   if (type === 'tree' && Array.isArray(f.text)) f.text = f.text.join('\n');
-  return figureIsEmpty(f) ? null : unknownsToLetters(f);
+  return figureIsEmpty(f) ? null : unknownsToLetters(dropLineNames(f));
 }
 
 /** Collect figures wherever the AI put them on a question (or an option). */
@@ -122,7 +144,7 @@ export function normalizeAiQuestion(q) {
     out.options = out.options.map((o) => {
       if (!o || typeof o !== 'object') return o;
       const of = collect(o);
-      const { figures: _a, figure: _b, graph: _c, diagram: _d, media: _e, ...ro } = o; // eslint-disable-line no-unused-vars
+      const { figures: _a, figure: _b, graph: _c, diagram: _d, media: _e, ...ro } = o;
       return of.length ? { ...ro, figures: of } : ro;
     });
   }

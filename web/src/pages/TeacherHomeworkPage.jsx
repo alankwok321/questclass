@@ -16,6 +16,7 @@ import QuestionPreview from '../components/QuestionPreview.jsx';
 import MathText from '../components/MathText.jsx';
 import QuestionStem, { questionGraph } from '../components/QuestionStem.jsx';
 import { OptionContent } from '../figures/Figure.jsx';
+import { QuestionEditForm, cleanForSave } from './TeacherQuestionBank.jsx';
 import { FIGURE_EXAMPLES, FIGURE_MODES, figurePromptLines, normalizeAiQuestion } from '../figures/aiPrompt.js';
 import Avatar from '../components/Avatar.jsx';
 
@@ -83,7 +84,32 @@ function fallbackDetails(questions) {
 
 
 // ── Question card (in assignment) ──────────────────────────────────────────────
-function QuestionCard({ q, index, onRemove }) {
+// Edit one question of this homework (text, options, answers, figures) in a dialog.
+function QuestionEditModal({ q, onSave, onClose }) {
+  const [item, setItem] = useState(() => ({ ...q, question_text: q.question_text || q.prompt || '' }));
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, backdropFilter: 'blur(4px)' }}>
+      <div style={{ background: '#fff', borderRadius: 20, width: 980, maxWidth: '96vw', maxHeight: '92vh', display: 'flex', flexDirection: 'column', boxShadow: '0 24px 60px rgba(0,0,0,0.18)', overflow: 'hidden' }}>
+        <div style={{ padding: '16px 22px', borderBottom: '1px solid rgba(0,0,0,0.08)', display: 'flex', alignItems: 'center' }}>
+          <div style={{ fontWeight: 700, fontSize: 16 }}>編輯題目</div>
+          <button onClick={onClose} style={{ ...btnGhost, marginLeft: 'auto', padding: '6px 12px' }}>×</button>
+        </div>
+        <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px' }}>
+          <QuestionEditForm item={item} onChange={setItem} />
+        </div>
+        <div style={{ padding: '14px 22px', borderTop: '1px solid rgba(0,0,0,0.08)', display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+          <button onClick={onClose} style={btnGhost}>取消</button>
+          <button onClick={() => {
+            const clean = cleanForSave(item);
+            onSave({ ...clean, prompt: clean.question_text || '' });
+          }} style={btnPrimary}>完成</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function QuestionCard({ q, index, onRemove, onEdit }) {
   const text = q.question_text || q.prompt || '';
   return (
     <div style={{
@@ -102,6 +128,7 @@ function QuestionCard({ q, index, onRemove }) {
         </div>
         <QuestionStem q={q} text={text} graphWidth={320} style={{ fontSize: 14, fontWeight: 500, color: '#1D1D1F' }} />
       </div>
+      {onEdit && <button onClick={onEdit} style={{ ...btnGhost, padding: '5px 12px', fontSize: 12 }}>編輯</button>}
       <button
         onClick={onRemove}
         style={{ ...btnGhost, padding: '4px 10px', fontSize: 16, lineHeight: 1, color: '#D70015' }}
@@ -686,6 +713,7 @@ export default function TeacherHomeworkPage() {
     window.QuestClassFirebase?.listClassrooms?.().then((r) => setClassOptions((r?.classrooms || []).map((c) => c.name))).catch(() => {});
   }, []);
   const [questions, setQuestions] = useState([]);
+  const [editingQ, setEditingQ] = useState(null);
   const [aiOpen, setAiOpen] = useState(false);
   const [bankOpen, setBankOpen] = useState(false);
   // Title / instructions the teacher typed themselves are never replaced by suggestions.
@@ -1069,9 +1097,14 @@ export default function TeacherHomeworkPage() {
           <div style={{ display: 'grid', gap: 8, gridTemplateColumns: 'minmax(0, 1fr)' }}>
             {questions.map((q, i) => (
               <QuestionCard key={q.id || i} q={q} index={i}
+                onEdit={() => setEditingQ(i)}
                 onRemove={() => setQuestions(prev => prev.filter((_, idx) => idx !== i))} />
             ))}
           </div>
+        )}
+        {editingQ != null && questions[editingQ] && (
+          <QuestionEditModal q={questions[editingQ]} onClose={() => setEditingQ(null)}
+            onSave={(nq) => { setQuestions(prev => prev.map((x, idx) => (idx === editingQ ? nq : x))); setEditingQ(null); }} />
         )}
 
         {/* Footer */}

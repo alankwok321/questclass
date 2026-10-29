@@ -524,8 +524,8 @@ export default function FiguresEditor({ figures, onChange }) {
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 14, alignItems: 'start' }}>
               <div style={{ minWidth: 0 }}>{Ed ? <Ed fig={f} set={(patch) => setAt(i, patch)} /> : null}</div>
               <div style={{ minWidth: 0, position: 'sticky', top: 8 }}>
-                <div style={{ ...S.sub, marginBottom: 6 }}>預覽</div>
-                <Figure fig={f} maxWidth={420} />
+                <div style={{ ...S.sub, marginBottom: 6 }}>{(f.type || 'plot') === 'plot' ? '預覽（可直接在圖上拖動及修改）' : '預覽'}</div>
+                <Figure fig={f} maxWidth={420} edit={(f.type || 'plot') === 'plot'} onChange={(nf) => onChange(list.map((x, j) => (j === i ? nf : x)))} />
                 {f._source && (
                   <div style={{ marginTop: 10 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>

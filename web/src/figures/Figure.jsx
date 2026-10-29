@@ -8,12 +8,12 @@ import MathText from '../components/MathText.jsx';
 
 const SIZES = { S: 0.7, M: 1, L: 1.3 };
 
-export default function Figure({ fig, maxWidth = 440 }) {
+export default function Figure({ fig, maxWidth = 440, edit = false, onChange }) {
   if (!fig) return null;
   const w = Math.round(maxWidth * (SIZES[fig.size] || 1));
   const props = { fig, maxWidth: w, caption: fig.caption };
   switch (fig.type || 'plot') {
-    case 'plot': return <PlotFigure {...props} />;
+    case 'plot': return <PlotFigure {...props} edit={edit} onChange={onChange} />;
     case 'solid': return <SolidFigure {...props} />;
     case 'stats': return <StatsFigure {...props} />;
     case 'numberline': return <NumberLineFigure {...props} />;

@@ -53,3 +53,17 @@ test('"?" labels from the AI become letters', () => {
   assert.equal(f.points[0].label, '(0, $k$)');
   assert.equal(f.polygons[0].sides[0].label, '4 cm');
 });
+
+test('labels that only repeat a line name are removed; lengths and unknowns stay', () => {
+  const f = cleanAiFigure({
+    type: 'plot', axes: false,
+    points: [{ x: 1, y: 0, label: 'A' }, { x: -1, y: 0, label: 'C' }, { x: 1, y: 2, label: 'T' }],
+    polygons: [{ vertices: [{ x: 1, y: 0, label: 'A' }, { x: -0.6, y: 0.8, label: 'B' }, { x: -1, y: 0, label: 'C' }], sides: [{ label: 'AB' }, { label: 'CB' }, { label: '8 cm' }] }],
+    segments: [{ x1: -1, y1: 0, x2: 1, y2: 0, label: '$CA$' }, { x1: 0, y1: 0, x2: 1, y2: 0, label: '$x$' }],
+    lines: [{ x1: 1, y1: 0, x2: 1, y2: 2, label: 'AT' }, { x1: 0, y1: 0, x2: 1, y2: 1, label: '$L_1$' }],
+  });
+  assert.deepEqual(f.polygons[0].sides.map((s) => s.label), ['', '', '8 cm']);
+  assert.deepEqual(f.segments.map((s) => s.label), ['', '$x$']);
+  assert.deepEqual(f.lines.map((s) => s.label), ['', '$L_1$']);
+  assert.equal(f.points[2].label, 'T');
+});
