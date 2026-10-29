@@ -528,13 +528,15 @@ function layout(fig, W) {
   let yMin = num(fig.yMin, -5); let yMax = num(fig.yMax, 5);
   if (xMax <= xMin) { xMin = -5; xMax = 5; }
   if (yMax <= yMin) { yMin = -5; yMax = 5; }
-  // Geometry without axes: never cut a shape off — widen the window to hold everything.
+  // Geometry without axes: the window always fits the shapes (nothing cut off, no empty margin).
   if (!g.axes) {
     const b = plotBounds(fig);
     if (b) {
       const m = Math.max(b.xMax - b.xMin, b.yMax - b.yMin) * 0.08 || 0.5;
-      xMin = Math.min(xMin, b.xMin - m); xMax = Math.max(xMax, b.xMax + m);
-      yMin = Math.min(yMin, b.yMin - m); yMax = Math.max(yMax, b.yMax + m);
+      xMin = b.xMin - m; xMax = b.xMax + m;
+      yMin = b.yMin - m; yMax = b.yMax + m;
+      if (xMax - xMin < 1e-6) { xMin -= 1; xMax += 1; }
+      if (yMax - yMin < 1e-6) { yMin -= 1; yMax += 1; }
     }
   }
 

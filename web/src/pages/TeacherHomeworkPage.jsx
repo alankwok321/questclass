@@ -6,9 +6,8 @@ import {
   listQuestionBank,
   listSubmissionsForAssignment,
   listStudents,
-  getIdToken,
 } from '../services/firebase.js';
-import { deleteArchivedHomework, generateQuestions, suggestHomeworkDetails } from '../services/api.js';
+import { deleteArchivedHomework, suggestHomeworkDetails } from '../services/api.js';
 import { useConfirm } from '../components/Confirm.jsx';
 import { useToast } from '../components/Toast.jsx';
 import QuestionTypeBadge, { formatTypeLabel } from '../components/QuestionTypeBadge.jsx';
@@ -16,8 +15,7 @@ import QuestionPreview from '../components/QuestionPreview.jsx';
 import MathText from '../components/MathText.jsx';
 import QuestionStem, { questionGraph } from '../components/QuestionStem.jsx';
 import { OptionContent } from '../figures/Figure.jsx';
-import { QuestionEditForm, cleanForSave } from './TeacherQuestionBank.jsx';
-import { FIGURE_EXAMPLES, FIGURE_MODES, QUESTION_LANGS, figurePromptLines, languageRule, loadQuestionLang, normalizeAiQuestion, saveQuestionLang } from '../figures/aiPrompt.js';
+import { AiModal, QuestionEditForm, cleanForSave } from './TeacherQuestionBank.jsx';
 import Avatar from '../components/Avatar.jsx';
 
 const EMPTY_FORM = { title: '', description: '', dueAt: '', targetType: 'all', targetClass: '', targetStudentUids: [] };
@@ -353,116 +351,6 @@ function QuestionBankPicker({ alreadyIds, onAdd, onClose }) {
   );
 }
 
-// ── AI Generate Modal ─────────────────────────────────────────────────────────
-function AiModal({ form, onClose, onAdd }) {
-  const [aiForm, setAiForm] = useState(() => ({ topic: form.title || '', count: 5, level: 'S1', figures: 'auto', lang: loadQuestionLang() }));
-  const [loading, setLoading] = useState(false);
-
-  async function generate() {
-    setLoading(true);
-    try {
-      const token = await getIdToken();
-      if (!token) { alert('請先登入才能使用 AI 功能'); return; }
-      const generated = await generateQuestions({
-          idToken: token,
-          topic: 'teacher-homework',
-          mode: 'generate',
-          studentName: 'teacher',
-          message: `標題：${form.title}\n主題：${aiForm.topic || form.title}\n年級：${aiForm.level}\n題數：${aiForm.count}\n圖形：${FIGURE_MODES.find(m => m[0] === aiForm.figures)?.[1]}\n語言 / Language：${aiForm.lang === 'en' ? 'English' : '繁體中文'}`,
-          system: [
-            '你是一個老師助教。請產出「作業題目」JSON，輸出必須是純 JSON，不要 markdown。',
-            '只能使用以下題型：TRUE_FALSE、MULTIPLE_CHOICE、SHORT_ANSWER、FILL_IN_BLANK',
-            `依照香港學制（HK）調整難度，target_level: ${aiForm.level}`,
-            '數學式用 LaTeX 並以 $…$ 包住（JSON 內反斜線寫兩個，如 \\\\frac）。',
-            languageRule(aiForm.lang),
-            ...figurePromptLines(aiForm.figures),
-            '輸出格式：{"questions":[',
-            '{"type":"MULTIPLE_CHOICE","question_text":"題目","options":[{"id":"A","text":"選項A","is_correct":true},{"id":"B","text":"選項B","is_correct":false}],"points":1},',
-            '{"type":"TRUE_FALSE","question_text":"陳述句","correct_answer":true,"points":1},',
-            ...(aiForm.figures === 'none' ? [] : FIGURE_EXAMPLES),
-            '{"type":"SHORT_ANSWER","question_text":"問題","ideal_answer":"參考答案","points":2}',
-            `]}\n請產出 ${aiForm.count} 題。`,
-            languageRule(aiForm.lang),
-          ].join('\n'),
-          language: aiForm.lang,
-      });
-      const newQs = generated.map((q, i) => stripUndefined({
-        ...normalizeAiQuestion(q),
-        id: `q_${Date.now()}_${i}`,
-        prompt: q.question_text || q.prompt || '',
-      }));
-      if (!newQs.length) throw new Error('未產生任何題目');
-      onAdd(newQs);
-      onClose();
-    } catch (e) {
-      alert('AI 產生失敗：' + e.message);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  return (
-    <div style={{
-      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      zIndex: 1000, backdropFilter: 'blur(4px)',
-    }}>
-      <div style={{
-        background: '#fff', borderRadius: 20, padding: 28,
-        width: 420, maxWidth: '92vw',
-        boxShadow: '0 24px 60px rgba(0,0,0,0.15)',
-        border: '1px solid rgba(0,0,0,0.08)',
-      }}>
-        <div style={{ fontWeight: 700, fontSize: 18, marginBottom: 4 }}>✨ AI 產生題目</div>
-        <div style={{ color: '#6E6E73', fontWeight: 500, fontSize: 13, marginBottom: 22 }}>
-          輸入主題，AI 將自動生成適合的作業題目
-        </div>
-        <div style={{ display: 'grid', gap: 16 }}>
-          <label style={labelStyle}>
-            主題 / 科目
-            <input style={inputStyle} value={aiForm.topic}
-              onChange={e => setAiForm(f => ({ ...f, topic: e.target.value }))}
-              placeholder={form.title || '例如：分數、二次大戰…'} />
-          </label>
-          <label style={labelStyle}>
-            題目數量：<strong style={{ color: '#1D1D1F' }}>{aiForm.count} 題</strong>
-            <input type="range" min="1" max="20" value={aiForm.count}
-              onChange={e => setAiForm(f => ({ ...f, count: Number(e.target.value) }))}
-              style={{ width: '100%', marginTop: 4, accentColor: '#0071E3' }} />
-          </label>
-          <label style={labelStyle}>
-            年級程度
-            <select style={inputStyle} value={aiForm.level} onChange={e => setAiForm(f => ({ ...f, level: e.target.value }))}>
-              {['P1','P2','P3','P4','P5','P6','S1','S2','S3','S4','S5','S6'].map(l => (
-                <option key={l} value={l}>{l}</option>
-              ))}
-            </select>
-          </label>
-          <label style={labelStyle}>
-            題目語言
-            <select style={inputStyle} value={aiForm.lang} onChange={e => { setAiForm(f => ({ ...f, lang: e.target.value })); saveQuestionLang(e.target.value); }}>
-              {QUESTION_LANGS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-            </select>
-          </label>
-          <label style={labelStyle}>
-            圖形 / 圖表
-            <select style={inputStyle} value={aiForm.figures} onChange={e => setAiForm(f => ({ ...f, figures: e.target.value }))}>
-              {FIGURE_MODES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-            </select>
-          </label>
-        </div>
-        <div style={{ marginTop: 24, display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-          <button onClick={onClose} style={btnGhost} disabled={loading}>取消</button>
-          <button onClick={generate} style={{ ...btnPrimary, background: '#5E5CE6' }} disabled={loading}>
-            {loading ? '產生中…' : '產生題目'}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ── Submissions View ──────────────────────────────────────────────────────────
 function SubmissionsView({ assignment, onBack }) {
   const [submissions, setSubmissions] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -1140,8 +1028,8 @@ export default function TeacherHomeworkPage() {
         />
       )}
       {aiOpen && (
-        <AiModal form={form} onClose={() => setAiOpen(false)}
-          onAdd={addQuestions} />
+        <AiModal initialTopic={form.title || ''} onClose={() => setAiOpen(false)}
+          onUse={addQuestions} />
       )}
     </div>
   );

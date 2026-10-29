@@ -325,10 +325,14 @@ const OVERLAY = {
   zIndex: 1000, backdropFilter: 'blur(4px)',
 };
 
-function AiModal({ onClose, onSave }) {
+// Shared by 題庫 (saves to the question bank) and 新增作業 (onUse: adds the chosen questions to
+// the homework, optionally also saving them to the bank).
+export function AiModal({ onClose, onSave, onUse, initialTopic = '' }) {
+  const forHomework = typeof onUse === 'function';
+  const [alsoBank, setAlsoBank] = useState(false);
   // Step 1 – settings
   const [step, setStep] = useState(1);
-  const [topic, setTopic] = useState('');
+  const [topic, setTopic] = useState(initialTopic);
   const [count, setCount] = useState(5);
   const [level, setLevel] = useState('S1');
   const [figureMode, setFigureMode] = useState('auto');
@@ -398,6 +402,25 @@ function AiModal({ onClose, onSave }) {
   async function saveSelected() {
     const chosen = candidates.map((q, i) => ({ q, i })).filter(({ i }) => checked[i]);
     if (!chosen.length) return alert('請至少選一題');
+    if (forHomework) {
+      setSaving(true);
+      const out = [];
+      const errors = [];
+      for (const [n, { q }] of chosen.entries()) {
+        const clean = cleanForSave(q);
+        const hq = { ...clean, id: `q_${Date.now()}_${n}_${Math.random().toString(36).slice(2, 6)}`, prompt: clean.question_text || '' };
+        if (alsoBank) {
+          const res = await upsertQuestionBankItem(clean);
+          if (res?.ok) hq.bankId = res.questionId; else errors.push(res?.error || '未知錯誤');
+        }
+        out.push(hq);
+      }
+      setSaving(false);
+      if (errors.length) alert(`已加入作業，但 ${errors.length} 題未能存到題庫：${[...new Set(errors)].join('、')}`);
+      onUse(out);
+      onClose();
+      return;
+    }
     setSaving(true);
     let ok = 0;
     const errors = [];
@@ -435,7 +458,7 @@ function AiModal({ onClose, onSave }) {
           <div>
             <div style={{ fontWeight: 700, fontSize: 16, color: '#1D1D1F' }}>✨ AI 產生題目</div>
             <div style={{ fontSize: 12, fontWeight: 500, color: '#6E6E73', marginTop: 2 }}>
-              {step === 1 ? '設定題目條件' : `已產生 ${candidates.length} 題，可編輯後加入題庫`}
+              {step === 1 ? '設定題目條件' : `已產生 ${candidates.length} 題，可編輯後${forHomework ? '加入作業' : '加入題庫'}`}
             </div>
           </div>
           <button onClick={onClose} style={{ ...btnGhost, padding: '6px 12px', fontSize: 18, lineHeight: 1 }}>×</button>
@@ -598,8 +621,14 @@ function AiModal({ onClose, onSave }) {
           display: 'flex', gap: 10, justifyContent: 'flex-end', alignItems: 'center',
         }}>
           {step === 2 && (
-            <button onClick={() => setStep(1)} style={{ ...btnGhost, marginRight: 'auto' }}
+            <button onClick={() => setStep(1)} style={{ ...btnGhost, marginRight: forHomework ? 0 : 'auto' }}
               disabled={saving}>← 重新設定</button>
+          )}
+          {step === 2 && forHomework && (
+            <label style={{ marginRight: 'auto', display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: '#3A3A3C', fontWeight: 500 }}>
+              <input type="checkbox" checked={alsoBank} onChange={e => setAlsoBank(e.target.checked)} style={{ accentColor: '#5E5CE6' }} />
+              同時儲存到題庫
+            </label>
           )}
           <button onClick={onClose} style={btnGhost} disabled={generating || saving}>取消</button>
           {step === 1 ? (
@@ -614,7 +643,7 @@ function AiModal({ onClose, onSave }) {
               onClick={saveSelected}
               style={{ ...btnPrimary, background: '#5E5CE6' }}
               disabled={saving || checkedCount === 0}>
-              {saving ? '儲存中…' : `加入題庫（${checkedCount}）`}
+              {saving ? '儲存中…' : forHomework ? `加入作業（${checkedCount}）` : `加入題庫（${checkedCount}）`}
             </button>
           )}
         </div>
