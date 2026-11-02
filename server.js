@@ -1422,6 +1422,8 @@ if (fs.existsSync(webDistDir)) {
   // Static assets
   app.use('/web/assets', express.static(path.join(webDistDir, 'assets')));
   app.use('/web', express.static(webDistDir));
+  // Built CSS refers to its fonts (KaTeX) as /assets/…; the HTML rewrite above doesn't reach inside CSS.
+  app.use('/assets', express.static(path.join(webDistDir, 'assets')));
 }
 
 app.get('/api/health', (req, res) => {
@@ -2012,8 +2014,11 @@ app.get('*', (req, res) => {
       || p.startsWith('/app/')
       || spaRoutePrefixes.some((prefix) => p === prefix || p.startsWith(prefix + '/'));
 
-    if (isSpa) {
-      let html = fs.readFileSync(path.join(webDistDir, 'index.html'), 'utf8');
+    // The standalone 題庫 app: same Firebase project and question bank, its own page.
+    const isBank = (p === '/bank' || p.startsWith('/bank/')) && fs.existsSync(path.join(webDistDir, 'bank.html'));
+
+    if (isSpa || isBank) {
+      let html = fs.readFileSync(path.join(webDistDir, isBank ? 'bank.html' : 'index.html'), 'utf8');
       // Make Vite-built asset URLs work under /teacher|/student|... by forcing absolute /web/assets/ paths.
       html = html.replaceAll('/assets/', '/web/assets/');
       html = html.replace('src="/js/firebase-bridge.js"', `src="/js/firebase-bridge.js?v=${PUBLIC_JS_VERSION.bridge}"`);

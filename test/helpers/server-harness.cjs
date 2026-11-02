@@ -51,21 +51,24 @@ global.fetch = async (url, init = {}) => {
 
 // --- virtual web/dist (the Vite build is not present in the repo) ---
 let spaIndexHtml = null;
+let bankHtml = null; // web/dist/bank.html (the standalone 題庫 app)
 const realExists = fs.existsSync;
 const realRead = fs.readFileSync;
 const inDist = (p) => typeof p === 'string' && (p === WEB_DIST || p.startsWith(WEB_DIST + path.sep));
 fs.existsSync = function (p) {
   if (inDist(p)) {
     if (spaIndexHtml == null) return false;
-    return p === WEB_DIST || p === path.join(WEB_DIST, 'index.html');
+    return p === WEB_DIST || p === path.join(WEB_DIST, 'index.html') || (bankHtml != null && p === path.join(WEB_DIST, 'bank.html'));
   }
   return realExists.apply(this, arguments);
 };
 fs.readFileSync = function (p, ...rest) {
   if (inDist(p) && spaIndexHtml != null && p === path.join(WEB_DIST, 'index.html')) return spaIndexHtml;
+  if (inDist(p) && spaIndexHtml != null && bankHtml != null && p === path.join(WEB_DIST, 'bank.html')) return bankHtml;
   return realRead.call(this, p, ...rest);
 };
 function setSpaIndex(html) { spaIndexHtml = html; }
+function setBankHtml(html) { bankHtml = html; }
 
 function loadServer({ env = {}, spaIndex = null } = {}) {
   setEnv(env);
@@ -141,4 +144,4 @@ function resetAll() {
   ai.reset();
 }
 
-module.exports = { loadServer, setEnv, setSpaIndex, call, post, get, getFallback, ai, fbState, seedUsers, resetAll, FIREBASE_ON, ROOT };
+module.exports = { loadServer, setEnv, setSpaIndex, setBankHtml, call, post, get, getFallback, ai, fbState, seedUsers, resetAll, FIREBASE_ON, ROOT };

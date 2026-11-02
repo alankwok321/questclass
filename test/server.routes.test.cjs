@@ -11,6 +11,7 @@ beforeEach(() => {
   h.resetAll();
   h.setEnv({});
   h.setSpaIndex(INDEX);
+  h.setBankHtml(null);
 });
 
 // Every <Route path> in web/src/App.jsx must be served by the SPA fallback.
@@ -112,4 +113,31 @@ test('public scripts are served with Cache-Control: no-cache', () => {
   const headers = {};
   st.opts.setHeaders({ setHeader: (k, v) => { headers[k] = v; } }, '/x/js/firebase-bridge.js');
   assert.equal(headers['Cache-Control'], 'no-cache');
+});
+
+// The standalone 題庫 app (web/bank.html) is served at /bank.
+const BANK = '<!doctype html><script src="/js/firebase-bridge.js"></script><script type="module" src="/assets/bank-xyz.js"></script>';
+for (const p of ['/bank', '/bank/', '/bank/anything']) {
+  test(`${p} serves the 題庫 app`, async () => {
+    h.setBankHtml(BANK);
+    const r = await h.getFallback(app, p);
+    assert.equal(r.status, 200);
+    assert.equal(r.type, 'html');
+    assert.match(r.body, /\/web\/assets\/bank-xyz\.js/);
+    assert.match(r.body, /firebase-bridge\.js\?v=/);
+    assert.doesNotMatch(r.body, /index-abc/);
+  });
+}
+
+for (const p of ['/bankx', '/banking']) {
+  test(`${p} is not the 題庫 app`, async () => {
+    h.setBankHtml(BANK);
+    const r = await h.getFallback(app, p);
+    assert.equal(r.status, 404);
+  });
+}
+
+test('/bank 404s when the build has no bank.html', async () => {
+  const r = await h.getFallback(app, '/bank');
+  assert.equal(r.status, 404);
 });
