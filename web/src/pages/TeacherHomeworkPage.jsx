@@ -15,6 +15,7 @@ import QuestionPreview from '../components/QuestionPreview.jsx';
 import MathText from '../components/MathText.jsx';
 import QuestionStem, { questionGraph } from '../components/QuestionStem.jsx';
 import { OptionContent } from '../figures/Figure.jsx';
+import { CurriculumChips, CurriculumSelects, matchesCurriculum } from '../curriculum/CurriculumPicker.jsx';
 import { AiModal, QuestionEditForm, cleanForSave } from './TeacherQuestionBank.jsx';
 import Avatar from '../components/Avatar.jsx';
 
@@ -122,6 +123,7 @@ function QuestionCard({ q, index, onRemove, onEdit }) {
         <div style={{ display: 'flex', gap: 8, marginBottom: 6, alignItems: 'center', flexWrap: 'wrap' }}>
           <QuestionTypeBadge type={q.type} />
           <span style={{ fontSize: 12, color: '#86868B', fontWeight: 500 }}>{q.points || 1} 分</span>
+          <CurriculumChips q={q} />
           {q.topic && <span style={{ fontSize: 12, color: '#86868B', fontWeight: 500 }}>· {q.topic}</span>}
         </div>
         <QuestionStem q={q} text={text} graphWidth={320} style={{ fontSize: 14, fontWeight: 500, color: '#1D1D1F' }} />
@@ -142,6 +144,8 @@ function QuestionBankPicker({ alreadyIds, onAdd, onClose }) {
   const [search, setSearch] = useState('');
   const [type, setType] = useState('');
   const [level, setLevel] = useState('');
+  const [subject, setSubject] = useState('');
+  const [unit, setUnit] = useState('');
   const [checked, setChecked] = useState({});
   const [previewId, setPreviewId] = useState(null);
 
@@ -169,9 +173,10 @@ function QuestionBankPicker({ alreadyIds, onAdd, onClose }) {
       }
       if (sy && String(it.type || '').toUpperCase() !== sy) return false;
       if (sl && String(it.target_level || '').toUpperCase() !== sl) return false;
+      if (!matchesCurriculum(it, subject, unit)) return false;
       return true;
     });
-  }, [items, search, type, level]);
+  }, [items, search, type, level, subject, unit]);
 
   const preview = useMemo(() => items.find(it => it.id === previewId) || null, [items, previewId]);
   const selectedItems = items.filter(it => checked[it.id]);
@@ -194,6 +199,7 @@ function QuestionBankPicker({ alreadyIds, onAdd, onClose }) {
       grading_rubric: it.grading_rubric,
       max_word_count: it.max_word_count,
       target_level: it.target_level,
+      tags: Array.isArray(it.tags) && it.tags.length ? it.tags : undefined,
       media: it.media && Object.keys(it.media).length ? it.media : undefined,
       bankId: it.id,
     })));
@@ -256,6 +262,9 @@ function QuestionBankPicker({ alreadyIds, onAdd, onClose }) {
               <option key={l} value={l}>{l}</option>
             ))}
           </select>
+          <CurriculumSelects mode="filter" style={{ gridColumn: '1 / -1' }} selectStyle={inputStyle}
+            subject={subject} unit={unit} level={level}
+            onChange={(v) => { setSubject(v.subject); setUnit(v.unit); }} />
         </div>
 
         {/* ── Two-column body ── */}
@@ -309,8 +318,9 @@ function QuestionBankPicker({ alreadyIds, onAdd, onClose }) {
                         {alreadyAdded && <span style={{ marginLeft: 6, color: '#86868B', fontSize: 11 }}>已加入</span>}
                       </div>
                     </div>
-                    <div style={{ display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'space-between', paddingLeft: 23 }}>
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'space-between', paddingLeft: 23, flexWrap: 'wrap' }}>
                       <QuestionTypeBadge type={it.type} />
+                      <CurriculumChips q={it} />
                       <span style={{ color: '#6E6E73', fontWeight: 700, fontSize: 11 }}>
                         {it.topic || '—'} · {it.points ?? '—'} 分
                       </span>

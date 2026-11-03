@@ -10,6 +10,8 @@ import { MathField, MathHelp } from '../components/MathEditors.jsx';
 import { questionGraph } from '../components/QuestionStem.jsx';
 import FiguresEditor from '../figures/FigureEditors.jsx';
 import { editableFigures, figuresToSave, mediaWithFigures } from '../figures/model.js';
+import { CurriculumChips, CurriculumSelects, matchesCurriculum } from '../curriculum/CurriculumPicker.jsx';
+import { curriculumPromptLines, loadLastSubject, matchSubject, matchUnit, questionSubject, questionUnit, saveLastSubject, tagAiQuestion, unitInfo, withCurriculum } from '../curriculum/hk.js';
 import { FIGURE_EXAMPLES, FIGURE_MODES, QUESTION_LANGS, figurePromptLines, languageRule, loadQuestionLang, normalizeAiQuestion, saveQuestionLang } from '../figures/aiPrompt.js';
 
 const SUPPORTED_TYPES = ['TRUE_FALSE','MULTIPLE_CHOICE','FILL_IN_BLANK','MATCHING','SHORT_ANSWER','LONG_ANSWER'];
@@ -134,6 +136,20 @@ export function QuestionEditForm({ item, onChange }) {
           <input type="number" value={item.points ?? 1} style={inputStyle}
             onChange={e => onChange({ ...item, points: Number(e.target.value) })} />
         )}
+      </div>
+
+      <div style={labelStyle}>
+        課程分類（可選，按香港課程）
+        <CurriculumSelects
+          subject={questionSubject(item)} unit={questionUnit(item)} level={item.target_level}
+          selectStyle={inputStyle}
+          onChange={({ subject, unit }) => {
+            const next = withCurriculum(item, { subject, unit });
+            // Fill an empty 主題 with the unit's name.
+            const u = unitInfo(unit);
+            if (u && !String(item.topic || '').trim()) next.topic = u.zh;
+            onChange(next);
+          }} />
       </div>
 
       {field('主題',
@@ -335,6 +351,8 @@ export function AiModal({ onClose, onSave, onUse, initialTopic = '' }) {
   const [topic, setTopic] = useState(initialTopic);
   const [count, setCount] = useState(5);
   const [level, setLevel] = useState('S1');
+  const [aiSubject, setAiSubject] = useState(loadLastSubject);
+  const [aiUnit, setAiUnit] = useState('');
   const [figureMode, setFigureMode] = useState('auto');
   const [lang, setLang] = useState(loadQuestionLang);
   const [types, setTypes] = useState({
@@ -365,6 +383,7 @@ export function AiModal({ onClose, onSave, onUse, initialTopic = '' }) {
         `依照香港學制（HK）調整難度，target_level: ${level}`,
         '數學式一律用 KaTeX/LaTeX 寫並用 $…$ 包住（獨立一行用 $$…$$），題目、選項、答案都適用，例如 "解 $x^2-5x+6=0$"、"$\\\\frac{3}{4}$"。JSON 字串內的反斜線要寫成兩個（\\\\frac）。金錢可寫 $5（$ 後面直接接數字）。',
         languageRule(lang),
+        ...curriculumPromptLines(aiSubject, aiUnit, level),
         ...figurePromptLines(figureMode),
         '輸出格式示例：{"questions":[',
         '{"type":"MULTIPLE_CHOICE","question_text":"題目","topic":"主題","target_level":"S1","points":1,"options":[{"id":"A","text":"A選項","is_correct":true},{"id":"B","text":"B選項","is_correct":false}]},',
@@ -386,7 +405,7 @@ export function AiModal({ onClose, onSave, onUse, initialTopic = '' }) {
       });
       const qs = generated
         .filter(q => q && selectedTypes.includes(String(q.type || '').toUpperCase()))
-        .map(q => stripUndef(normalizeAiQuestion({ ...q, type: String(q.type).toUpperCase(), target_level: q.target_level || level })));
+        .map(q => stripUndef(tagAiQuestion(normalizeAiQuestion({ ...q, type: String(q.type).toUpperCase(), target_level: q.target_level || level }), { subject: aiSubject, unit: aiUnit, level })));
       if (!qs.length) throw new Error('AI 產生的題型不符合所選題型，請再試一次');
       setCandidates(qs);
       setChecked(Object.fromEntries(qs.map((_, i) => [i, true])));
@@ -477,10 +496,23 @@ export function AiModal({ onClose, onSave, onUse, initialTopic = '' }) {
 
               <label style={labelStyle}>
                 年級程度
-                <select style={inputStyle} value={level} onChange={e => setLevel(e.target.value)}>
+                <select style={inputStyle} value={level} onChange={e => { setLevel(e.target.value); setAiUnit(''); }}>
                   {GRADES.map(l => <option key={l} value={l}>{l}</option>)}
                 </select>
               </label>
+
+              <div style={labelStyle}>
+                科目及課題（可選）
+                <CurriculumSelects subject={aiSubject} unit={aiUnit} level={level} selectStyle={inputStyle}
+                  onChange={({ subject, unit }) => {
+                    setAiSubject(subject); setAiUnit(unit); saveLastSubject(subject);
+                    const u = unitInfo(unit);
+                    if (u && !topic.trim()) setTopic(u.zh);
+                  }} />
+                <div style={{ fontSize: 12, color: '#86868B', fontWeight: 500 }}>
+                  選了課題：題目會按該課題出題。只選科目：AI 會為每題標上所屬課題。
+                </div>
+              </div>
 
               <label style={labelStyle}>
                 題目數量：<strong style={{ color: '#1D1D1F', fontWeight: 700 }}>{count} 題</strong>
@@ -583,6 +615,7 @@ export function AiModal({ onClose, onSave, onUse, initialTopic = '' }) {
                       </div>
                       <div style={{ paddingLeft: 23, display: 'flex', gap: 8, alignItems: 'center' }}>
                         <QuestionTypeBadge type={q.type} />
+                        <CurriculumChips q={q} />
                         {q.topic && <span style={{ fontSize: 11, color: '#6E6E73', fontWeight: 500 }}>{q.topic}</span>}
                       </div>
                     </button>
@@ -676,6 +709,9 @@ function parseExcelRows(rows) {
     const ideal_answer = get('ideal_answer', 'idealanswer', 'answer', 'model_answer');
 
     let result = { type, question_text, points, topic, target_level, _row: i + 2 };
+    const subj = matchSubject(get('subject', '科目'));
+    const unit = matchUnit(get('unit', '課題'), subj, target_level);
+    if (subj || unit) result = withCurriculum(result, { subject: subj || unit.split('.')[0], unit });
 
     // Optional graph: "graph" = functions separated by ; (e.g. "x^2-1; 2x+3"),
     // "graph_range" = xMin,xMax,yMin,yMax (e.g. "-5,5,-5,5").
@@ -784,6 +820,7 @@ function ExcelImportModal({ onClose, onDone }) {
             <strong>選擇題：</strong> option_A/B/C/D 填選項，correct_answer 填 A/B/C/D<br />
             <strong>是非題：</strong> correct_answer 填 TRUE 或 FALSE<br />
             <strong>其他：</strong> points（分數）、topic（主題）、target_level（年級如 S1）、ideal_answer<br />
+            <strong>課程分類（可選）：</strong> subject（科目，如 MATH 或 數學）、unit（課題名稱或編號，如 畢氏定理、25）<br />
             <strong>數學式：</strong> 用 $…$ 包住 LaTeX，例如 {'$\frac{1}{2}x^2$'}<br />
             <strong>圖像（可選）：</strong> graph 填函數，多個用 ; 分隔（如 x^2-1; 2x+3），graph_range 填 xMin,xMax,yMin,yMax（如 -5,5,-5,5）
           </div>
@@ -793,11 +830,11 @@ function ExcelImportModal({ onClose, onDone }) {
             style={{ ...btnGhost, alignSelf: 'flex-start', fontSize: 12 }}
             onClick={() => {
               const ws = XLSX.utils.aoa_to_sheet([
-                ['type','question_text','option_A','option_B','option_C','option_D','correct_answer','points','topic','target_level','ideal_answer','graph','graph_range'],
+                ['type','question_text','option_A','option_B','option_C','option_D','correct_answer','points','topic','target_level','ideal_answer','graph','graph_range','subject','unit'],
                 ['MULTIPLE_CHOICE','以下哪個是香港的法定語文？','英文','日文','韓文','法文','A',1,'常識','P5',''],
                 ['TRUE_FALSE','香港特別行政區於1997年成立。','','','','','TRUE',1,'歷史','S1',''],
                 ['SHORT_ANSWER','請簡述香港的地理位置。','','','','','',2,'地理','S2','位於中國南部沿海'],
-                ['MULTIPLE_CHOICE','下圖是 $y=x^2-2x-3$ 的圖像，它的頂點是？','$(1,-4)$','$(-1,4)$','$(1,4)$','$(2,-3)$','A',1,'二次函數','S4','','x^2-2x-3','-3,5,-5,6'],
+                ['MULTIPLE_CHOICE','下圖是 $y=x^2-2x-3$ 的圖像，它的頂點是？','$(1,-4)$','$(-1,4)$','$(1,4)$','$(2,-3)$','A',1,'二次函數','S4','','x^2-2x-3','-3,5,-5,6','數學','函數及其圖像'],
               ]);
               const wb = XLSX.utils.book_new();
               XLSX.utils.book_append_sheet(wb, ws, 'Questions');
@@ -877,6 +914,8 @@ export default function TeacherQuestionBank() {
   const [q, setQ] = useState('');
   const [filterType, setFilterType] = useState('');
   const [filterLevel, setFilterLevel] = useState('');
+  const [filterSubject, setFilterSubject] = useState('');
+  const [filterUnit, setFilterUnit] = useState('');
 
   // Edit state
   const [editItem, setEditItem] = useState(null);
@@ -910,9 +949,10 @@ export default function TeacherQuestionBank() {
       if (sq && !(it.question_text || '').toLowerCase().includes(sq) && !(it.topic || '').toLowerCase().includes(sq)) return false;
       if (sy && String(it.type || '').toUpperCase() !== sy) return false;
       if (sl && String(it.target_level || '').toUpperCase() !== sl) return false;
+      if (!matchesCurriculum(it, filterSubject, filterUnit)) return false;
       return true;
     });
-  }, [items, q, filterType, filterLevel]);
+  }, [items, q, filterType, filterLevel, filterSubject, filterUnit]);
 
   function openNew() {
     setEditItem({ ...EMPTY_ITEM });
@@ -991,6 +1031,9 @@ export default function TeacherQuestionBank() {
               {GRADES.map(l => <option key={l} value={l}>{l}</option>)}
             </select>
           </div>
+          <CurriculumSelects mode="filter" style={{ marginTop: 10 }} selectStyle={inputStyle}
+            subject={filterSubject} unit={filterUnit} level={filterLevel}
+            onChange={({ subject, unit }) => { setFilterSubject(subject); setFilterUnit(unit); }} />
         </div>
 
         {/* Question list */}
@@ -1037,7 +1080,8 @@ export default function TeacherQuestionBank() {
                     <div style={{ fontSize: 12, fontWeight: 500, color: '#6E6E73', display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
                       <QuestionTypeBadge type={it.type} />
                       {questionGraph(it) && <span title="附圖形">📐 圖形</span>}
-                      {it.topic && <span>· {it.topic}</span>}
+                      <CurriculumChips q={it} />
+                      {it.topic && it.topic !== unitInfo(questionUnit(it))?.zh && <span>· {it.topic}</span>}
                       {it.target_level && <span>· {it.target_level}</span>}
                       <span>· {it.points ?? 1} 分</span>
                       {it.readOnly && <span style={{ color: '#248A3D', fontWeight: 600 }}>· 來自 {it.sharedFromSchool}</span>}
