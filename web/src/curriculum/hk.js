@@ -247,3 +247,41 @@ export function tagAiQuestion(q, { subject = '', unit = '', level = '' } = {}) {
   const { subject: _s, unit: _u, ...rest } = q;
   return withCurriculum(rest, { subject: subj, unit: un });
 }
+
+// ── AI classification (used by the server) ────────────────────────────────────
+// A question the AI has looked at carries this tag, even if it fitted no subject/unit,
+// so the one-off pass over existing questions never repeats.
+export const CLASSIFIED_TAG = 'cls:ai';
+export const isClassified = (q) => (Array.isArray(q?.tags) ? q.tags : []).includes(CLASSIFIED_TAG);
+
+/** Subject list + unit catalogue for the stages present (P/J/S), for the classifier prompt. */
+export function classificationCatalogue(stages = 'PJS') {
+  const lines = [`科目代號：${SUBJECTS.map((s) => `${s.key}=${s.zh}/${s.en}`).join('；')}`];
+  const STAGE = { P: '小學 P1–P6', J: '初中 S1–S3', S: '高中 S4–S6' };
+  for (const [subj, list] of Object.entries(UNITS)) {
+    for (const st of 'PJS') {
+      if (!stages.includes(st)) continue;
+      const us = list.filter((u) => u.stage.includes(st));
+      if (!us.length) continue;
+      lines.push(`${subj} 課題（${STAGE[st]}）：${us.map((u) => `${u.key}=${u.zh}`).join('；')}`);
+    }
+  }
+  return lines.join('\n');
+}
+
+/** Keep only a valid answer: a known subject, and a unit of that subject that fits the level. */
+export function validClassification(subject, unit, level = '') {
+  const s = matchSubject(subject) || (SUBJECTS.some((x) => x.key === subject) ? subject : '');
+  let u = UNIT_BY_KEY.has(unit) ? unit : '';
+  const subj = s || (u ? u.split('.')[0] : '');
+  if (u && !u.startsWith(`${subj}.`)) u = '';
+  const st = stageOf(level);
+  if (u && st && !UNIT_BY_KEY.get(u).stage.includes(st)) u = '';
+  return { subject: subj, unit: u };
+}
+
+/** Tags after classification: subject/unit replaced, marked as classified, other tags kept. */
+export function classifiedTags(q, { subject, unit }) {
+  const keep = (Array.isArray(q?.tags) ? q.tags : []).filter((t) => typeof t === 'string' && !t.startsWith('subj:') && !t.startsWith('unit:') && t !== CLASSIFIED_TAG);
+  return [...keep, ...(subject ? [`subj:${subject}`] : []), ...(unit ? [`unit:${unit}`] : []), CLASSIFIED_TAG];
+}

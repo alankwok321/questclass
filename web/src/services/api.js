@@ -199,3 +199,9 @@ export async function getLoginStats(days = 30) {
 export async function figureFromImage({ image, hint = '' }) {
   return postJson('/api/teacher/figure-from-image', await withAuth({ image, hint }));
 }
+
+// AI files question-bank questions under an HK subject / curriculum unit (server-side).
+// ids: questions just saved; no ids: the school's next batch of not-yet-classified questions.
+export async function classifyQuestions(ids) {
+  return postJson('/api/teacher/questions/classify', await withAuth(ids ? { ids } : {}));
+}

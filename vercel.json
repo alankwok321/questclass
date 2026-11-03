@@ -7,12 +7,17 @@
       "config": {
         "includeFiles": [
           "web/dist/**",
-          "public/**"
+          "public/**",
+          "web/src/curriculum/**",
+          "web/package.json"
         ]
       }
     }
   ],
   "routes": [
-    { "src": "/(.*)", "dest": "/server.js" }
+    {
+      "src": "/(.*)",
+      "dest": "/server.js"
+    }
   ]
 }

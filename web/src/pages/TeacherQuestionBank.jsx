@@ -11,7 +11,8 @@ import { questionGraph } from '../components/QuestionStem.jsx';
 import FiguresEditor from '../figures/FigureEditors.jsx';
 import { editableFigures, figuresToSave, mediaWithFigures } from '../figures/model.js';
 import { CurriculumChips, CurriculumSelects, matchesCurriculum } from '../curriculum/CurriculumPicker.jsx';
-import { curriculumPromptLines, loadLastSubject, matchSubject, matchUnit, questionSubject, questionUnit, saveLastSubject, tagAiQuestion, unitInfo, withCurriculum } from '../curriculum/hk.js';
+import { classifyQuestions } from '../services/api.js';
+import { classifiedTags, isClassified, questionUnit, unitInfo } from '../curriculum/hk.js';
 import { FIGURE_EXAMPLES, FIGURE_MODES, QUESTION_LANGS, figurePromptLines, languageRule, loadQuestionLang, normalizeAiQuestion, saveQuestionLang } from '../figures/aiPrompt.js';
 
 const SUPPORTED_TYPES = ['TRUE_FALSE','MULTIPLE_CHOICE','FILL_IN_BLANK','MATCHING','SHORT_ANSWER','LONG_ANSWER'];
@@ -139,17 +140,13 @@ export function QuestionEditForm({ item, onChange }) {
       </div>
 
       <div style={labelStyle}>
-        課程分類（可選，按香港課程）
-        <CurriculumSelects
-          subject={questionSubject(item)} unit={questionUnit(item)} level={item.target_level}
-          selectStyle={inputStyle}
-          onChange={({ subject, unit }) => {
-            const next = withCurriculum(item, { subject, unit });
-            // Fill an empty 主題 with the unit's name.
-            const u = unitInfo(unit);
-            if (u && !String(item.topic || '').trim()) next.topic = u.zh;
-            onChange(next);
-          }} />
+        課程分類（由 AI 自動判斷）
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, minHeight: 24, flexWrap: 'wrap' }}>
+          <CurriculumChips q={item} />
+          <span style={{ fontSize: 12, color: '#86868B', fontWeight: 500 }}>
+            {isClassified(item) ? '儲存後 AI 會按最新內容重新分類' : '儲存後 AI 會按香港課程自動分類科目及課題'}
+          </span>
+        </div>
       </div>
 
       {field('主題',
@@ -351,8 +348,6 @@ export function AiModal({ onClose, onSave, onUse, initialTopic = '' }) {
   const [topic, setTopic] = useState(initialTopic);
   const [count, setCount] = useState(5);
   const [level, setLevel] = useState('S1');
-  const [aiSubject, setAiSubject] = useState(loadLastSubject);
-  const [aiUnit, setAiUnit] = useState('');
   const [figureMode, setFigureMode] = useState('auto');
   const [lang, setLang] = useState(loadQuestionLang);
   const [types, setTypes] = useState({
@@ -383,7 +378,6 @@ export function AiModal({ onClose, onSave, onUse, initialTopic = '' }) {
         `依照香港學制（HK）調整難度，target_level: ${level}`,
         '數學式一律用 KaTeX/LaTeX 寫並用 $…$ 包住（獨立一行用 $$…$$），題目、選項、答案都適用，例如 "解 $x^2-5x+6=0$"、"$\\\\frac{3}{4}$"。JSON 字串內的反斜線要寫成兩個（\\\\frac）。金錢可寫 $5（$ 後面直接接數字）。',
         languageRule(lang),
-        ...curriculumPromptLines(aiSubject, aiUnit, level),
         ...figurePromptLines(figureMode),
         '輸出格式示例：{"questions":[',
         '{"type":"MULTIPLE_CHOICE","question_text":"題目","topic":"主題","target_level":"S1","points":1,"options":[{"id":"A","text":"A選項","is_correct":true},{"id":"B","text":"B選項","is_correct":false}]},',
@@ -405,7 +399,7 @@ export function AiModal({ onClose, onSave, onUse, initialTopic = '' }) {
       });
       const qs = generated
         .filter(q => q && selectedTypes.includes(String(q.type || '').toUpperCase()))
-        .map(q => stripUndef(tagAiQuestion(normalizeAiQuestion({ ...q, type: String(q.type).toUpperCase(), target_level: q.target_level || level }), { subject: aiSubject, unit: aiUnit, level })));
+        .map(q => stripUndef(normalizeAiQuestion({ ...q, type: String(q.type).toUpperCase(), target_level: q.target_level || level })));
       if (!qs.length) throw new Error('AI 產生的題型不符合所選題型，請再試一次');
       setCandidates(qs);
       setChecked(Object.fromEntries(qs.map((_, i) => [i, true])));
@@ -435,6 +429,8 @@ export function AiModal({ onClose, onSave, onUse, initialTopic = '' }) {
         out.push(hq);
       }
       setSaving(false);
+      const bankIds = out.map((x) => x.bankId).filter(Boolean);
+      if (bankIds.length) classifyQuestions(bankIds).catch(() => {}); // filed by the AI in the background
       if (errors.length) alert(`已加入作業，但 ${errors.length} 題未能存到題庫：${[...new Set(errors)].join('、')}`);
       onUse(out);
       onClose();
@@ -443,9 +439,10 @@ export function AiModal({ onClose, onSave, onUse, initialTopic = '' }) {
     setSaving(true);
     let ok = 0;
     const errors = [];
+    const savedIds = [];
     for (const { q } of chosen) {
       const res = await upsertQuestionBankItem(cleanForSave(q));
-      if (res?.ok) ok++;
+      if (res?.ok) { ok++; if (res.questionId) savedIds.push(res.questionId); }
       else errors.push(res?.error || '未知錯誤');
     }
     setSaving(false);
@@ -453,7 +450,7 @@ export function AiModal({ onClose, onSave, onUse, initialTopic = '' }) {
       alert(`已新增 ${ok} 題，失敗 ${errors.length} 題。\n原因：${[...new Set(errors)].join('、')}`);
     }
     if (ok > 0) {
-      onSave();
+      onSave(savedIds);
       onClose();
     }
   }
@@ -496,23 +493,10 @@ export function AiModal({ onClose, onSave, onUse, initialTopic = '' }) {
 
               <label style={labelStyle}>
                 年級程度
-                <select style={inputStyle} value={level} onChange={e => { setLevel(e.target.value); setAiUnit(''); }}>
+                <select style={inputStyle} value={level} onChange={e => setLevel(e.target.value)}>
                   {GRADES.map(l => <option key={l} value={l}>{l}</option>)}
                 </select>
               </label>
-
-              <div style={labelStyle}>
-                科目及課題（可選）
-                <CurriculumSelects subject={aiSubject} unit={aiUnit} level={level} selectStyle={inputStyle}
-                  onChange={({ subject, unit }) => {
-                    setAiSubject(subject); setAiUnit(unit); saveLastSubject(subject);
-                    const u = unitInfo(unit);
-                    if (u && !topic.trim()) setTopic(u.zh);
-                  }} />
-                <div style={{ fontSize: 12, color: '#86868B', fontWeight: 500 }}>
-                  選了課題：題目會按該課題出題。只選科目：AI 會為每題標上所屬課題。
-                </div>
-              </div>
 
               <label style={labelStyle}>
                 題目數量：<strong style={{ color: '#1D1D1F', fontWeight: 700 }}>{count} 題</strong>
@@ -709,9 +693,6 @@ function parseExcelRows(rows) {
     const ideal_answer = get('ideal_answer', 'idealanswer', 'answer', 'model_answer');
 
     let result = { type, question_text, points, topic, target_level, _row: i + 2 };
-    const subj = matchSubject(get('subject', '科目'));
-    const unit = matchUnit(get('unit', '課題'), subj, target_level);
-    if (subj || unit) result = withCurriculum(result, { subject: subj || unit.split('.')[0], unit });
 
     // Optional graph: "graph" = functions separated by ; (e.g. "x^2-1; 2x+3"),
     // "graph_range" = xMin,xMax,yMin,yMax (e.g. "-5,5,-5,5").
@@ -779,6 +760,7 @@ function ExcelImportModal({ onClose, onDone }) {
     if (!rows?.length) return;
     setImporting(true);
     let ok = 0, fail = 0;
+    const ids = [];
     for (const row of rows) {
       const { _row, ...item } = row;
       try {
@@ -786,12 +768,12 @@ function ExcelImportModal({ onClose, onDone }) {
           ...item,
           id: undefined, // let bridge generate
         }));
-        if (res?.ok) ok++; else fail++;
+        if (res?.ok) { ok++; if (res.questionId) ids.push(res.questionId); } else fail++;
       } catch { fail++; }
     }
     setResults({ ok, fail });
     setImporting(false);
-    if (ok > 0) onDone();
+    if (ok > 0) onDone(ids);
   }
 
   const typeColor = { TRUE_FALSE: '#248A3D', MULTIPLE_CHOICE: '#0071E3', FILL_IN_BLANK: '#C93400', SHORT_ANSWER: '#8944AB', LONG_ANSWER: '#D70015', MATCHING: '#0B6E75' };
@@ -820,7 +802,7 @@ function ExcelImportModal({ onClose, onDone }) {
             <strong>選擇題：</strong> option_A/B/C/D 填選項，correct_answer 填 A/B/C/D<br />
             <strong>是非題：</strong> correct_answer 填 TRUE 或 FALSE<br />
             <strong>其他：</strong> points（分數）、topic（主題）、target_level（年級如 S1）、ideal_answer<br />
-            <strong>課程分類（可選）：</strong> subject（科目，如 MATH 或 數學）、unit（課題名稱或編號，如 畢氏定理、25）<br />
+            <strong>課程分類：</strong> 匯入後由 AI 自動分類科目及課題<br />
             <strong>數學式：</strong> 用 $…$ 包住 LaTeX，例如 {'$\frac{1}{2}x^2$'}<br />
             <strong>圖像（可選）：</strong> graph 填函數，多個用 ; 分隔（如 x^2-1; 2x+3），graph_range 填 xMin,xMax,yMin,yMax（如 -5,5,-5,5）
           </div>
@@ -830,11 +812,11 @@ function ExcelImportModal({ onClose, onDone }) {
             style={{ ...btnGhost, alignSelf: 'flex-start', fontSize: 12 }}
             onClick={() => {
               const ws = XLSX.utils.aoa_to_sheet([
-                ['type','question_text','option_A','option_B','option_C','option_D','correct_answer','points','topic','target_level','ideal_answer','graph','graph_range','subject','unit'],
+                ['type','question_text','option_A','option_B','option_C','option_D','correct_answer','points','topic','target_level','ideal_answer','graph','graph_range'],
                 ['MULTIPLE_CHOICE','以下哪個是香港的法定語文？','英文','日文','韓文','法文','A',1,'常識','P5',''],
                 ['TRUE_FALSE','香港特別行政區於1997年成立。','','','','','TRUE',1,'歷史','S1',''],
                 ['SHORT_ANSWER','請簡述香港的地理位置。','','','','','',2,'地理','S2','位於中國南部沿海'],
-                ['MULTIPLE_CHOICE','下圖是 $y=x^2-2x-3$ 的圖像，它的頂點是？','$(1,-4)$','$(-1,4)$','$(1,4)$','$(2,-3)$','A',1,'二次函數','S4','','x^2-2x-3','-3,5,-5,6','數學','函數及其圖像'],
+                ['MULTIPLE_CHOICE','下圖是 $y=x^2-2x-3$ 的圖像，它的頂點是？','$(1,-4)$','$(-1,4)$','$(1,4)$','$(2,-3)$','A',1,'二次函數','S4','','x^2-2x-3','-3,5,-5,6'],
               ]);
               const wb = XLSX.utils.book_new();
               XLSX.utils.book_append_sheet(wb, ws, 'Questions');
@@ -941,6 +923,44 @@ export default function TeacherQuestionBank() {
     refresh();
   }, []); // eslint-disable-line
 
+  // ── AI classification by HK subject / curriculum unit ──
+  const applyResults = useCallback((results) => {
+    const byId = new Map((results || []).map((r) => [r.id, r]));
+    if (byId.size) setItems((prev) => prev.map((it) => (byId.has(it.id) ? { ...it, tags: classifiedTags(it, byId.get(it.id)) } : it)));
+  }, []);
+  // Questions just saved: the AI files them in the background.
+  const classifySaved = useCallback((ids) => {
+    const list = (ids || []).filter(Boolean);
+    for (let i = 0; i < list.length; i += 20) {
+      classifyQuestions(list.slice(i, i + 20)).then((r) => applyResults(r?.results)).catch(() => {});
+    }
+  }, [applyResults]);
+  // Existing questions not yet classified: one pass, in batches, when the bank is opened.
+  const [autoClass, setAutoClass] = useState(null); // { done, total, error }
+  const autoRunning = useRef(false);
+  const pending = items.filter((it) => !it.readOnly && !it.deleted && !isClassified(it)).length;
+  useEffect(() => {
+    if (autoRunning.current || loading || pending === 0) return;
+    autoRunning.current = true;
+    (async () => {
+      let done = 0; let total = pending;
+      setAutoClass({ done, total });
+      try {
+        for (let guard = 0; guard < 200; guard += 1) {
+          const r = await classifyQuestions();
+          applyResults(r?.results);
+          done += r?.classified || 0;
+          total = Math.max(total, done + (r?.remaining || 0));
+          setAutoClass({ done, total });
+          if (!r?.classified || !r?.remaining) break;
+        }
+        setAutoClass(null);
+      } catch (e) {
+        setAutoClass({ done, total, error: e.message || 'AI 分類失敗' });
+      }
+    })();
+  }, [loading, pending, applyResults]);
+
   const filtered = useMemo(() => {
     const sq = q.trim().toLowerCase();
     const sy = filterType.toUpperCase();
@@ -974,6 +994,7 @@ export default function TeacherQuestionBank() {
       const res = await upsertQuestionBankItem(cleanForSave(rest));
       if (!res?.ok) { alert(res?.error || '儲存失敗'); return; }
       await refresh();
+      classifySaved([res.questionId || rest.id]);
       setView('list');
     } catch (e) {
       alert('儲存失敗：' + e.message);
@@ -1017,6 +1038,21 @@ export default function TeacherQuestionBank() {
             </button>
           </div>
         </div>
+
+        {autoClass && (
+          <div className="qcCard" style={{ padding: '12px 20px', display: 'grid', gap: 8, background: autoClass.error ? '#FFF8EC' : '#F5F3FF' }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: autoClass.error ? '#B25000' : '#3634A3' }}>
+              {autoClass.error
+                ? `AI 分類暫停：${autoClass.error}（已完成 ${autoClass.done} / ${autoClass.total} 題，下次開啟題庫時會繼續）`
+                : `🤖 AI 正在按香港課程為題目分類科目及課題… ${autoClass.done} / ${autoClass.total}`}
+            </div>
+            {!autoClass.error && (
+              <div style={{ height: 6, borderRadius: 999, background: '#E3E0FF', overflow: 'hidden' }}>
+                <div style={{ height: '100%', width: `${Math.round((autoClass.done / Math.max(1, autoClass.total)) * 100)}%`, background: '#5E5CE6', transition: 'width 0.3s' }} />
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Filters */}
         <div className="qcCard" style={{ padding: '16px 24px' }}>
@@ -1100,7 +1136,7 @@ export default function TeacherQuestionBank() {
         {aiOpen && (
           <AiModal
             onClose={() => setAiOpen(false)}
-            onSave={refresh}
+            onSave={(ids) => { refresh().then(() => classifySaved(ids)); }}
           />
         )}
 
@@ -1108,7 +1144,7 @@ export default function TeacherQuestionBank() {
         {importOpen && (
           <ExcelImportModal
             onClose={() => setImportOpen(false)}
-            onDone={() => { setImportOpen(false); refresh(); }}
+            onDone={(ids) => { setImportOpen(false); refresh().then(() => classifySaved(ids)); }}
           />
         )}
       </div>

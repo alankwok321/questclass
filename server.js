@@ -1649,6 +1649,86 @@ app.post('/api/teacher/figure-from-image', async (req, res) => {
   }
 });
 
+// ── AI classifies question-bank questions by HK subject and curriculum unit ──
+// Teachers don't pick these; the school's AI does, on every save and once for existing questions.
+// Runs with the Admin SDK so every question of the school can be tagged, whoever wrote it.
+let curriculumModule = null;
+const loadCurriculum = async () => (curriculumModule ||= await import('./web/src/curriculum/hk.js'));
+const CLASSIFY_BATCH = 10;
+
+function questionDigest(q) {
+  const opts = (Array.isArray(q.options) ? q.options : []).map((o) => `${o?.id || ''}. ${o?.text || ''}`).join(' | ');
+  const pairs = (Array.isArray(q.pairs) ? q.pairs : []).map((p) => `${p?.prompt || ''} → ${p?.match || ''}`).join(' | ');
+  return [
+    String(q.question_text || q.prompt || '').slice(0, 700),
+    opts && `選項：${opts.slice(0, 300)}`,
+    pairs && `配對：${pairs.slice(0, 300)}`,
+    q.ideal_answer && `答案：${String(q.ideal_answer).slice(0, 200)}`,
+    Array.isArray(q.media?.figures) && q.media.figures.length ? `（附圖：${q.media.figures.map((f) => f?.type).join('、')}）` : '',
+  ].filter(Boolean).join('\n');
+}
+
+app.post('/api/teacher/questions/classify', async (req, res) => {
+  try {
+    const body = req.body || {};
+    const actor = await verifyUserFromToken(body.idToken);
+    if (!actor) throw httpError(401, '請先登入');
+    requireActive(actor);
+    if (!['teacher', 'admin'].includes(actor.role)) throw httpError(403, '只有老師可以分類題目');
+    const schoolId = actor.platformAdmin && body.schoolId ? String(body.schoolId) : actor.schoolId;
+    if (!schoolId) throw httpError(400, '你的帳戶尚未加入學校');
+    const cfg = await resolveProviderConfig(body, AI_ROLES.figure);
+    if (!cfg.apiKey) throw httpError(400, 'AI 尚未設定：請管理員到「AI 設定」頁面輸入 API Key。');
+    const cur = await loadCurriculum();
+    const { db } = getFirebaseAdmin();
+    const col = db.collection('questionBank');
+
+    // Which questions: the ones asked for (just saved), or the next untagged ones of the school.
+    let batch; let remaining = 0;
+    const ids = Array.isArray(body.ids) ? [...new Set(body.ids.map((x) => String(x || '').trim()).filter((x) => x && !x.includes('/')))].slice(0, 20) : null;
+    if (ids && ids.length) {
+      const snaps = await Promise.all(ids.map((id) => col.doc(id).get()));
+      batch = snaps.filter((d) => d.exists).map((d) => ({ id: d.id, ...d.data() }))
+        .filter((q) => q.schoolId === schoolId && !q.deleted);
+    } else {
+      const snap = await col.where('schoolId', '==', schoolId).get();
+      const todo = snap.docs.map((d) => ({ id: d.id, ...d.data() })).filter((q) => !q.deleted && !cur.isClassified(q));
+      batch = todo.slice(0, CLASSIFY_BATCH);
+      remaining = todo.length - batch.length;
+    }
+    if (!batch.length) return res.json({ ok: true, classified: 0, remaining: 0, results: [] });
+
+    const stages = [...new Set(batch.map((q) => cur.stageOf(q.target_level)).filter(Boolean))].join('') || 'PJS';
+    const system = [
+      'You classify Hong Kong school questions by subject and curriculum unit. Return ONLY JSON: {"results":[{"id":"…","subject":"KEY","unit":"KEY"}]} with one entry per question, in the same order.',
+      'subject: a subject key from the list ("" if none fits). unit: a unit key from the list for that subject and the question\'s level ("" if none clearly fits, or the subject has no unit list). Use the question content first; level and topic are hints.',
+      cur.classificationCatalogue(stages),
+    ].join('\n');
+    const user = batch.map((q, i) => `#${i + 1} id=${q.id} 年級=${q.target_level || '?'} 主題=${q.topic || '-'}\n${questionDigest(q)}`).join('\n\n');
+    const result = await callChatCompletion({ ...cfg, system, user, temperature: 0, responseFormat: { type: 'json_object' } });
+    if (!result.ok) throw httpError(result.status || 502, result.error || 'AI 分類失敗');
+    let parsed = {};
+    try {
+      const text = String(result.text || '').trim();
+      parsed = JSON.parse(fixLatexBackslashes((text.match(/\{[\s\S]*\}/) || [text])[0]));
+    } catch { parsed = {}; }
+    const list = Array.isArray(parsed.results) ? parsed.results : [];
+    const byId = new Map(list.filter((r) => r && r.id).map((r) => [String(r.id), r]));
+
+    const results = [];
+    await inChunks(batch, 10, async (q, k) => {
+      const r = byId.get(q.id) || list[batch.indexOf(q)] || {};
+      const v = cur.validClassification(String(r.subject || ''), String(r.unit || ''), q.target_level);
+      await col.doc(q.id).set({ tags: cur.classifiedTags(q, v) }, { merge: true });
+      results.push({ id: q.id, ...v });
+      return k;
+    });
+    return res.json({ ok: true, classified: batch.length, remaining, results });
+  } catch (error) {
+    return sendError(res, error, 'classify failed');
+  }
+});
+
 // ── Marking a student's homework ───────────────────────────────────────────
 // Runs on the server because the answers live in homeworkAnswerKeys, which students cannot read.
 // Objective questions are marked exactly; open questions by the school's AI against the model
